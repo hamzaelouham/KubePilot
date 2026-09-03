@@ -227,6 +227,8 @@ checks do not make the Blueprint unusable.
 - Backend install: `cd backend && python3 -m pip install -r requirements.txt`
 - Backend dev server: `cd backend && PYTHONPATH=. uvicorn app.main:app --host 127.0.0.1 --port 8000`
 - Backend syntax check: `cd backend && python3 -m compileall -q app`
+- Backend tests: `cd backend && python3 -m pytest`
+- Backend migration SQL check: `cd backend && PYTHONPATH=. alembic upgrade head --sql`
 
 Testing is opt-in for this project. There is no test runner configured yet, so no project-level `test` command is declared in this repo at the moment.
 

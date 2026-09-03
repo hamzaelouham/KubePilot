@@ -38,5 +38,8 @@ The health request returns `200` with `{"status":"ok","service":"kubepilot-api"}
 
 ```bash
 python -m compileall -q app
+python -m pytest
+PYTHONPATH=. alembic upgrade head --sql > /tmp/kubepilot-upgrade.sql
+PYTHONPATH=. alembic downgrade dd752e8644a9:base --sql > /tmp/kubepilot-downgrade.sql
 cd ../k8s-ui && yarn build
 ```

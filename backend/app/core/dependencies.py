@@ -1,20 +1,18 @@
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Annotated, AsyncIterator
+from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
+from sqlalchemy.orm import Session as SQLAlchemySession
 
 from app.core.config import Settings
+from app.db.session import get_database_session as open_database_session
 
 
 @dataclass(frozen=True)
 class AuthenticatedActor:
     identifier: str
     role: str
-
-
-@dataclass(frozen=True)
-class DatabaseSession:
-    connection_url: str
 
 
 async def get_settings(request: Request) -> Settings:
@@ -31,7 +29,9 @@ async def get_current_actor(request: Request) -> AuthenticatedActor:
     return actor
 
 
-async def get_database_session(
+def get_database_session(
     settings: Annotated[Settings, Depends(get_settings)],
-) -> AsyncIterator[DatabaseSession]:
-    yield DatabaseSession(connection_url=settings.database_url)
+) -> Iterator[SQLAlchemySession]:
+    yield from open_database_session(settings)
+
+

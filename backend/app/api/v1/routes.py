@@ -1,10 +1,10 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session as SQLAlchemySession
 
 from app.core.dependencies import (
     AuthenticatedActor,
-    DatabaseSession,
     get_current_actor,
     get_database_session,
     get_settings,
@@ -24,6 +24,6 @@ async def health(settings: Annotated[Settings, Depends(get_settings)]) -> Health
 @router.get("/auth/context", response_model=ActorResponse)
 async def auth_context(
     actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
-    _database: Annotated[DatabaseSession, Depends(get_database_session)],
+    _database: Annotated[SQLAlchemySession, Depends(get_database_session)],
 ) -> ActorResponse:
     return ActorResponse(identifier=actor.identifier, role=actor.role)
