@@ -14,6 +14,7 @@ python -m pip install -r requirements.txt
 cp .env.example .env
 export KUBEPILOT_AUTH_SECRET="replace-with-at-least-32-random-characters"
 export KUBEPILOT_DATABASE_URL="postgresql://kubepilot:change-me@localhost:5432/kubepilot"
+export KUBEPILOT_CLUSTER_NAME="primary"
 ```
 
 The service reads environment variables directly. Do not commit real `.env` files or secret values.
@@ -32,7 +33,13 @@ curl -i http://127.0.0.1:8000/api/v1/health
 curl -i http://127.0.0.1:8000/api/v1/auth/context
 ```
 
-The health request returns `200` with `{"status":"ok","service":"kubepilot-api"}` by default. The auth context request returns `401` until a future authentication adapter places a server-derived actor in the request state. No endpoint in this foundation connects to PostgreSQL or Kubernetes.
+The health request returns `200` with `{"status":"ok","service":"kubepilot-api"}` by default. The auth context request returns `401` until a future authentication adapter places a server-derived actor in the request state. Discovery endpoints connect to Kubernetes only through the backend ServiceAccount path.
+
+## Kubernetes deployment
+
+Deploy `deploy/kubernetes/service-account.yaml` in the backend namespace before enabling discovery. It grants the backend ServiceAccount only `get`, `list`, and `watch` access to namespaces, pods, services, endpoints, nodes, and deployments. The backend must run in a cluster so the Kubernetes client can use its in-cluster ServiceAccount; it does not accept kubeconfig uploads or request-supplied tokens.
+
+Protected discovery endpoints are `/api/v1/cluster/status`, `/api/v1/cluster/namespaces`, and `/api/v1/cluster/resources/{resource_type}`. The browser and AI integrations reach these through FastAPI and never contact Kubernetes directly.
 
 ## Checks
 

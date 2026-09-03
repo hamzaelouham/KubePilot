@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session as SQLAlchemySession
 
 from app.core.config import Settings
 from app.db.session import get_database_session as open_database_session
+from app.kubernetes.client import ClusterClient, create_cluster_client
 
 
 @dataclass(frozen=True)
@@ -33,5 +34,11 @@ def get_database_session(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> Iterator[SQLAlchemySession]:
     yield from open_database_session(settings)
+
+
+def get_cluster_client(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ClusterClient:
+    return create_cluster_client(settings)
 
 

@@ -11,12 +11,14 @@ class Settings:
     auth_secret: str
     database_url: str
     service_name: str = "kubepilot-api"
+    cluster_name: str = "primary"
 
     @classmethod
     def from_env(cls) -> "Settings":
         auth_secret = os.getenv("KUBEPILOT_AUTH_SECRET", "")
         database_url = os.getenv("KUBEPILOT_DATABASE_URL", "")
         service_name = os.getenv("KUBEPILOT_SERVICE_NAME", "kubepilot-api").strip()
+        cluster_name = os.getenv("KUBEPILOT_CLUSTER_NAME", "primary").strip()
 
         missing = [
             name
@@ -34,9 +36,12 @@ class Settings:
             raise ConfigurationError("KUBEPILOT_AUTH_SECRET must be at least 32 characters")
         if not service_name:
             raise ConfigurationError("KUBEPILOT_SERVICE_NAME must not be empty")
+        if not cluster_name:
+            raise ConfigurationError("KUBEPILOT_CLUSTER_NAME must not be empty")
 
         return cls(
             auth_secret=auth_secret,
             database_url=database_url,
             service_name=service_name,
+            cluster_name=cluster_name,
         )

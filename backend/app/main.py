@@ -10,6 +10,11 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.api.v1.routes import router as v1_router
 from app.api.v1.schemas import ErrorResponse
 from app.core.config import ConfigurationError, Settings
+from app.kubernetes.client import (
+    ClusterClientError,
+    ClusterForbiddenError,
+    ClusterUnavailableError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +66,39 @@ def create_app() -> FastAPI:
             status_code=503,
             content=ErrorResponse(
                 code="service_unavailable", message="Service configuration is unavailable"
+            ).model_dump(),
+        )
+
+    @app.exception_handler(ClusterForbiddenError)
+    async def cluster_forbidden_handler(
+        _request: Request, _exception: ClusterForbiddenError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=403,
+            content=ErrorResponse(
+                code="cluster_forbidden", message="Kubernetes access is forbidden"
+            ).model_dump(),
+        )
+
+    @app.exception_handler(ClusterUnavailableError)
+    async def cluster_unavailable_handler(
+        _request: Request, _exception: ClusterUnavailableError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=503,
+            content=ErrorResponse(
+                code="cluster_unavailable", message="Kubernetes cluster is unavailable"
+            ).model_dump(),
+        )
+
+    @app.exception_handler(ClusterClientError)
+    async def cluster_error_handler(
+        _request: Request, _exception: ClusterClientError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=502,
+            content=ErrorResponse(
+                code="cluster_error", message="Kubernetes request failed"
             ).model_dump(),
         )
 

@@ -229,6 +229,7 @@ checks do not make the Blueprint unusable.
 - Backend syntax check: `cd backend && python3 -m compileall -q app`
 - Backend tests: `cd backend && python3 -m pytest`
 - Backend migration SQL check: `cd backend && PYTHONPATH=. alembic upgrade head --sql`
+- Kubernetes manifest: `kubectl apply -f backend/deploy/kubernetes/service-account.yaml`
 
 Testing is opt-in for this project. There is no test runner configured yet, so no project-level `test` command is declared in this repo at the moment.
 
