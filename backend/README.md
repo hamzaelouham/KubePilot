@@ -19,6 +19,8 @@ export KUBEPILOT_CLUSTER_NAME="primary"
 
 The service reads environment variables directly. Do not commit real `.env` files or secret values.
 
+For a local smoke run without PostgreSQL, use `KUBEPILOT_DATABASE_URL=sqlite:///./dev.db`; initialize it with `PYTHONPATH=. alembic upgrade head` before starting FastAPI. Production deployments must use PostgreSQL.
+
 ## Run
 
 ```bash

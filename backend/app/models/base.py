@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
-from sqlalchemy import DateTime, MetaData, Uuid, func
+from sqlalchemy import DateTime, MetaData, Uuid
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -19,5 +19,5 @@ PrimaryKey = Annotated[
 ]
 CreatedAt = Annotated[
     datetime,
-    mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now()),
+    mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now().astimezone()),
 ]
