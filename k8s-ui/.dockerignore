@@ -1,0 +1,9 @@
+node_modules
+.next
+.env
+.env.*
+Dockerfile
+AGENTS.md
+CLAUDE.md
+README.md
+.git
