@@ -220,10 +220,13 @@ checks do not make the Blueprint unusable.
 
 ## Commands
 
-- Dev server: `npm run dev` (http://localhost:3000)
-- Build: `npm run build`
-- Production server: `npm run start`
-- Lint: `npm run lint`
+- Dev server: `yarn dev` (http://localhost:3000)
+- Build: `yarn build`
+- Production server: `yarn start`
+- Lint: `yarn lint`
+- Backend install: `cd backend && python3 -m pip install -r requirements.txt`
+- Backend dev server: `cd backend && PYTHONPATH=. uvicorn app.main:app --host 127.0.0.1 --port 8000`
+- Backend syntax check: `cd backend && python3 -m compileall -q app`
 
 Testing is opt-in for this project. There is no test runner configured yet, so no project-level `test` command is declared in this repo at the moment.
 
