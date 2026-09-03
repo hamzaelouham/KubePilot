@@ -6,7 +6,7 @@ from kubernetes import config
 from kubernetes.client.exceptions import ApiException
 
 from app.core.config import Settings
-from app.core.dependencies import AuthenticatedActor, get_current_actor
+from app.core.dependencies import AuthenticatedActor, _resolve_cookie_actor, get_current_actor
 from app.api.v1.routes import get_cluster_client
 from app.kubernetes.client import (
     ClusterClient,
@@ -90,3 +90,14 @@ def test_forbidden_discovery_is_returned_as_safe_http_error(monkeypatch: pytest.
         response = client.get("/api/v1/cluster/namespaces")
     assert response.status_code == 403
     assert response.json() == {"code": "cluster_forbidden", "message": "Kubernetes access is forbidden"}
+
+
+def test_tampered_shared_cookie_is_rejected() -> None:
+    from app.db.session import create_session_factory
+
+    settings_value = settings()
+    database = create_session_factory(settings_value)()
+    try:
+        assert _resolve_cookie_actor("invalid.invalid", settings_value.auth_secret, database) is None
+    finally:
+        database.close()

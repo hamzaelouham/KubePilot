@@ -95,9 +95,9 @@ export default async function LoginPage({
                 </a>
               </div>
 
-              {error === "invalid" ? (
+              {error === "invalid" || error === "backend" ? (
                 <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
-                  Invalid email or password.
+                  {error === "backend" ? "Authentication service is unavailable." : "Invalid email or password."}
                 </div>
               ) : null}
 

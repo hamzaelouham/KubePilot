@@ -1,4 +1,5 @@
 import { DashboardShell } from "@/components/dashboard-shell";
+import { CoreResourceView } from "@/components/core-resource-view";
 
 const workloads = [
   { name: "test", namespace: "default", labels: "k8s-app: test", pods: "2 / 1", age: "4 hours", image: "luksa/kubia", status: "error" },
@@ -43,7 +44,7 @@ function DonutChart({ values, colors }: { values: number[]; colors: string[] }) 
   );
 }
 
-function renderResource(resource: string) {
+function renderResource(resource: string, namespace: string) {
   switch (resource) {
     case "overview":
       return (
@@ -146,63 +147,11 @@ function renderResource(resource: string) {
       );
 
     case "deployments":
-      return (
-        <div className="space-y-6">
-          <h2 className="text-3xl font-semibold text-slate-700">Deployments</h2>
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <table className="min-w-full text-left text-base">
-              <thead className="bg-slate-100 text-slate-600">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Name</th>
-                  <th className="px-4 py-3 font-medium">Namespace</th>
-                  <th className="px-4 py-3 font-medium">Pods</th>
-                  <th className="px-4 py-3 font-medium">Image</th>
-                </tr>
-              </thead>
-              <tbody>
-                {workloads.map((item) => (
-                  <tr key={item.name} className="border-t border-slate-200 text-slate-700">
-                    <td className="px-4 py-3 font-medium">{item.name}</td>
-                    <td className="px-4 py-3">{item.namespace}</td>
-                    <td className="px-4 py-3">{item.pods}</td>
-                    <td className="px-4 py-3">{item.image}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      );
-
     case "pods":
+    case "services":
+    case "nodes":
       return (
-        <div className="space-y-6">
-          <h2 className="text-3xl font-semibold text-slate-700">Pods</h2>
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <table className="min-w-full text-left text-base">
-              <thead className="bg-slate-100 text-slate-600">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Name</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Ready</th>
-                  <th className="px-4 py-3 font-medium">Restarts</th>
-                  <th className="px-4 py-3 font-medium">Age</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pods.map((pod) => (
-                  <tr key={pod.name} className="border-t border-slate-200 text-slate-700">
-                    <td className="px-4 py-3 font-medium">{pod.name}</td>
-                    <td className="px-4 py-3">{pod.status}</td>
-                    <td className="px-4 py-3">{pod.ready}</td>
-                    <td className="px-4 py-3">{pod.restarts}</td>
-                    <td className="px-4 py-3">{pod.age}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <CoreResourceView resource={resource} namespace={namespace} />
       );
 
     case "namespaces":
@@ -235,7 +184,7 @@ function renderResource(resource: string) {
       );
 
     default:
-      return renderResource("overview");
+      return renderResource("overview", namespace);
   }
 }
 
@@ -248,5 +197,5 @@ export default async function DashboardPage({
   const resource = resolvedParams.resource ?? "overview";
   const namespace = resolvedParams.namespace ?? "default";
 
-  return <DashboardShell>{renderResource(resource)}</DashboardShell>;
+  return <DashboardShell>{renderResource(resource, namespace)}</DashboardShell>;
 }

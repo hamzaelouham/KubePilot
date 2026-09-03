@@ -1,6 +1,6 @@
 # Project Overview
 
-<!-- blueprint:source-hash 027c4f95fd3cf41807f66192dbaec2b4712d263691d1a0f0b13862d0f8723aec -->
+<!-- blueprint:source-hash f9ea1b7be3a4f035731fd898ad3c9d917f6c7da42cebe8994ac71e691b502c75 -->
 
 ## Product summary
 
@@ -68,7 +68,7 @@ These entities support the operational workflows the app needs: cluster overview
 - Backend: FastAPI for the application API layer
 - Database: PostgreSQL for app data and metadata
 - Kubernetes integration: FastAPI connects to one initial cluster through a Kubernetes ServiceAccount and Kubernetes RBAC
-- Authentication: local app auth with sessions and protected routes
+- Authentication: local admin auth with a shared signed HTTP-only session cookie; Next.js and FastAPI validate it using the shared secret, and FastAPI loads the user from PostgreSQL
 - System of record: Kubernetes remains the live authority for cluster resources; the app stores only what is needed for operational UI and access control
 
 ## Deployment shape
@@ -91,5 +91,10 @@ The plans are broadly aligned. The major remaining items are:
 - exact ServiceAccount and Kubernetes RBAC policy bindings for the first cluster
 - whether the product is self-hosted software, managed service, or both
 - exact deployment environment and environment-variable layout
+
+Authentication boundary:
+- Next.js and FastAPI share the signing secret, cookie name, and session format.
+- FastAPI validates the signed cookie and loads the user from PostgreSQL before protected API access.
+- Kubernetes credentials remain exclusively in the FastAPI ServiceAccount runtime; the frontend and AI paths never receive them.
 
 No major contradictions were found between the project plan and build plan. The main gap is the operational model for live cluster connection and access control, which is intentionally left for implementation planning.

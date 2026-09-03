@@ -44,9 +44,9 @@ Secondary users may include engineering managers and technical operators who nee
 - Frontend: Next.js with TypeScript and Tailwind CSS
 - Backend: FastAPI for the application API layer
 - Database: PostgreSQL for application data and operational metadata
-- Kubernetes integration: Kubernetes Python client and Kubernetes API access
-- Authentication: local application auth with sessions and protected routes
-- Architecture: a modern UI backed by structured API endpoints, with Kubernetes as the operational system of record
+- Kubernetes integration: Kubernetes Python client and Kubernetes API access through FastAPI only
+- Authentication: local admin account with a shared, signed, HTTP-only session cookie validated by Next.js and FastAPI against PostgreSQL
+- Architecture: a modern UI backed by structured API endpoints, with Kubernetes as the operational system of record and credentials kept exclusively in FastAPI
 - Future direction: AI Copilot integration for investigation and guided action support
 
 Confirmed architecture: the browser reaches the Next.js UI, the UI reaches FastAPI over HTTPS or WebSocket, and FastAPI is the only application component that reaches the Kubernetes API. AI features will use the same backend API and never connect directly to Kubernetes.
@@ -89,11 +89,18 @@ Expected deployment shape:
 - Backend: FastAPI service providing app APIs and connection logic
 - Database: PostgreSQL for application metadata, auth, and audit data
 - Kubernetes integration: FastAPI connects to one initial cluster through a Kubernetes ServiceAccount and Kubernetes RBAC
-- Environment variables: cluster endpoint config, DB connection string, auth secrets, and session settings
+- Environment variables: cluster endpoint config, DB connection string, shared session signing secret, and session settings
 - Operational needs: health-check endpoints, logs, background workers or polling jobs as needed, and secure secret management
 - Domain and hosting: a private or enterprise-ready deployment model, likely behind internal access controls or a corporate network boundary
 
 Initial deployment topology: Next.js frontend, FastAPI backend, and PostgreSQL. The first release supports one cluster; multi-cluster support is designed for later, not implemented now.
+
+Authentication contract:
+
+- Next.js and FastAPI share the same signing secret, cookie name, and session format.
+- The session cookie is signed and HTTP-only; browser JavaScript and request payloads cannot mint or override identity.
+- FastAPI validates the signature and expiry, then retrieves the authenticated user from PostgreSQL before serving protected API data.
+- Kubernetes credentials remain only in the backend runtime ServiceAccount and are never sent to the frontend, browser, or AI integration.
 
 ## Key assumptions and exclusions
 

@@ -1,9 +1,11 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { SESSION_COOKIE_NAME } from "@/lib/auth-constants";
 
-export const SESSION_COOKIE_NAME = "kubepilot_session";
 export const DEFAULT_ADMIN_EMAIL = "ops@kubepilot.io";
 export const DEFAULT_ADMIN_PASSWORD = "kubepilot";
+const SESSION_SECRET = process.env.KUBEPILOT_AUTH_SECRET ?? "local-development-secret-change-me";
 
 export type SessionData = {
   email: string;
@@ -12,6 +14,39 @@ export type SessionData = {
 
 function normalizeCredential(value: string | null | undefined) {
   return (value ?? "").trim().toLowerCase();
+}
+
+function encode(value: string) {
+  return Buffer.from(value).toString("base64url");
+}
+
+function sign(payload: string) {
+  return createHmac("sha256", SESSION_SECRET).update(payload).digest("base64url");
+}
+
+function serializeSession(session: SessionData) {
+  const payload = encode(JSON.stringify(session));
+  return `${payload}.${sign(payload)}`;
+}
+
+function parseSession(value: string): SessionData | null {
+  const [payload, signature] = value.split(".");
+  if (!payload || !signature) return null;
+
+  const expected = sign(payload);
+  const actualBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  if (actualBuffer.length !== expectedBuffer.length || !timingSafeEqual(actualBuffer, expectedBuffer)) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as SessionData;
+    if (!parsed.email || !Number.isFinite(parsed.expiresAt) || parsed.expiresAt <= Date.now()) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
 }
 
 export async function getSession(): Promise<SessionData | null> {
@@ -23,13 +58,7 @@ export async function getSession(): Promise<SessionData | null> {
   }
 
   try {
-    const parsed = JSON.parse(decodeURIComponent(sessionCookie)) as SessionData;
-
-    if (!parsed.email || !parsed.expiresAt || parsed.expiresAt <= Date.now()) {
-      return null;
-    }
-
-    return parsed;
+    return parseSession(sessionCookie);
   } catch {
     return null;
   }
@@ -59,12 +88,12 @@ export async function isValidCredential(email: string, password: string) {
   return normalizedEmail === credentials.email && password === credentials.password;
 }
 
-export async function createSession(email: string) {
+export async function createSession(email: string, cookieValue?: string, sessionExpiresAt?: number) {
   const cookieStore = await cookies();
-  const expiresAt = Date.now() + 1000 * 60 * 60 * 12;
+  const expiresAt = sessionExpiresAt ?? Date.now() + 1000 * 60 * 60 * 12;
   const session: SessionData = { email, expiresAt };
 
-  cookieStore.set(SESSION_COOKIE_NAME, encodeURIComponent(JSON.stringify(session)), {
+  cookieStore.set(SESSION_COOKIE_NAME, cookieValue ?? serializeSession(session), {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",

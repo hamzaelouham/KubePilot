@@ -33,7 +33,7 @@ curl -i http://127.0.0.1:8000/api/v1/health
 curl -i http://127.0.0.1:8000/api/v1/auth/context
 ```
 
-The health request returns `200` with `{"status":"ok","service":"kubepilot-api"}` by default. The auth context request returns `401` until a future authentication adapter places a server-derived actor in the request state. Discovery endpoints connect to Kubernetes only through the backend ServiceAccount path.
+The health request returns `200` with `{"status":"ok","service":"kubepilot-api"}` by default. Protected requests use the shared `kubepilot_session` HMAC-SHA256 cookie and load the user from PostgreSQL before reaching discovery. Discovery endpoints connect to Kubernetes only through the backend ServiceAccount path.
 
 ## Kubernetes deployment
 

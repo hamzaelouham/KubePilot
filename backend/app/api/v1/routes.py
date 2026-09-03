@@ -1,6 +1,13 @@
+import base64
+import hashlib
+import hmac
+import json
+import time
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.orm import Session as SQLAlchemySession
 
 from app.core.dependencies import (
@@ -11,6 +18,7 @@ from app.core.dependencies import (
     get_settings,
 )
 from app.core.config import Settings
+from app.models.entities import Session, UserAccount
 
 from .schemas import ActorResponse, HealthResponse
 from .discovery_schemas import (
@@ -21,9 +29,25 @@ from .discovery_schemas import (
     ResourceResponse,
     ResourceType,
 )
+from .auth_schemas import LoginRequest, LoginResponse
 from app.kubernetes.client import ClusterClient
 
 router = APIRouter()
+
+
+def _password_hash(password: str) -> str:
+    salt = hashlib.sha256(b"kubepilot-password-salt").digest()
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 120_000)
+    return "pbkdf2_sha256$120000$" + digest.hex()
+
+
+def _signed_cookie(email: str, expires_at: int, secret: str) -> tuple[str, str]:
+    payload = base64.urlsafe_b64encode(
+        json.dumps({"email": email, "expiresAt": expires_at}, separators=(",", ":")).encode()
+    ).decode().rstrip("=")
+    signature = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).digest()
+    signature_text = base64.urlsafe_b64encode(signature).decode().rstrip("=")
+    return f"{payload}.{signature_text}", hashlib.sha256(payload.encode()).hexdigest()
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -37,6 +61,26 @@ async def auth_context(
     _database: Annotated[SQLAlchemySession, Depends(get_database_session)],
 ) -> ActorResponse:
     return ActorResponse(identifier=actor.identifier, role=actor.role)
+
+
+@router.post("/auth/login", response_model=LoginResponse)
+def login(
+    credentials: LoginRequest,
+    settings: Annotated[Settings, Depends(get_settings)],
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+) -> LoginResponse:
+    if credentials.email.strip().lower() != settings.admin_email or credentials.password != settings.admin_password:
+        raise HTTPException(status_code=401, detail={"code": "authentication_required", "message": "Authentication is required"})
+    user = database.scalar(select(UserAccount).where(UserAccount.email == settings.admin_email))
+    if user is None:
+        user = UserAccount(email=settings.admin_email, password_hash=_password_hash(credentials.password), role="admin")
+        database.add(user)
+        database.flush()
+    expires_at = int((time.time() + 60 * 60 * 12) * 1000)
+    cookie, token_hash = _signed_cookie(settings.admin_email, expires_at, settings.auth_secret)
+    database.add(Session(user_id=user.id, token_hash=token_hash, expires_at=datetime.fromtimestamp(expires_at / 1000, tz=timezone.utc)))
+    database.commit()
+    return LoginResponse(cookie=cookie, expires_at=expires_at)
 
 
 @router.get("/cluster/status", response_model=ClusterStatusResponse)

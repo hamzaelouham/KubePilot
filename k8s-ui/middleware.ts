@@ -1,26 +1,41 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { SESSION_COOKIE_NAME } from "@/lib/auth";
+import { SESSION_COOKIE_NAME } from "@/lib/auth-constants";
 
-function isAuthenticated(request: NextRequest) {
+async function isAuthenticated(request: NextRequest) {
   const value = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+  const secret = process.env.KUBEPILOT_AUTH_SECRET;
 
-  if (!value) {
+  if (!value || !secret) {
     return false;
   }
 
   try {
-    const parsed = JSON.parse(decodeURIComponent(value)) as { expiresAt?: number };
-    return typeof parsed.expiresAt === "number" && parsed.expiresAt > Date.now();
+    const [payload, signature] = value.split(".");
+    if (!payload || !signature) return false;
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const decoded = atob(base64 + "=".repeat((4 - (base64.length % 4)) % 4));
+    const parsed = JSON.parse(decoded) as { expiresAt?: number };
+    if (typeof parsed.expiresAt !== "number" || parsed.expiresAt <= Date.now()) return false;
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["verify"],
+    );
+    const signatureBase64 = signature.replace(/-/g, "+").replace(/_/g, "/");
+    const signatureBytes = Uint8Array.from(atob(signatureBase64 + "=".repeat((4 - (signatureBase64.length % 4)) % 4)), (character) => character.charCodeAt(0));
+    return await crypto.subtle.verify("HMAC", key, signatureBytes, new TextEncoder().encode(payload));
   } catch {
     return false;
   }
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const authenticated = isAuthenticated(request);
+  const authenticated = await isAuthenticated(request);
 
   if (pathname.startsWith("/dashboard")) {
     if (!authenticated) {
