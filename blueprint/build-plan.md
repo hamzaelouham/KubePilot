@@ -9,7 +9,7 @@
 - [x] 5. **PostgreSQL application data model** - configure persistent storage for users, sessions, cluster metadata, settings, and operational records.
 - [x] 6. **Kubernetes connection and namespace discovery** - connect to a cluster and surface namespaces, endpoints, and resource inventory through the backend.
 - [x] 7. **Core resource views** - implement pods, deployments, services, and node listings with status-driven data and real cluster context.
-- [ ] 8. **Resource details and troubleshooting surfaces** - add detail pages for status, YAML, logs, and recent events for a selected workload or resource.
+- [x] 8. **Resource details and troubleshooting surfaces** - add detail pages for status, YAML, logs, and recent events for a selected workload or resource.
 - [ ] 9. **Basic operations** - enable safe admin actions such as scaling and restart flows behind controlled permissions.
 
 ## Post-MVP

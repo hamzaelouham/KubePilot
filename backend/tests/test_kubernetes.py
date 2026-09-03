@@ -12,6 +12,7 @@ from app.kubernetes.client import (
     ClusterClient,
     ClusterForbiddenError,
     ClusterUnavailableError,
+    ResourceNotFoundError,
     classify_kubernetes_error,
     create_cluster_client,
 )
@@ -101,3 +102,139 @@ def test_tampered_shared_cookie_is_rejected() -> None:
         assert _resolve_cookie_actor("invalid.invalid", settings_value.auth_secret, database) is None
     finally:
         database.close()
+
+
+class FakeDetailCore:
+    def read_namespaced_pod(self, name: str, namespace: str):
+        return SimpleNamespace(
+            metadata=SimpleNamespace(
+                namespace=namespace,
+                name=name,
+                labels={"app": "api"},
+                annotations={"kube-secret-token": "super-secret-value"},
+            ),
+            status=SimpleNamespace(phase="Running", to_dict=lambda: {"phase": "Running"}),
+            to_dict=lambda: {
+                "metadata": {
+                    "namespace": namespace,
+                    "name": name,
+                    "labels": {"app": "api"},
+                    "annotations": {"kube-secret-token": "super-secret-value"},
+                },
+                "status": {"phase": "Running"},
+            },
+        )
+
+
+def test_detail_returns_typed_resources() -> None:
+    core = FakeDetailCore()
+    cluster = ClusterClient("test-cluster", core, object())
+    detail = cluster.detail("pods", "api-1", "default")
+    assert detail["name"] == "api-1"
+    assert detail["namespace"] == "default"
+    assert detail["kind"] == "Pod"
+    assert detail["status"] == "Running"
+    assert detail["metadata"]["app"] == "api"
+
+
+def test_detail_redacts_sensitive_metadata() -> None:
+    core = FakeDetailCore()
+    cluster = ClusterClient("test-cluster", core, object())
+    detail = cluster.detail("pods", "api-1", "default")
+    assert detail["metadata"]["kube-secret-token"] == "[REDACTED]"
+
+
+def test_yaml_redacts_sensitive_fields() -> None:
+    core = FakeDetailCore()
+    cluster = ClusterClient("test-cluster", core, object())
+    content, truncated = cluster.yaml("pods", "api-1", "default")
+    assert not truncated
+    assert "super-secret-value" not in content
+    assert "REDACTED" in content
+
+
+def test_detail_node_is_cluster_scoped_via_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KUBEPILOT_AUTH_SECRET", "x" * 32)
+    monkeypatch.setenv("KUBEPILOT_DATABASE_URL", "sqlite:///:memory:")
+    from app.main import create_app
+
+    app = create_app()
+    app.dependency_overrides[get_current_actor] = lambda: AuthenticatedActor("ops", "admin")
+    app.dependency_overrides[get_cluster_client] = lambda: ClusterClient("test-cluster", FakeDetailCore(), object())
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/v1/cluster/resources/nodes/node-1?cluster=other-cluster"
+        )
+    assert response.status_code == 422
+    assert response.json() == {"code": "invalid_resource_identity", "message": "Invalid cluster scope"}
+
+
+def test_detail_namespaced_resource_requires_namespace(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KUBEPILOT_AUTH_SECRET", "x" * 32)
+    monkeypatch.setenv("KUBEPILOT_DATABASE_URL", "sqlite:///:memory:")
+    from app.main import create_app
+
+    app = create_app()
+    app.dependency_overrides[get_current_actor] = lambda: AuthenticatedActor("ops", "admin")
+    app.dependency_overrides[get_cluster_client] = lambda: ClusterClient("test-cluster", FakeDetailCore(), object())
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/v1/cluster/resources/pods/api-1?cluster=primary"
+        )
+    assert response.status_code == 422
+    assert response.json() == {"code": "invalid_resource_identity", "message": "Namespace is required"}
+
+
+def test_detail_not_found_maps_to_404(monkeypatch: pytest.MonkeyPatch) -> None:
+    class NotFoundClient(ClusterClient):
+        def detail(self, resource_type, name, namespace=None):
+            raise ResourceNotFoundError("missing")
+
+    monkeypatch.setenv("KUBEPILOT_AUTH_SECRET", "x" * 32)
+    monkeypatch.setenv("KUBEPILOT_DATABASE_URL", "sqlite:///:memory:")
+    from app.main import create_app
+
+    app = create_app()
+    app.dependency_overrides[get_current_actor] = lambda: AuthenticatedActor("ops", "admin")
+    app.dependency_overrides[get_cluster_client] = lambda: NotFoundClient("test", object(), object())
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/v1/cluster/resources/pods/missing?cluster=primary&namespace=default"
+        )
+    assert response.status_code == 404
+    assert response.json() == {"code": "resource_not_found", "message": "Kubernetes resource was not found"}
+
+
+def test_detail_forbidden_maps_to_403(monkeypatch: pytest.MonkeyPatch) -> None:
+    class ForbiddenClient(ClusterClient):
+        def detail(self, resource_type, name, namespace=None):
+            raise ClusterForbiddenError("denied")
+
+    monkeypatch.setenv("KUBEPILOT_AUTH_SECRET", "x" * 32)
+    monkeypatch.setenv("KUBEPILOT_DATABASE_URL", "sqlite:///:memory:")
+    from app.main import create_app
+
+    app = create_app()
+    app.dependency_overrides[get_current_actor] = lambda: AuthenticatedActor("ops", "admin")
+    app.dependency_overrides[get_cluster_client] = lambda: ForbiddenClient("test", object(), object())
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/v1/cluster/resources/pods/api-1?cluster=primary&namespace=default"
+        )
+    assert response.status_code == 403
+    assert response.json() == {"code": "cluster_forbidden", "message": "Kubernetes access is forbidden"}
+
+
+def test_detail_unauthenticated_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KUBEPILOT_AUTH_SECRET", "x" * 32)
+    monkeypatch.setenv("KUBEPILOT_DATABASE_URL", "sqlite:///:memory:")
+    from app.main import create_app
+
+    app = create_app()
+    app.dependency_overrides[get_cluster_client] = lambda: ClusterClient("test-cluster", FakeDetailCore(), object())
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/v1/cluster/resources/pods/api-1?cluster=primary&namespace=default"
+        )
+    assert response.status_code == 401
+    assert response.json()["code"] == "authentication_required"

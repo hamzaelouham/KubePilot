@@ -30,6 +30,7 @@ from .discovery_schemas import (
     ResourceType,
 )
 from .auth_schemas import LoginRequest, LoginResponse
+from .detail_schemas import DetailResourceType, EventResponse, LogResponse, ResourceDetailResponse, YamlResponse
 from app.kubernetes.client import ClusterClient
 
 router = APIRouter()
@@ -126,3 +127,74 @@ def cluster_resources(
             for item in cluster.resources(resource_type, namespace)
         ]
     )
+
+
+def _validate_detail_scope(resource_type: str, cluster: str, settings: Settings, namespace: str | None) -> None:
+    if cluster != settings.cluster_name:
+        raise HTTPException(status_code=422, detail={"code": "invalid_resource_identity", "message": "Invalid cluster scope"})
+    if resource_type == "nodes" and namespace is not None:
+        raise HTTPException(status_code=422, detail={"code": "invalid_resource_identity", "message": "Nodes are cluster-scoped"})
+    if resource_type != "nodes" and not namespace:
+        raise HTTPException(status_code=422, detail={"code": "invalid_resource_identity", "message": "Namespace is required"})
+
+
+@router.get("/cluster/resources/{resource_type}/{name}", response_model=ResourceDetailResponse)
+def resource_detail(
+    resource_type: DetailResourceType,
+    name: str,
+    cluster: str,
+    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
+    client: Annotated[ClusterClient, Depends(get_cluster_client)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    namespace: str | None = None,
+) -> ResourceDetailResponse:
+    _validate_detail_scope(resource_type, cluster, settings, namespace)
+    detail = client.detail(resource_type, name, namespace)
+    return ResourceDetailResponse(**{key: detail[key] for key in ("cluster", "resource_type", "name", "namespace", "kind", "status", "metadata")}, source="kubernetes")
+
+
+@router.get("/cluster/resources/{resource_type}/{name}/yaml", response_model=YamlResponse)
+def resource_yaml(
+    resource_type: DetailResourceType,
+    name: str,
+    cluster: str,
+    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
+    client: Annotated[ClusterClient, Depends(get_cluster_client)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    namespace: str | None = None,
+) -> YamlResponse:
+    _validate_detail_scope(resource_type, cluster, settings, namespace)
+    content, truncated = client.yaml(resource_type, name, namespace)
+    return YamlResponse(content=content, truncated=truncated)
+
+
+@router.get("/cluster/resources/{resource_type}/{name}/logs", response_model=LogResponse)
+def resource_logs(
+    resource_type: DetailResourceType,
+    name: str,
+    cluster: str,
+    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
+    client: Annotated[ClusterClient, Depends(get_cluster_client)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    namespace: str | None = None,
+) -> LogResponse:
+    _validate_detail_scope(resource_type, cluster, settings, namespace)
+    if resource_type != "pods":
+        raise HTTPException(status_code=422, detail={"code": "invalid_resource_identity", "message": "Logs are only available for pods"})
+    lines, truncated, container = client.logs(name, namespace)
+    return LogResponse(lines=lines, truncated=truncated, container=container)
+
+
+@router.get("/cluster/resources/{resource_type}/{name}/events", response_model=EventResponse)
+def resource_events(
+    resource_type: DetailResourceType,
+    name: str,
+    cluster: str,
+    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
+    client: Annotated[ClusterClient, Depends(get_cluster_client)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    namespace: str | None = None,
+) -> EventResponse:
+    _validate_detail_scope(resource_type, cluster, settings, namespace)
+    items, truncated = client.events(name, namespace)
+    return EventResponse(items=items, truncated=truncated)

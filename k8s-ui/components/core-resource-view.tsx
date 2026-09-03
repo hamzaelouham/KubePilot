@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 type Resource = {
   cluster: string;
@@ -69,14 +70,29 @@ export function CoreResourceView({ resource, namespace }: { resource: string; na
               <tr>{tableColumns.map((column) => <th key={column} className="px-4 py-3 font-medium">{column}</th>)}</tr>
             </thead>
             <tbody>
-              {state.items.map((item) => (
-                <tr key={`${item.kind}-${item.namespace ?? "cluster"}-${item.name}`} className="border-t border-slate-200 text-slate-700">
-                  <td className="px-4 py-3 font-medium">{item.name}</td>
-                  {resource !== "nodes" ? <td className="px-4 py-3">{item.namespace ?? "All namespaces"}</td> : null}
-                  <td className="px-4 py-3">{item.status}</td>
-                  {resource === "nodes" ? <td className="px-4 py-3">{item.cluster}</td> : null}
-                </tr>
-              ))}
+              {state.items.map((item) => {
+                const detailParams = new URLSearchParams({
+                  resourceType: resource,
+                  name: item.name,
+                });
+                if (item.namespace) detailParams.set("namespace", item.namespace);
+
+                return (
+                  <tr key={`${item.kind}-${item.namespace ?? "cluster"}-${item.name}`} className="border-t border-slate-200 text-slate-700 hover:bg-slate-50">
+                    <td className="px-4 py-3 font-medium">
+                      <Link
+                        href={`/dashboard/detail?${detailParams}`}
+                        className="text-cyan-600 hover:underline"
+                      >
+                        {item.name}
+                      </Link>
+                    </td>
+                    {resource !== "nodes" ? <td className="px-4 py-3">{item.namespace ?? "All namespaces"}</td> : null}
+                    <td className="px-4 py-3">{item.status}</td>
+                    {resource === "nodes" ? <td className="px-4 py-3">{item.cluster}</td> : null}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

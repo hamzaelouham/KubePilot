@@ -14,6 +14,7 @@ from app.kubernetes.client import (
     ClusterClientError,
     ClusterForbiddenError,
     ClusterUnavailableError,
+    ResourceNotFoundError,
 )
 
 logger = logging.getLogger(__name__)
@@ -99,6 +100,17 @@ def create_app() -> FastAPI:
             status_code=502,
             content=ErrorResponse(
                 code="cluster_error", message="Kubernetes request failed"
+            ).model_dump(),
+        )
+
+    @app.exception_handler(ResourceNotFoundError)
+    async def resource_not_found_handler(
+        _request: Request, _exception: ResourceNotFoundError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=404,
+            content=ErrorResponse(
+                code="resource_not_found", message="Kubernetes resource was not found"
             ).model_dump(),
         )
 
