@@ -10,3 +10,7 @@ CLAUDE.md
 *.db
 *.db-journal
 .docker
+
+# Python build artifacts
+__pycache__/
+*.py[cod]

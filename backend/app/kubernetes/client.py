@@ -41,6 +41,9 @@ class ClusterClient:
     cluster_name: str
     core: Any
     apps: Any
+    batch: Any = None
+    rbac: Any = None
+    storage: Any = None
 
     def namespaces(self) -> list[tuple[str, str]]:
         try:
@@ -49,22 +52,34 @@ class ClusterClient:
             raise classify_kubernetes_error(error) from error
 
     def resources(self, resource_type: str, namespace: str | None) -> list[ResourceSummary]:
-        methods: dict[str, tuple[Any, str, str]] = {
-            "pods": (self.core, "list_pod_for_all_namespaces", "Pod"),
-            "services": (self.core, "list_service_for_all_namespaces", "Service"),
-            "endpoints": (self.core, "list_endpoints_for_all_namespaces", "Endpoints"),
-            "deployments": (self.apps, "list_deployment_for_all_namespaces", "Deployment"),
+        namespaced_methods: dict[str, tuple[Any, str, str, str]] = {
+            "pods": (self.core, "list_namespaced_pod", "list_pod_for_all_namespaces", "Pod"),
+            "services": (self.core, "list_namespaced_service", "list_service_for_all_namespaces", "Service"),
+            "endpoints": (self.core, "list_namespaced_endpoints", "list_endpoints_for_all_namespaces", "Endpoints"),
+            "deployments": (self.apps, "list_namespaced_deployment", "list_deployment_for_all_namespaces", "Deployment"),
+            "replica-sets": (self.apps, "list_namespaced_replica_set", "list_replica_set_for_all_namespaces", "ReplicaSet"),
+            "daemon-sets": (self.apps, "list_namespaced_daemon_set", "list_daemon_set_for_all_namespaces", "DaemonSet"),
+            "stateful-sets": (self.apps, "list_namespaced_stateful_set", "list_stateful_set_for_all_namespaces", "StatefulSet"),
+            "jobs": (self.batch, "list_namespaced_job", "list_job_for_all_namespaces", "Job"),
+            "cron-jobs": (self.batch, "list_namespaced_cron_job", "list_cron_job_for_all_namespaces", "CronJob"),
+            "replication-controllers": (self.core, "list_namespaced_replication_controller", "list_replication_controller_for_all_namespaces", "ReplicationController"),
+        }
+        cluster_scoped_methods: dict[str, tuple[Any, str, str, str]] = {
+            "nodes": (self.core, "list_node", "Node", "condition"),
+            "persistent-volumes": (self.core, "list_persistent_volume", "PersistentVolume", "phase"),
+            "cluster-roles": (self.rbac, "list_cluster_role", "ClusterRole", "none"),
+            "storage-classes": (self.storage, "list_storage_class", "StorageClass", "none"),
         }
         try:
-            if resource_type == "nodes":
-                items = self.core.list_node().items
-                return [ResourceSummary(self.cluster_name, None, "Node", item.metadata.name, item.status.conditions[-1].type if item.status.conditions else "Unknown") for item in items]
-            api, all_namespace_method, kind = methods[resource_type]
-            if namespace:
-                namespaced_method = getattr(api, all_namespace_method.replace("_for_all_namespaces", "_for_namespace"))
-                items = namespaced_method(namespace).items
-            else:
-                items = getattr(api, all_namespace_method)().items
+            if resource_type in cluster_scoped_methods:
+                api, method_name, kind, status_kind = cluster_scoped_methods[resource_type]
+                items = getattr(api, method_name)().items
+                return [
+                    ResourceSummary(self.cluster_name, None, kind, item.metadata.name, _summary_status(item, status_kind))
+                    for item in items
+                ]
+            api, namespaced_method, all_namespace_method, kind = namespaced_methods[resource_type]
+            items = getattr(api, namespaced_method)(namespace).items if namespace else getattr(api, all_namespace_method)().items
             return [
                 ResourceSummary(
                     self.cluster_name,
@@ -83,6 +98,12 @@ class ClusterClient:
             "pods": (self.core, "read_namespaced_pod", "Pod"),
             "services": (self.core, "read_namespaced_service", "Service"),
             "deployments": (self.apps, "read_namespaced_deployment", "Deployment"),
+            "replica-sets": (self.apps, "read_namespaced_replica_set", "ReplicaSet"),
+            "daemon-sets": (self.apps, "read_namespaced_daemon_set", "DaemonSet"),
+            "stateful-sets": (self.apps, "read_namespaced_stateful_set", "StatefulSet"),
+            "jobs": (self.batch, "read_namespaced_job", "Job"),
+            "cron-jobs": (self.batch, "read_namespaced_cron_job", "CronJob"),
+            "replication-controllers": (self.core, "read_namespaced_replication_controller", "ReplicationController"),
             "nodes": (self.core, "read_node", "Node"),
         }
         try:
@@ -154,7 +175,14 @@ class ClusterClient:
 def create_cluster_client(settings: Settings, loader: Callable[[], None] = config.load_incluster_config) -> ClusterClient:
     try:
         loader()
-        return ClusterClient(settings.cluster_name, client.CoreV1Api(), client.AppsV1Api())
+        return ClusterClient(
+            settings.cluster_name,
+            client.CoreV1Api(),
+            client.AppsV1Api(),
+            client.BatchV1Api(),
+            client.RbacAuthorizationV1Api(),
+            client.StorageV1Api(),
+        )
     except (config.ConfigException, HTTPError, OSError) as error:
         raise ClusterUnavailableError("Kubernetes ServiceAccount configuration is unavailable") from error
 
@@ -165,6 +193,15 @@ def classify_kubernetes_error(error: Exception) -> ClusterClientError:
     if isinstance(error, (ApiException, HTTPError, TimeoutError, OSError)):
         return ClusterUnavailableError("Kubernetes cluster is unavailable")
     return ClusterClientError("Kubernetes request failed")
+
+
+def _summary_status(item: Any, status_kind: str) -> str:
+    status = getattr(item, "status", None)
+    if status_kind == "condition" and status is not None and getattr(status, "conditions", None):
+        return status.conditions[-1].type
+    if status_kind == "phase" and status is not None and getattr(status, "phase", None):
+        return status.phase
+    return "Unknown"
 
 
 def _safe_metadata(labels: dict[str, str] | None, annotations: dict[str, str] | None) -> dict[str, str]:

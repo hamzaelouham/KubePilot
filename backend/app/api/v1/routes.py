@@ -110,10 +110,10 @@ def cluster_resources(
     cluster: Annotated[ClusterClient, Depends(get_cluster_client)],
     namespace: str | None = None,
 ) -> ResourceResponse:
-    if resource_type == "nodes" and namespace is not None:
+    if resource_type in ("nodes", "persistent-volumes", "cluster-roles", "storage-classes") and namespace is not None:
         raise HTTPException(
             status_code=422,
-            detail={"code": "invalid_namespace_scope", "message": "Nodes are cluster-scoped"},
+            detail={"code": "invalid_namespace_scope", "message": f"{resource_type} are cluster-scoped"},
         )
     return ResourceResponse(
         items=[

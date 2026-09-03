@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 async function signOut() {
   await fetch("/api/logout", { method: "POST" });
@@ -28,6 +28,8 @@ const secondaryNav = [
   { id: "pods", label: "Pods" },
   { id: "replica-sets", label: "Replica Sets" },
   { id: "replication-controllers", label: "Replication Controllers" },
+  { id: "services", label: "Services" },
+  { id: "stateful-sets", label: "Stateful Sets" },
 ];
 
 const resourceTitles: Record<string, string> = {
@@ -40,6 +42,8 @@ const resourceTitles: Record<string, string> = {
   pods: "Pods",
   "replica-sets": "Replica Sets",
   "replication-controllers": "Replication Controllers",
+  services: "Services",
+  "stateful-sets": "Stateful Sets",
   cluster: "Cluster",
   "cluster-roles": "Cluster Roles",
   namespaces: "Namespaces",
@@ -48,14 +52,27 @@ const resourceTitles: Record<string, string> = {
   "storage-classes": "Storage Classes",
 };
 
-const namespaceOptions = ["default", "kube-system", "monitoring", "dev", "prod"];
-
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const currentResource = searchParams.get("resource") ?? "overview";
   const currentNamespace = searchParams.get("namespace") ?? "default";
   const headerLabel = resourceTitles[currentResource] ?? "Overview";
+
+  const [namespaceOptions, setNamespaceOptions] = useState<string[]>(["default"]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/cluster/namespaces", { signal: controller.signal, cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const body = (await response.json()) as { items: { name: string }[] };
+        const names = body.items.map((n) => n.name);
+        if (names.length > 0) setNamespaceOptions(names);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     const hasResourceParam = searchParams.has("resource");
@@ -64,10 +81,10 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     if (!hasResourceParam || !hasNamespaceParam) {
       const params = new URLSearchParams(searchParams.toString());
       if (!hasResourceParam) params.set("resource", "overview");
-      if (!hasNamespaceParam) params.set("namespace", "default");
+      if (!hasNamespaceParam) params.set("namespace", currentNamespace);
       router.replace(`/dashboard?${params.toString()}`, { scroll: false });
     }
-  }, [router, searchParams]);
+  }, [router, searchParams, currentNamespace]);
 
   const updateRoute = (resourceId: string, namespaceValue = currentNamespace) => {
     const params = new URLSearchParams(searchParams.toString());

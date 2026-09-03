@@ -1,6 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const resourceTypes = new Set(["pods", "deployments", "services", "nodes"]);
+const clusterScoped = new Set(["nodes", "persistent-volumes", "cluster-roles", "storage-classes"]);
+
+const resourceTypes = new Set([
+  "pods",
+  "deployments",
+  "services",
+  "nodes",
+  "endpoints",
+  "replica-sets",
+  "daemon-sets",
+  "stateful-sets",
+  "jobs",
+  "cron-jobs",
+  "replication-controllers",
+  "persistent-volumes",
+  "cluster-roles",
+  "storage-classes",
+]);
 
 export async function GET(request: NextRequest) {
   const resource = request.nextUrl.searchParams.get("resource") ?? "pods";
@@ -15,7 +32,7 @@ export async function GET(request: NextRequest) {
 
   const backendUrl = process.env.KUBEPILOT_BACKEND_URL ?? "http://127.0.0.1:8000";
   const target = new URL(`/api/v1/cluster/resources/${resource}`, backendUrl);
-  if (namespace && resource !== "nodes") {
+  if (namespace && !clusterScoped.has(resource)) {
     target.searchParams.set("namespace", namespace);
   }
 

@@ -3,7 +3,18 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-DetailResourceType = Literal["pods", "deployments", "services", "nodes"]
+DetailResourceType = Literal[
+    "pods",
+    "deployments",
+    "services",
+    "nodes",
+    "replica-sets",
+    "daemon-sets",
+    "stateful-sets",
+    "jobs",
+    "cron-jobs",
+    "replication-controllers",
+]
 
 
 class DetailIdentity(BaseModel):

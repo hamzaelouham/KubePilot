@@ -37,11 +37,32 @@ curl -i http://127.0.0.1:8000/api/v1/auth/context
 
 The health request returns `200` with `{"status":"ok","service":"kubepilot-api"}` by default. Protected requests use the shared `kubepilot_session` HMAC-SHA256 cookie and load the user from PostgreSQL before reaching discovery. Discovery endpoints connect to Kubernetes only through the backend ServiceAccount path.
 
-## Kubernetes deployment
+## Kubernetes deployment (Minikube)
 
-Deploy `deploy/kubernetes/service-account.yaml` in the backend namespace before enabling discovery. It grants the backend ServiceAccount only `get`, `list`, and `watch` access to namespaces, pods, services, endpoints, nodes, and deployments. The backend must run in a cluster so the Kubernetes client can use its in-cluster ServiceAccount; it does not accept kubeconfig uploads or request-supplied tokens.
+The platform deploys as Kubernetes workloads into a local Minikube cluster. `kubectl` is not on the host PATH, so use the bundled `minikube kubectl --` wrapper. All workloads and the backend ServiceAccount live in the `kubepilot` namespace.
 
-Protected discovery endpoints are `/api/v1/cluster/status`, `/api/v1/cluster/namespaces`, and `/api/v1/cluster/resources/{resource_type}`. The browser and AI integrations reach these through FastAPI and never contact Kubernetes directly.
+```bash
+# 1. Build the images (reuses the 9a Dockerfiles)
+docker build -t kubepilot-backend ./backend && docker build -t kubepilot-ui ./k8s-ui
+
+# 2. Load them into Minikube's own daemon (not a registry)
+minikube image load kubepilot-backend:latest kubepilot-ui:latest
+
+# 3. Apply all workloads and RBAC
+minikube kubectl -- apply -f deploy/kubernetes/
+
+# 4. Open the UI (NodePort 30080) in the browser
+minikube service kubepilot-ui -n kubepilot
+
+# Teardown
+minikube kubectl -- delete -f deploy/kubernetes/
+```
+
+- Postgres (`postgres-deploy`, PVC `postgres-data`, `db` Service on 5432), the FastAPI backend (`backend` Service on 8000), and the Next.js frontend (NodePort `kubepilot-ui` on 30080) are defined under `deploy/kubernetes/`.
+- `deploy/kubernetes/service-account.yaml` grants the backend ServiceAccount `kubepilot-api` only `get`, `list`, and `watch` access to namespaces, pods, services, endpoints, nodes, and deployments (enforced by `tests/test_rbac.py`). The backend must run in a cluster so the Kubernetes client can use its in-cluster ServiceAccount; it does not accept kubeconfig uploads or request-supplied tokens.
+- Non-secret env comes from the `kubepilot-config` ConfigMap; secrets (`KUBEPILOT_AUTH_SECRET`, DB credentials, admin password) from the `kubepilot-secret` Secret. The committed Secret holds local Minikube dev placeholder values and must be overridden for any non-local deployment.
+
+Protected discovery endpoints are `/api/v1/cluster/status`, `/api/v1/cluster/namespaces`, and `/api/v1/cluster/resources/{resource_type}`. The browser and AI integrations reach these through the Next.js `/api` proxy and FastAPI, and never contact Kubernetes directly.
 
 ## Container
 

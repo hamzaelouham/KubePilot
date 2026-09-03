@@ -22,7 +22,7 @@ class FakeCore:
     def __init__(self) -> None:
         self.namespace_calls: list[str | None] = []
 
-    def list_pod_for_namespace(self, namespace: str):
+    def list_namespaced_pod(self, namespace: str):
         self.namespace_calls.append(namespace)
         return SimpleNamespace(
             items=[
@@ -65,6 +65,44 @@ def test_missing_service_account_configuration_is_unavailable() -> None:
 def test_forbidden_kubernetes_response_is_classified() -> None:
     error = ApiException(status=403)
     assert isinstance(classify_kubernetes_error(error), ClusterForbiddenError)
+
+
+def test_namespaced_replica_set_listing_uses_namespaced_method() -> None:
+    class FakeApps:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def list_namespaced_replica_set(self, namespace: str):
+            self.calls.append(f"ns:{namespace}")
+            return SimpleNamespace(
+                items=[
+                    SimpleNamespace(
+                        metadata=SimpleNamespace(namespace=namespace, name="rs-1"),
+                        status=SimpleNamespace(available_replicas=2),
+                    )
+                ]
+            )
+
+    apps = FakeApps()
+    cluster = ClusterClient("test-cluster", object(), apps)
+    resources = cluster.resources("replica-sets", "payments")
+    assert apps.calls == ["ns:payments"]
+    assert resources[0].namespace == "payments"
+    assert resources[0].status == "2"
+
+
+def test_cluster_scoped_resources_list_at_cluster_level() -> None:
+    class FakeStorage:
+        def list_storage_class(self):
+            return SimpleNamespace(
+                items=[SimpleNamespace(metadata=SimpleNamespace(name="standard"))]
+            )
+
+    cluster = ClusterClient("test-cluster", object(), object(), storage=FakeStorage())
+    resources = cluster.resources("storage-classes", None)
+    assert len(resources) == 1
+    assert resources[0].name == "standard"
+    assert resources[0].namespace is None
 
 
 def test_namespaced_resource_call_preserves_namespace() -> None:

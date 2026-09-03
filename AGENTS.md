@@ -229,7 +229,12 @@ checks do not make the Blueprint unusable.
 - Backend syntax check: `cd backend && python3 -m compileall -q app`
 - Backend tests: `cd backend && python3 -m pytest`
 - Backend migration SQL check: `cd backend && PYTHONPATH=. alembic upgrade head --sql`
-- Kubernetes manifest: `kubectl apply -f backend/deploy/kubernetes/service-account.yaml`
+- Minikube deploy (requires running Minikube; `kubectl` is not on PATH, use the wrapper):
+  - Build images: `docker build -t kubepilot-backend ./backend && docker build -t kubepilot-ui ./k8s-ui`
+  - Load images: `minikube image load kubepilot-backend:latest kubepilot-ui:latest`
+  - Apply all workloads: `minikube kubectl -- apply -f backend/deploy/kubernetes/`
+  - Open UI: `minikube service kubepilot-ui -n kubepilot`
+  - Teardown: `minikube kubectl -- delete -f backend/deploy/kubernetes/`
 
 Testing is opt-in for this project. There is no test runner configured yet, so no project-level `test` command is declared in this repo at the moment.
 

@@ -4,7 +4,22 @@ from pydantic import BaseModel, ConfigDict
 
 
 ClusterStatus = Literal["connected", "unavailable", "forbidden"]
-ResourceType = Literal["pods", "deployments", "services", "nodes", "endpoints"]
+ResourceType = Literal[
+    "pods",
+    "deployments",
+    "services",
+    "nodes",
+    "endpoints",
+    "replica-sets",
+    "daemon-sets",
+    "stateful-sets",
+    "jobs",
+    "cron-jobs",
+    "replication-controllers",
+    "persistent-volumes",
+    "cluster-roles",
+    "storage-classes",
+]
 
 
 class ClusterStatusResponse(BaseModel):

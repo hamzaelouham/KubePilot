@@ -20,9 +20,21 @@ type ResourceState =
 const columns: Record<string, string[]> = {
   pods: ["Name", "Namespace", "Status"],
   deployments: ["Name", "Namespace", "Status"],
+  replicaSets: ["Name", "Namespace", "Status"],
   services: ["Name", "Namespace", "Status"],
+  "replica-sets": ["Name", "Namespace", "Status"],
+  "daemon-sets": ["Name", "Namespace", "Status"],
+  "stateful-sets": ["Name", "Namespace", "Status"],
+  jobs: ["Name", "Namespace", "Status"],
+  "cron-jobs": ["Name", "Namespace", "Status"],
+  "replication-controllers": ["Name", "Namespace", "Status"],
   nodes: ["Name", "Status", "Cluster"],
+  "persistent-volumes": ["Name", "Status"],
+  "cluster-roles": ["Name", "Status"],
+  "storage-classes": ["Name", "Status"],
 };
+
+const clusterScoped = new Set(["nodes", "persistent-volumes", "cluster-roles", "storage-classes"]);
 
 export function CoreResourceView({ resource, namespace }: { resource: string; namespace: string }) {
   const [state, setState] = useState<ResourceState>({ status: "loading" });
@@ -87,7 +99,7 @@ export function CoreResourceView({ resource, namespace }: { resource: string; na
                         {item.name}
                       </Link>
                     </td>
-                    {resource !== "nodes" ? <td className="px-4 py-3">{item.namespace ?? "All namespaces"}</td> : null}
+                    {!clusterScoped.has(resource) ? <td className="px-4 py-3">{item.namespace ?? "All namespaces"}</td> : null}
                     <td className="px-4 py-3">{item.status}</td>
                     {resource === "nodes" ? <td className="px-4 py-3">{item.cluster}</td> : null}
                   </tr>

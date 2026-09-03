@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kubepilot-config
+  namespace: kubepilot
+data:
+  KUBEPILOT_CLUSTER_NAME: primary
+  KUBEPILOT_SERVICE_NAME: kubepilot-api
+  KUBEPILOT_ADMIN_EMAIL: ops@kubepilot.io
+  KUBEPILOT_BACKEND_URL: http://backend:8000

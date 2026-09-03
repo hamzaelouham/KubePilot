@@ -13,4 +13,20 @@ def test_rbac_manifest_is_read_only_for_discovery() -> None:
     resources = {resource for rule in role["rules"] for resource in rule["resources"]}
 
     assert verbs == {"get", "list", "watch"}
-    assert resources == {"namespaces", "pods", "services", "nodes", "endpoints", "deployments"}
+    assert resources == {
+        "namespaces",
+        "pods",
+        "services",
+        "nodes",
+        "endpoints",
+        "replicationcontrollers",
+        "persistentvolumes",
+        "deployments",
+        "replicasets",
+        "daemonsets",
+        "statefulsets",
+        "jobs",
+        "cronjobs",
+        "clusterroles",
+        "storageclasses",
+    }
