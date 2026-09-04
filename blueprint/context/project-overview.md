@@ -1,100 +1,106 @@
 # Project Overview
 
-<!-- blueprint:source-hash f9ea1b7be3a4f035731fd898ad3c9d917f6c7da42cebe8994ac71e691b502c75 -->
+<!-- blueprint:source-hash 2bc65a74c2f3f45ee7c001dc13268d61ada6a542af5262682702092fead7d4c8 -->
 
-## Product summary
+## Problem
 
-KubePilot is a self-hosted Kubernetes operations platform for DevOps engineers, platform engineers, and SREs. It is designed to centralize visibility into cluster health, workloads, namespaces, events, and resource state without forcing teams to live in raw kubectl output or fragmented dashboards.
+Kubernetes operations teams face operational overload: they need a clearer, higher-trust path to understand cluster health, identify failing workloads, investigate issues, and make safe operational decisions with less context switching. Raw kubectl and fragmented dashboards force engineers to context-switch between tools when they need unified visibility.
 
-The app is intentionally not a visual clone of Kubernetes Dashboard alone. It is a modern operational UI built to support real Kubernetes workflows and later AI-assisted investigation.
+## Users
 
-## Problem and users
-
-The core problem is operational overload: teams need a clearer, higher-trust path to understand cluster health, identify failing workloads, investigate issues, and make safe operational decisions with less context switching.
-
-Primary users:
+Primary:
 - DevOps engineers
 - Platform engineers
 - SREs
 
-Secondary users:
-- Technical operators who need health visibility
-- Internal engineering managers reviewing system health
+Secondary:
+- Technical operators needing health visibility
+- Engineering managers reviewing system health
 
-## MVP scope and build order
+## Features
 
-The build order in the tracked checklist is the source of truth for feature work:
+MVP (build-plan order):
 
-1. Dashboard foundation - polished UI shell, navigation, and layout
-2. Cluster overview and mock data - metrics, workload visibility, namespace controls
-3. Authentication and protected app access - local admin login and session-protected routes
-4. FastAPI backend foundation - API layer and project structure
-5. PostgreSQL application data model - users, sessions, metadata, settings, and audit records
-6. Kubernetes connection and namespace discovery - live cluster access and inventory
-7. Core resource views - pods, deployments, services, and nodes
-8. Resource details and troubleshooting surfaces - YAML, status, logs, and events
-9. Basic operations - scale and restart flows behind controls
+1. **Dashboard foundation** - polished UI shell, navigation, and resource layout for cluster operations.
+2. **Cluster overview and mock data** - overview metrics, workload statuses, namespace controls, and resource tables using placeholder data.
+3. **Authentication and protected app access** - local admin login, sessions, and protected routes.
+4. **FastAPI backend foundation** - API layer, project structure, and database-backed service foundation.
+5. **PostgreSQL application data model** - persistent storage for users, sessions, cluster metadata, settings, and audit records.
+6. **Kubernetes connection and namespace discovery** - live cluster access, namespaces, endpoints, and resource inventory through the backend.
+7. **Core resource views** - pods, deployments, services, and nodes with status-driven data and real cluster context.
+8. **Resource details and troubleshooting surfaces** - detail pages for status, YAML, logs, and recent events for a selected resource.
+9. **Run app on top of real k8s cluster (local minikube)** - deploy the platform into a real Kubernetes cluster running locally with Minikube as a set of Kubernetes workloads, validating it is a real Kubernetes-native application.
 
-Post-MVP additions:
-- real-time refresh and health updates
+Post-MVP:
+- Real-time refresh and health updates
 - RBAC and multi-user controls
-- multi-cluster support
-- observability enhancements
-- AI Copilot for operational investigation
+- Multi-cluster support
+- Observability enhancements
+- AI Copilot for Kubernetes operations
 
 ## Data model
 
-The project data model is centered on real Kubernetes operations plus app-level access metadata.
+Core entities (from features 3–8 that ship the data layer):
 
-Core entities:
-- UserAccount: id, email, passwordHash, role, createdAt
-- Session: id, userId, issuedAt, expiresAt
-- ClusterConnection: id, name, endpoint, kubeconfigRef, status, createdAt
-- Namespace: id, clusterId, name, status, createdAt
-- Workload: id, clusterId, namespace, kind, name, status, labels, image
-- Pod: id, clusterId, namespace, name, status, ready, restarts, age
-- Deployment: id, clusterId, namespace, name, replicas, status, image
-- Service: id, clusterId, namespace, name, selector, ports, status
-- Node: id, clusterId, name, role, status, version
-- Event: id, clusterId, namespace, kind, name, message, createdAt
-- AuditAction: id, actorId, action, resourceType, resourceId, createdAt
-- UserPreference: id, userId, defaultNamespace, viewSettings
+- **UserAccount**: id, email, passwordHash, role, createdAt
+- **Session**: id, userId, tokenHash, issuedAt, expiresAt
+- **ClusterConnection**: id, name, endpoint, kubeconfigRef, status, createdAt
+- **Namespace**: id, clusterId, name, status, createdAt
+- **Workload**: id, clusterId, namespace, kind, name, status, labels, image
+- **Pod**: id, clusterId, namespace, name, status, ready, restarts, age
+- **Deployment**: id, clusterId, namespace, name, replicas, status, image
+- **Service**: id, clusterId, namespace, name, selector, ports, status
+- **Node**: id, clusterId, name, role, status, version
+- **Event**: id, clusterId, namespace, kind, name, message, createdAt
+- **AuditAction**: id, actorId, action, resourceType, resourceId, createdAt
+- **UserPreference**: id, userId, defaultNamespace, viewSettings
 
-These entities support the operational workflows the app needs: cluster overview, workload investigation, resource detail inspection, and safe admin actions.
+These entities support cluster overview, workload investigation, resource detail inspection, and future admin actions.
 
-## Stack and runtime constraints
+## Tech stack
 
-- Frontend: Next.js with TypeScript and Tailwind CSS
-- Backend: FastAPI for the application API layer
-- Database: PostgreSQL for app data and metadata
-- Kubernetes integration: FastAPI connects to one initial cluster through a Kubernetes ServiceAccount and Kubernetes RBAC
-- Authentication: local admin auth with a shared signed HTTP-only session cookie; Next.js and FastAPI validate it using the shared secret, and FastAPI loads the user from PostgreSQL
-- System of record: Kubernetes remains the live authority for cluster resources; the app stores only what is needed for operational UI and access control
+- **Next.js (TypeScript, Tailwind CSS)** - frontend UI and same-origin API proxy layer
+- **FastAPI (Python)** - backend API, session validation, and Kubernetes integration
+- **PostgreSQL** - application data: users, sessions, cluster metadata, settings
+- **Kubernetes Python client** - cluster API access through FastAPI only; frontend never connects to Kubernetes directly
+- **Shared signed HTTP-only session cookie** - authentication boundary between Next.js and FastAPI, validated against PostgreSQL
+
+## Monetization
+
+Self-hosted operations platform, likely commercial open-core or enterprise model. First version focuses on product value and reliability before aggressive monetization.
+
+## UI/UX
+
+Desktop-first operations dashboard with strong status emphasis:
+
+- `/login` - local admin login
+- `/dashboard?resource=<type>&namespace=<ns>` - overview, workloads, pods, deployments, services, nodes, namespaces
+- `/dashboard/detail?resourceType=<type>&name=<name>&namespace=<ns>` - resource detail with Status, YAML, Logs, Events tabs
+
+Design direction: calm operational surfaces, readable hierarchy, clear status indicators, low-noise layouts. Tailwind CSS with a polished control-plane aesthetic.
 
 ## Deployment shape
 
-The planned deployment shape is self-hosted and operationally focused rather than consumer-app styled.
+Self-hosted, operationally focused:
 
-Expected deployment model:
-- Frontend served via a runtime environment
-- FastAPI service for app APIs and cluster integration
-- PostgreSQL for app persistence
-- FastAPI-only Kubernetes API connectivity to one initial cluster through a ServiceAccount and Kubernetes RBAC
-- Protected environment variables for DB connection strings, auth secrets, and cluster config
-- Health-check endpoints and operational logging
+- Frontend: Next.js app served via runtime environment
+- Backend: FastAPI service for app APIs and cluster integration
+- Database: PostgreSQL for app persistence
+- Kubernetes: FastAPI connects to one initial cluster through a ServiceAccount and Kubernetes RBAC
+- Environment variables: KUBEPILOT_AUTH_SECRET (≥32 chars), KUBEPILOT_DATABASE_URL, KUBEPILOT_CLUSTER_NAME (default: "primary"), KUBEPILOT_ADMIN_EMAIL, KUBEPILOT_ADMIN_PASSWORD
+- Health endpoint: `GET /api/v1/health`
+- Initial topology: one cluster only; multi-cluster is planned later
 
-Initial topology: Next.js frontend, FastAPI backend, and PostgreSQL. Multi-cluster support is planned later, not implemented in the first cluster integration.
+## Authentication boundary
 
-## Gaps and TODOs
-
-The plans are broadly aligned. The major remaining items are:
-- exact ServiceAccount and Kubernetes RBAC policy bindings for the first cluster
-- whether the product is self-hosted software, managed service, or both
-- exact deployment environment and environment-variable layout
-
-Authentication boundary:
-- Next.js and FastAPI share the signing secret, cookie name, and session format.
-- FastAPI validates the signed cookie and loads the user from PostgreSQL before protected API access.
+- Next.js and FastAPI share the signing secret, cookie name (`kubepilot_session`), and session format.
+- Session cookie is signed and HTTP-only; browser JavaScript cannot mint or override identity.
+- FastAPI validates signature and expiry, retrieves the user from PostgreSQL, and serves protected API data.
 - Kubernetes credentials remain exclusively in the FastAPI ServiceAccount runtime; the frontend and AI paths never receive them.
 
-No major contradictions were found between the project plan and build plan. The main gap is the operational model for live cluster connection and access control, which is intentionally left for implementation planning.
+## Open questions
+
+- **Project plan §3 lists "Basic resource actions such as scale and restart" as MVP, but the build plan has no such feature.** Feature 9 in the build plan is "Run app on top of real k8s cluster (local minikube)." If scale/restart operations are desired for MVP, a build-plan item must be added. The current `current-feature.md` contains a spec for "Basic operations" that does not match the current build plan and should be reset or replaced.
+- Exact ServiceAccount and Kubernetes RBAC policy bindings for the first cluster are not yet defined.
+- Whether the product will be released as self-hosted software, managed service, or both remains open.
+- The Minikube deployment target (feature 9) needs clarification on whether it includes Kubernetes manifests, Helm charts, or kustomize overlays for deploying the app itself.
