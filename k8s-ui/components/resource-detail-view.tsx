@@ -1,9 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { MetricBar } from "@/components/metric-bar";
+import { usePolling } from "@/lib/use-polling";
+import {
+  formatMillicores,
+  formatBytes,
+  utilizationPercent,
+  type NodeMetricItem,
+  type WorkloadMetricItem,
+  type StorageMetricsItem,
+} from "@/lib/metrics";
 
 type DetailData = {
   cluster: string;
@@ -62,7 +72,70 @@ type EventState =
   | { status: "ready"; data: EventData }
   | { status: "error"; message: string };
 
-function StatusPanel({ data }: { data: DetailData }) {
+type MetricsState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "ready"; available: boolean; nodeItem: NodeMetricItem | null; workloadItem: WorkloadMetricItem | null; storageItem: StorageMetricsItem | null }
+  | { status: "error"; message: string };
+
+const nodeMetricTypes = new Set(["nodes"]);
+const workloadMetricTypes = new Set(["pods", "deployments", "daemon-sets", "stateful-sets"]);
+const storageMetricTypes = new Set(["persistent-volumes", "persistent-volume-claims"]);
+
+function StatusPanel({
+  data,
+  resourceType,
+  name,
+  namespace,
+}: {
+  data: DetailData;
+  resourceType: string;
+  name: string;
+  namespace: string | null;
+}) {
+  const metricsEnabled = nodeMetricTypes.has(resourceType) || workloadMetricTypes.has(resourceType) || storageMetricTypes.has(resourceType);
+  const [metricsState, setMetricsState] = useState<MetricsState>({ status: "idle" });
+  const metricsAbortRef = useRef<AbortController | null>(null);
+
+  const loadMetrics = useCallback(async () => {
+    if (!metricsEnabled) return;
+    const controller = new AbortController();
+    metricsAbortRef.current?.abort();
+    metricsAbortRef.current = controller;
+    setMetricsState({ status: "loading" });
+    try {
+      if (nodeMetricTypes.has(resourceType)) {
+        const response = await fetch("/api/cluster/metrics?type=nodes", { signal: controller.signal, cache: "no-store" });
+        const body = (await response.json()) as { available: boolean; items: NodeMetricItem[]; message?: string };
+        if (!response.ok) throw new Error(body.message ?? "Unable to load metrics");
+        const item = body.items.find((i) => i.name === name) ?? null;
+        setMetricsState({ status: "ready", available: body.available, nodeItem: item, workloadItem: null, storageItem: null });
+      } else if (workloadMetricTypes.has(resourceType)) {
+        const targetNs = namespace ?? "default";
+        const response = await fetch(`/api/cluster/metrics?type=namespaces&namespace=${encodeURIComponent(targetNs)}`, { signal: controller.signal, cache: "no-store" });
+        const body = (await response.json()) as { available: boolean; workloads: WorkloadMetricItem[]; message?: string };
+        if (!response.ok) throw new Error(body.message ?? "Unable to load metrics");
+        const item = body.workloads.find((w) => w.name === name) ?? null;
+        setMetricsState({ status: "ready", available: body.available, nodeItem: null, workloadItem: item, storageItem: null });
+      } else if (storageMetricTypes.has(resourceType)) {
+        const response = await fetch("/api/cluster/metrics?type=storage", { signal: controller.signal, cache: "no-store" });
+        const body = (await response.json()) as { available: boolean; items: StorageMetricsItem[]; message?: string };
+        if (!response.ok) throw new Error(body.message ?? "Unable to load metrics");
+        const item = body.items.find((i) => i.name === name) ?? null;
+        setMetricsState({ status: "ready", available: body.available, nodeItem: null, workloadItem: null, storageItem: item });
+      }
+    } catch (error: unknown) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setMetricsState({ status: "error", message: error instanceof Error ? error.message : "Unable to load metrics" });
+    }
+  }, [resourceType, name, namespace, metricsEnabled]);
+
+  usePolling(loadMetrics, metricsEnabled);
+
+  useEffect(() => {
+    return () => { metricsAbortRef.current?.abort(); };
+  }, []);
+
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-slate-200 bg-white p-6">
@@ -94,6 +167,51 @@ function StatusPanel({ data }: { data: DetailData }) {
           </div>
         </dl>
       </div>
+
+      {metricsState.status === "ready" && metricsState.available && (metricsState.nodeItem || metricsState.workloadItem || metricsState.storageItem) && (
+        <div className="rounded-xl border border-slate-200 bg-white p-6">
+          <h3 className="mb-4 text-lg font-semibold text-slate-700">Live Metrics</h3>
+          {metricsState.nodeItem && (() => {
+            const m = metricsState.nodeItem;
+            const cpuPct = utilizationPercent(m.cpu_usage_millicores, m.cpu_allocatable_millicores);
+            const memPct = utilizationPercent(m.memory_usage_bytes, m.memory_allocatable_bytes);
+            return (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <MetricBar
+                  label="CPU"
+                  value={`${formatMillicores(m.cpu_usage_millicores)} / ${m.cpu_allocatable_millicores !== null ? formatMillicores(m.cpu_allocatable_millicores) : "—"}${cpuPct !== null ? ` (${cpuPct}%)` : ""}`}
+                  percent={cpuPct}
+                  toneClass={cpuPct !== null && cpuPct >= 90 ? "text-red-600 font-medium" : cpuPct !== null && cpuPct >= 70 ? "text-amber-600 font-medium" : "text-slate-700"}
+                />
+                <MetricBar
+                  label="Memory"
+                  value={`${formatBytes(m.memory_usage_bytes)} / ${m.memory_allocatable_bytes !== null ? formatBytes(m.memory_allocatable_bytes) : "—"}${memPct !== null ? ` (${memPct}%)` : ""}`}
+                  percent={memPct}
+                  toneClass={memPct !== null && memPct >= 90 ? "text-red-600 font-medium" : memPct !== null && memPct >= 70 ? "text-amber-600 font-medium" : "text-slate-700"}
+                />
+              </div>
+            );
+          })()}
+          {metricsState.workloadItem && (() => {
+            const m = metricsState.workloadItem;
+            return (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <MetricBar label="CPU" value={formatMillicores(m.cpu_usage_millicores)} percent={null} toneClass="text-slate-700" />
+                <MetricBar label="Memory" value={formatBytes(m.memory_usage_bytes)} percent={null} toneClass="text-slate-700" />
+              </div>
+            );
+          })()}
+          {metricsState.storageItem && (() => {
+            const m = metricsState.storageItem;
+            return (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <MetricBar label="Capacity" value={m.capacity_bytes != null ? formatBytes(m.capacity_bytes) : "—"} percent={null} toneClass="text-slate-700" />
+                <MetricBar label="Utilization" value={m.utilization ?? "—"} percent={null} toneClass="text-slate-700" />
+              </div>
+            );
+          })()}
+        </div>
+      )}
 
       {Object.keys(data.metadata).length > 0 && (
         <div className="rounded-xl border border-slate-200 bg-white p-6">
@@ -399,7 +517,7 @@ export default function ResourceDetailView({
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+            className={`flex-1 cursor-pointer rounded-md px-4 py-2 text-sm font-medium transition-colors ${
               activeTab === tab.id
                 ? "bg-white text-slate-700 shadow-sm"
                 : "text-slate-500 hover:text-slate-700"
@@ -417,7 +535,7 @@ export default function ResourceDetailView({
           ) : detailState.status === "error" ? (
             <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-5 text-red-700">{detailState.message}</p>
           ) : (
-            <StatusPanel data={detailState.data} />
+            <StatusPanel data={detailState.data} resourceType={resourceType} name={name} namespace={namespace} />
           )
         )}
         {activeTab === "yaml" && <YamlPanel state={yamlState} />}

@@ -31,7 +31,17 @@ from .discovery_schemas import (
 )
 from .auth_schemas import LoginRequest, LoginResponse
 from .detail_schemas import DetailResourceType, EventResponse, LogResponse, ResourceDetailResponse, YamlResponse
-from app.kubernetes.client import ClusterClient
+from .metrics_schemas import (
+    MetricsSummaryResponse,
+    NamespaceMetricSummary,
+    NamespaceMetricsResponse,
+    NodeMetricItem,
+    NodesMetricsResponse,
+    StorageMetricsItem,
+    StorageMetricsResponse,
+    WorkloadMetricItem,
+)
+from app.kubernetes.client import ClusterClient, ClusterMetricsError
 
 router = APIRouter()
 
@@ -199,3 +209,125 @@ def resource_events(
     _validate_detail_scope(resource_type, cluster, settings, namespace)
     items, truncated = client.events(name, namespace)
     return EventResponse(items=items, truncated=truncated)
+
+
+_UNAVAILABLE_NODES = NodesMetricsResponse(available=False, reason="unavailable", items=[])
+_UNAVAILABLE_NAMESPACE = NamespaceMetricsResponse(available=False, reason="unavailable", workloads=[], summary=None)
+_UNAVAILABLE_SUMMARY = MetricsSummaryResponse(available=False, reason="unavailable", namespaces=[])
+
+
+@router.get("/cluster/metrics/nodes", response_model=NodesMetricsResponse)
+def cluster_metrics_nodes(
+    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
+    cluster: Annotated[ClusterClient, Depends(get_cluster_client)],
+) -> NodesMetricsResponse:
+    try:
+        dataset = cluster.metrics()
+    except ClusterMetricsError:
+        return _UNAVAILABLE_NODES
+    return NodesMetricsResponse(
+        available=True,
+        items=[
+            NodeMetricItem(
+                name=node.name,
+                cpu_usage_millicores=node.cpu_usage_millicores,
+                cpu_allocatable_millicores=node.cpu_allocatable_millicores,
+                memory_usage_bytes=node.memory_usage_bytes,
+                memory_allocatable_bytes=node.memory_allocatable_bytes,
+                storage_capacity_bytes=node.storage_capacity_bytes,
+                storage_allocatable_bytes=node.storage_allocatable_bytes,
+            )
+            for node in dataset.nodes
+        ],
+    )
+
+
+@router.get("/cluster/metrics/namespaces/{namespace}", response_model=NamespaceMetricsResponse)
+def cluster_metrics_namespace(
+    namespace: str,
+    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
+    cluster: Annotated[ClusterClient, Depends(get_cluster_client)],
+) -> NamespaceMetricsResponse:
+    try:
+        dataset = cluster.metrics()
+    except ClusterMetricsError:
+        return _UNAVAILABLE_NAMESPACE
+    ns_pods = [pod for pod in dataset.pods if pod.namespace == namespace]
+    total_cpu = sum(pod.cpu_usage_millicores for pod in ns_pods)
+    total_memory = sum(pod.memory_usage_bytes for pod in ns_pods)
+    return NamespaceMetricsResponse(
+        available=True,
+        workloads=[
+            WorkloadMetricItem(
+                namespace=pod.namespace,
+                name=pod.name,
+                kind="Pod",
+                cpu_usage_millicores=pod.cpu_usage_millicores,
+                memory_usage_bytes=pod.memory_usage_bytes,
+            )
+            for pod in ns_pods
+        ],
+        summary=NamespaceMetricSummary(
+            namespace=namespace,
+            cpu_usage_millicores=total_cpu,
+            memory_usage_bytes=total_memory,
+            pod_count=len(ns_pods),
+        ) if ns_pods else None,
+    )
+
+
+@router.get("/cluster/metrics/summary", response_model=MetricsSummaryResponse)
+def cluster_metrics_summary(
+    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
+    cluster: Annotated[ClusterClient, Depends(get_cluster_client)],
+) -> MetricsSummaryResponse:
+    try:
+        dataset = cluster.metrics()
+    except ClusterMetricsError:
+        return _UNAVAILABLE_SUMMARY
+    ns_map: dict[str, dict[str, float | int]] = {}
+    for pod in dataset.pods:
+        ns = pod.namespace
+        if ns not in ns_map:
+            ns_map[ns] = {"cpu": 0.0, "memory": 0.0, "count": 0}
+        ns_map[ns]["cpu"] += pod.cpu_usage_millicores
+        ns_map[ns]["memory"] += pod.memory_usage_bytes
+        ns_map[ns]["count"] += 1
+    return MetricsSummaryResponse(
+        available=True,
+        namespaces=[
+            NamespaceMetricSummary(
+                namespace=ns,
+                cpu_usage_millicores=vals["cpu"],
+                memory_usage_bytes=vals["memory"],
+                pod_count=vals["count"],
+            )
+            for ns, vals in sorted(ns_map.items())
+        ],
+    )
+
+
+_UNAVAILABLE_STORAGE = StorageMetricsResponse(available=False, reason="unavailable", items=[])
+
+
+@router.get("/cluster/metrics/storage", response_model=StorageMetricsResponse)
+def cluster_metrics_storage(
+    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
+    cluster: Annotated[ClusterClient, Depends(get_cluster_client)],
+) -> StorageMetricsResponse:
+    try:
+        items = cluster.storage_metrics()
+    except ClusterMetricsError:
+        return _UNAVAILABLE_STORAGE
+    return StorageMetricsResponse(
+        available=True,
+        items=[
+            StorageMetricsItem(
+                name=item.name,
+                kind=item.kind,
+                capacity_bytes=item.capacity_bytes,
+                utilization=item.utilization,
+            )
+            for item in items
+        ],
+    )

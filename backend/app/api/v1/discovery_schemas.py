@@ -17,6 +17,7 @@ ResourceType = Literal[
     "cron-jobs",
     "replication-controllers",
     "persistent-volumes",
+    "persistent-volume-claims",
     "cluster-roles",
     "storage-classes",
 ]

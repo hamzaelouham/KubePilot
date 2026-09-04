@@ -103,7 +103,7 @@ export default async function LoginPage({
 
               <button
                 type="submit"
-                className="flex w-full items-center justify-center rounded-xl bg-cyan-500 px-4 py-3 font-medium text-slate-950 transition hover:bg-cyan-400"
+                className="flex w-full cursor-pointer items-center justify-center rounded-xl bg-cyan-500 px-4 py-3 font-medium text-slate-950 transition hover:bg-cyan-400"
               >
                 Sign in
               </button>

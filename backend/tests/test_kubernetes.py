@@ -11,10 +11,16 @@ from app.api.v1.routes import get_cluster_client
 from app.kubernetes.client import (
     ClusterClient,
     ClusterForbiddenError,
+    ClusterMetricsError,
     ClusterUnavailableError,
     ResourceNotFoundError,
     ResourceSummary,
+    _entry_usage,
     _health_status,
+    _pod_usage,
+    _memory_bytes,
+    _parse_quantity,
+    _cpu_millicores,
     classify_kubernetes_error,
     create_cluster_client,
 )
@@ -409,3 +415,303 @@ def test_resources_route_returns_health_field(monkeypatch: pytest.MonkeyPatch) -
         response = client.get("/api/v1/cluster/resources/deployments?namespace=default")
     assert response.status_code == 200
     assert response.json()["items"][0]["health"] == "healthy"
+
+
+class TestQuantityParsing:
+    def test_parse_millicore_string(self) -> None:
+        assert _parse_quantity("250m") == 0.25
+
+    def test_parse_cores_to_bytes(self) -> None:
+        assert _parse_quantity("1.5") == 1.5
+
+    def test_parse_gibibytes(self) -> None:
+        assert _parse_quantity("8Gi") == 8 * 2**30
+
+    def test_parse_mebibytes(self) -> None:
+        assert _parse_quantity("1024Mi") == 1024 * 2**20
+
+    def test_parse_plain_bytes(self) -> None:
+        assert _parse_quantity("123456") == 123456.0
+
+    def test_cpu_millicores(self) -> None:
+        assert _cpu_millicores("250m") == 250
+
+    def test_cpu_millicores_from_cores(self) -> None:
+        assert _cpu_millicores("1") == 1000
+
+    def test_memory_bytes_from_gibibytes(self) -> None:
+        assert _memory_bytes("1Gi") == 2**30
+
+
+class TestEntryUsage:
+    def test_cpu_and_memory_parsing(self) -> None:
+        entry = {"usage": {"cpu": "250m", "memory": "100Mi"}}
+        result = _entry_usage(entry)
+        assert result["cpu"] == 250
+        assert result["memory"] == round(100 * 2**20)
+
+    def test_missing_usage_fields(self) -> None:
+        result = _entry_usage({"usage": {}})
+        assert result["cpu"] == 0
+        assert result["memory"] == 0
+
+
+class TestPodUsage:
+    def test_aggregates_container_usage(self) -> None:
+        entry = {
+            "containers": [
+                {"name": "a", "usage": {"cpu": "200m", "memory": "100Mi"}},
+                {"name": "b", "usage": {"cpu": "300m", "memory": "200Mi"}},
+            ]
+        }
+        result = _pod_usage(entry)
+        assert result["cpu"] == 500
+        assert result["memory"] == round(300 * 2**20)
+
+    def test_empty_containers_returns_zero(self) -> None:
+        result = _pod_usage({"containers": []})
+        assert result["cpu"] == 0
+        assert result["memory"] == 0
+
+    def test_falls_back_to_top_level_usage_when_no_containers(self) -> None:
+        result = _pod_usage({"usage": {"cpu": "150m", "memory": "50Mi"}})
+        assert result["cpu"] == 150
+        assert result["memory"] == round(50 * 2**20)
+
+
+class TestClusterMetrics:
+    def test_metrics_returns_dataset_with_nodes_and_pods(self) -> None:
+        class FakeMetrics:
+            def list_cluster_custom_object(self, group: str, version: str, plural: str):
+                if plural == "nodes":
+                    return {"items": [
+                        {"metadata": {"name": "worker-1"}, "usage": {"cpu": "250m", "memory": "1Gi"}},
+                    ]}
+                if plural == "pods":
+                    return {"items": [
+                        {"metadata": {"name": "api-1", "namespace": "default"}, "usage": {"cpu": "100m", "memory": "100Mi"}},
+                    ]}
+
+        class FakeCore:
+            def list_node(self):
+                return SimpleNamespace(items=[
+                    SimpleNamespace(
+                        metadata=SimpleNamespace(name="worker-1"),
+                        status=SimpleNamespace(
+                            allocatable=SimpleNamespace(cpu="4", memory="8Gi", **{"ephemeral-storage": "50Gi"}),
+                            capacity=SimpleNamespace(cpu="4", memory="8Gi", **{"ephemeral-storage": "50Gi"}),
+                        ),
+                    )
+                ])
+
+        cluster = ClusterClient("test-cluster", FakeCore(), object(), metrics_api=FakeMetrics())
+        dataset = cluster.metrics()
+        assert len(dataset.nodes) == 1
+        assert dataset.nodes[0].cpu_usage_millicores == 250
+        assert len(dataset.pods) == 1
+        assert dataset.pods[0].cpu_usage_millicores == 100
+
+    def test_unavailable_metrics_provider_raises_error(self) -> None:
+        class FakeMetrics:
+            def list_cluster_custom_object(self, **kwargs):
+                raise ApiException(status=404)
+
+        cluster = ClusterClient("test-cluster", object(), object(), metrics_api=FakeMetrics())
+        with pytest.raises(ClusterMetricsError):
+            cluster.metrics()
+
+    def test_missing_metrics_api_raises_error(self) -> None:
+        cluster = ClusterClient("test-cluster", object(), object())
+        with pytest.raises(ClusterMetricsError):
+            cluster.metrics()
+
+
+class TestCreateClusterClientMetrics:
+    def test_factory_creates_custom_objects_api(self) -> None:
+        created_client = create_cluster_client(
+            Settings(auth_secret="x" * 32, database_url="sqlite:///:memory:", cluster_name="test"),
+            loader=lambda: None,
+        )
+        assert created_client.metrics_api is not None
+
+
+class _FakeMetricsDataset:
+    def __init__(self) -> None:
+        from app.kubernetes.client import MetricsDataSet, NodeMetric, PodMetric
+        self.dataset = MetricsDataSet(
+            nodes=[
+                NodeMetric(
+                    name="worker-1",
+                    cpu_usage_millicores=250,
+                    cpu_allocatable_millicores=4000,
+                    memory_usage_bytes=1024 * 2**20,
+                    memory_allocatable_bytes=8 * 2**30,
+                    storage_capacity_bytes=50 * 2**30,
+                    storage_allocatable_bytes=45 * 2**30,
+                )
+            ],
+            pods=[
+                PodMetric(namespace="default", name="api-1", cpu_usage_millicores=100, memory_usage_bytes=100 * 2**20),
+                PodMetric(namespace="kube-system", name="dns-1", cpu_usage_millicores=50, memory_usage_bytes=50 * 2**20),
+            ],
+        )
+
+    def __call__(self) -> "MetricsDataSet":
+        return self.dataset
+
+
+class TestMetricsRoutes:
+    def test_nodes_metrics_returns_available_with_items(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("KUBEPILOT_AUTH_SECRET", "x" * 32)
+        monkeypatch.setenv("KUBEPILOT_DATABASE_URL", "sqlite:///:memory:")
+        from app.main import create_app
+
+        dataset_fn = _FakeMetricsDataset()
+
+        class MetricsClient(ClusterClient):
+            def metrics(self):  # type: ignore[override]
+                return dataset_fn()
+
+        app = create_app()
+        app.dependency_overrides[get_current_actor] = lambda: AuthenticatedActor("ops", "admin")
+        app.dependency_overrides[get_cluster_client] = lambda: MetricsClient("test", object(), object())
+        with TestClient(app) as client:
+            response = client.get("/api/v1/cluster/metrics/nodes")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["available"] is True
+        assert len(body["items"]) == 1
+        assert body["items"][0]["name"] == "worker-1"
+        assert body["items"][0]["cpu_usage_millicores"] == 250
+        assert body["items"][0]["memory_usage_bytes"] == 1024 * 2**20
+
+    def test_nodes_metrics_unavailable_returns_200_with_available_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("KUBEPILOT_AUTH_SECRET", "x" * 32)
+        monkeypatch.setenv("KUBEPILOT_DATABASE_URL", "sqlite:///:memory:")
+        from app.main import create_app
+
+        class UnavailClient(ClusterClient):
+            def metrics(self):  # type: ignore[override]
+                raise ClusterMetricsError("no provider")
+
+        app = create_app()
+        app.dependency_overrides[get_current_actor] = lambda: AuthenticatedActor("ops", "admin")
+        app.dependency_overrides[get_cluster_client] = lambda: UnavailClient("test", object(), object())
+        with TestClient(app) as client:
+            response = client.get("/api/v1/cluster/metrics/nodes")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["available"] is False
+        assert body["reason"] == "unavailable"
+        assert body["items"] == []
+
+    def test_namespace_metrics_returns_workloads_and_summary(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("KUBEPILOT_AUTH_SECRET", "x" * 32)
+        monkeypatch.setenv("KUBEPILOT_DATABASE_URL", "sqlite:///:memory:")
+        from app.main import create_app
+
+        dataset_fn = _FakeMetricsDataset()
+
+        class MetricsClient(ClusterClient):
+            def metrics(self):  # type: ignore[override]
+                return dataset_fn()
+
+        app = create_app()
+        app.dependency_overrides[get_current_actor] = lambda: AuthenticatedActor("ops", "admin")
+        app.dependency_overrides[get_cluster_client] = lambda: MetricsClient("test", object(), object())
+        with TestClient(app) as client:
+            response = client.get("/api/v1/cluster/metrics/namespaces/default")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["available"] is True
+        assert len(body["workloads"]) == 1
+        assert body["workloads"][0]["name"] == "api-1"
+        assert body["summary"]["namespace"] == "default"
+        assert body["summary"]["pod_count"] == 1
+
+    def test_namespace_metrics_empty_namespace_returns_no_workloads(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("KUBEPILOT_AUTH_SECRET", "x" * 32)
+        monkeypatch.setenv("KUBEPILOT_DATABASE_URL", "sqlite:///:memory:")
+        from app.main import create_app
+
+        dataset_fn = _FakeMetricsDataset()
+
+        class MetricsClient(ClusterClient):
+            def metrics(self):  # type: ignore[override]
+                return dataset_fn()
+
+        app = create_app()
+        app.dependency_overrides[get_current_actor] = lambda: AuthenticatedActor("ops", "admin")
+        app.dependency_overrides[get_cluster_client] = lambda: MetricsClient("test", object(), object())
+        with TestClient(app) as client:
+            response = client.get("/api/v1/cluster/metrics/namespaces/empty-ns")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["available"] is True
+        assert body["workloads"] == []
+        assert body["summary"] is None
+
+    def test_metrics_summary_returns_namespace_aggregates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("KUBEPILOT_AUTH_SECRET", "x" * 32)
+        monkeypatch.setenv("KUBEPILOT_DATABASE_URL", "sqlite:///:memory:")
+        from app.main import create_app
+
+        dataset_fn = _FakeMetricsDataset()
+
+        class MetricsClient(ClusterClient):
+            def metrics(self):  # type: ignore[override]
+                return dataset_fn()
+
+        app = create_app()
+        app.dependency_overrides[get_current_actor] = lambda: AuthenticatedActor("ops", "admin")
+        app.dependency_overrides[get_cluster_client] = lambda: MetricsClient("test", object(), object())
+        with TestClient(app) as client:
+            response = client.get("/api/v1/cluster/metrics/summary")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["available"] is True
+        assert len(body["namespaces"]) == 2
+        ns_names = [ns["namespace"] for ns in body["namespaces"]]
+        assert "default" in ns_names
+        assert "kube-system" in ns_names
+        default_ns = next(ns for ns in body["namespaces"] if ns["namespace"] == "default")
+        assert default_ns["pod_count"] == 1
+        assert default_ns["cpu_usage_millicores"] == 100
+
+    def test_storage_metrics_returns_pv_and_pvc_capacity(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("KUBEPILOT_AUTH_SECRET", "x" * 32)
+        monkeypatch.setenv("KUBEPILOT_DATABASE_URL", "sqlite:///:memory:")
+        from app.main import create_app
+
+        class FakeCore:
+            def list_persistent_volume(self):
+                return SimpleNamespace(items=[
+                    SimpleNamespace(
+                        metadata=SimpleNamespace(name="pv-data"),
+                        spec=SimpleNamespace(capacity=SimpleNamespace(storage="10Gi")),
+                    )
+                ])
+
+            def list_persistent_volume_claim_for_all_namespaces(self):
+                return SimpleNamespace(items=[
+                    SimpleNamespace(
+                        metadata=SimpleNamespace(name="pvc-data", namespace="default"),
+                        spec=SimpleNamespace(resources=SimpleNamespace(requests=SimpleNamespace(storage="5Gi"))),
+                    )
+                ])
+
+        app = create_app()
+        app.dependency_overrides[get_current_actor] = lambda: AuthenticatedActor("ops", "admin")
+        app.dependency_overrides[get_cluster_client] = lambda: ClusterClient("test", FakeCore(), object())
+        with TestClient(app) as client:
+            response = client.get("/api/v1/cluster/metrics/storage")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["available"] is True
+        assert len(body["items"]) == 2
+        pv = next(i for i in body["items"] if i["kind"] == "PersistentVolume")
+        pvc = next(i for i in body["items"] if i["kind"] == "PersistentVolumeClaim")
+        assert pv["name"] == "pv-data"
+        assert pv["capacity_bytes"] == round(10 * 2**30)
+        assert pvc["name"] == "pvc-data"
+        assert pvc["capacity_bytes"] == round(5 * 2**30)

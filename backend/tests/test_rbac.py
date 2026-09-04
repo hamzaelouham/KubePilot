@@ -21,6 +21,7 @@ def test_rbac_manifest_is_read_only_for_discovery() -> None:
         "endpoints",
         "replicationcontrollers",
         "persistentvolumes",
+        "persistentvolumeclaims",
         "deployments",
         "replicasets",
         "daemonsets",
@@ -30,3 +31,5 @@ def test_rbac_manifest_is_read_only_for_discovery() -> None:
         "clusterroles",
         "storageclasses",
     }
+    metrics_rule = next(rule for rule in role["rules"] if rule["apiGroups"] == ["metrics.k8s.io"])
+    assert set(metrics_rule["resources"]) == {"nodes", "pods"}

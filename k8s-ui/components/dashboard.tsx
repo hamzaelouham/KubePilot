@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { CoreResourceView } from "@/components/core-resource-view";
 import { OverviewView } from "@/components/overview-view";
+import { ClusterView } from "@/components/cluster-view";
+import { WorkloadsView } from "@/components/workloads-view";
 import { NamespacesView } from "@/components/namespaces-view";
 
 const resourceViewTypes = new Set([
@@ -33,6 +35,7 @@ export function Dashboard({ initResource, initNamespace }: { initResource: strin
     params.set("resource", nextResource);
     params.set("namespace", nextNamespace);
     window.history.replaceState(null, "", `/dashboard?${params.toString()}`);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const renderView = useMemo(() => {
@@ -40,10 +43,14 @@ export function Dashboard({ initResource, initNamespace }: { initResource: strin
       return <CoreResourceView resource={resource} namespace={namespace} />;
     }
     switch (resource) {
+      case "overview":
+        return <OverviewView />;
+      case "cluster":
+        return <ClusterView />;
+      case "workloads":
+        return <WorkloadsView />;
       case "namespaces":
         return <NamespacesView />;
-      case "overview":
-      case "workloads":
       default:
         return <OverviewView />;
     }

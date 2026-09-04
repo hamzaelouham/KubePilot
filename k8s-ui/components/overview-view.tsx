@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { healthTone, type Health } from "@/lib/status-tone";
 import { formatLastUpdated, usePolling } from "@/lib/use-polling";
+import { formatMillicores, formatBytes, type NamespaceMetricSummary, type MetricsSummaryResponse } from "@/lib/metrics";
 
 type Resource = { cluster: string; namespace: string | null; kind: string; name: string; status: string; health: Health };
 type ResourceResponse = { items: Resource[]; message?: string };
 
 type OverviewState =
   | { status: "loading" }
-  | { status: "ready"; deployments: Resource[]; pods: Resource[] }
+  | { status: "ready"; deployments: Resource[]; pods: Resource[]; namespaceSummary: NamespaceMetricSummary[]; metricsAvailable: boolean }
   | { status: "error"; message: string };
 
 function DonutChart({ values, colors }: { values: number[]; colors: string[] }) {
@@ -42,7 +43,7 @@ export function OverviewView() {
     abortRef.current?.abort();
     abortRef.current = controller;
     try {
-      const [deployments, pods] = await Promise.all([
+      const [deployments, pods, summaryResponse] = await Promise.all([
         fetch("/api/cluster/resources?resource=deployments", { signal: controller.signal, cache: "no-store" }).then(async (r) => {
           const body = (await r.json()) as ResourceResponse;
           if (!r.ok) throw new Error(body.message ?? "Unable to load deployments");
@@ -53,8 +54,18 @@ export function OverviewView() {
           if (!r.ok) throw new Error(body.message ?? "Unable to load pods");
           return body.items;
         }),
+        fetch("/api/cluster/metrics?type=summary", { signal: controller.signal, cache: "no-store" }).then(async (r) => {
+          const body = (await r.json()) as MetricsSummaryResponse;
+          return body;
+        }),
       ]);
-      setState({ status: "ready", deployments, pods });
+      setState({
+        status: "ready",
+        deployments,
+        pods,
+        namespaceSummary: summaryResponse.available ? summaryResponse.namespaces : [],
+        metricsAvailable: summaryResponse.available,
+      });
     } catch (error: unknown) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       setState({ status: "error", message: error instanceof Error ? error.message : "Unable to load cluster data" });
@@ -73,7 +84,7 @@ export function OverviewView() {
   if (state.status === "loading") return <p className="rounded-lg bg-slate-100 p-5 text-slate-500">Loading cluster overview...</p>;
   if (state.status === "error") return <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-5 text-red-700">{state.message}</p>;
 
-  const { deployments, pods } = state;
+  const { deployments, pods, namespaceSummary, metricsAvailable } = state;
 
   const unhealthy = [...deployments, ...pods].filter((r) => r.health === "warning" || r.health === "error");
   const deploymentsHealthy = deployments.filter((d) => d.health === "healthy").length;
@@ -91,13 +102,13 @@ export function OverviewView() {
       <div className="flex items-end justify-between gap-4">
         <div>
           <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-400">Live cluster data</p>
-          <h2 className="text-3xl font-semibold text-slate-700">Workloads</h2>
+          <h2 className="text-3xl font-semibold text-slate-700">Overview</h2>
         </div>
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={refresh}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+            className="cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
           >
             Refresh
           </button>
@@ -133,6 +144,42 @@ export function OverviewView() {
           ))}
         </div>
       </div>
+
+      {namespaceSummary.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white">
+          <div className="border-b border-slate-200 px-4 py-3">
+            <h3 className="text-2xl font-semibold text-slate-700">Namespace Utilization</h3>
+          </div>
+          <div className="overflow-hidden">
+            <table className="min-w-full text-left text-base">
+              <thead className="bg-slate-100 text-slate-600">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Namespace</th>
+                  <th className="px-4 py-3 font-medium">CPU</th>
+                  <th className="px-4 py-3 font-medium">Memory</th>
+                  <th className="px-4 py-3 font-medium">Pods</th>
+                </tr>
+              </thead>
+              <tbody>
+                {namespaceSummary.map((ns) => (
+                  <tr key={ns.namespace} className="border-t border-slate-200 text-slate-700">
+                    <td className="px-4 py-4 font-medium">{ns.namespace}</td>
+                    <td className="px-4 py-4 text-sm">{formatMillicores(ns.cpu_usage_millicores)}</td>
+                    <td className="px-4 py-4 text-sm">{formatBytes(ns.memory_usage_bytes)}</td>
+                    <td className="px-4 py-4">{ns.pod_count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {!metricsAvailable && namespaceSummary.length === 0 && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
+          Namespace metrics are unavailable. Metrics server may not be installed in this cluster.
+        </p>
+      )}
 
       <div className="rounded-xl border border-slate-200 bg-white">
         <div className="border-b border-slate-200 px-4 py-3">

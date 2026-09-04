@@ -23,6 +23,10 @@ class ClusterForbiddenError(ClusterClientError):
     pass
 
 
+class ClusterMetricsError(ClusterClientError):
+    pass
+
+
 class ResourceNotFoundError(ClusterClientError):
     pass
 
@@ -38,6 +42,39 @@ class ResourceSummary:
 
 
 @dataclass(frozen=True)
+class NodeMetric:
+    name: str
+    cpu_usage_millicores: float
+    cpu_allocatable_millicores: float | None
+    memory_usage_bytes: float
+    memory_allocatable_bytes: float | None
+    storage_capacity_bytes: float | None
+    storage_allocatable_bytes: float | None
+
+
+@dataclass(frozen=True)
+class PodMetric:
+    namespace: str
+    name: str
+    cpu_usage_millicores: float
+    memory_usage_bytes: float
+
+
+@dataclass(frozen=True)
+class MetricsDataSet:
+    nodes: list[NodeMetric]
+    pods: list[PodMetric]
+
+
+@dataclass(frozen=True)
+class StorageMetricsItem:
+    name: str
+    kind: str
+    capacity_bytes: float | None
+    utilization: str | None
+
+
+@dataclass(frozen=True)
 class ClusterClient:
     cluster_name: str
     core: Any
@@ -45,6 +82,7 @@ class ClusterClient:
     batch: Any = None
     rbac: Any = None
     storage: Any = None
+    metrics_api: Any = None
 
     def namespaces(self) -> list[tuple[str, str]]:
         try:
@@ -64,6 +102,7 @@ class ClusterClient:
             "jobs": (self.batch, "list_namespaced_job", "list_job_for_all_namespaces", "Job"),
             "cron-jobs": (self.batch, "list_namespaced_cron_job", "list_cron_job_for_all_namespaces", "CronJob"),
             "replication-controllers": (self.core, "list_namespaced_replication_controller", "list_replication_controller_for_all_namespaces", "ReplicationController"),
+            "persistent-volume-claims": (self.core, "list_namespaced_persistent_volume_claim", "list_persistent_volume_claim_for_all_namespaces", "PersistentVolumeClaim"),
         }
         cluster_scoped_methods: dict[str, tuple[Any, str, str, str]] = {
             "nodes": (self.core, "list_node", "Node", "condition"),
@@ -173,6 +212,102 @@ class ClusterClient:
         except Exception as error:
             raise classify_kubernetes_error(error) from error
 
+    def metrics(self) -> MetricsDataSet:
+        if self.metrics_api is None:
+            raise ClusterMetricsError("Metrics API provider is not configured")
+        try:
+            return MetricsDataSet(
+                nodes=self._node_metrics(),
+                pods=self._pod_metrics(),
+            )
+        except ClusterMetricsError:
+            raise
+        except Exception as error:
+            raise ClusterMetricsError("Metrics API data is unavailable") from error
+
+    def _node_metrics(self) -> list[NodeMetric]:
+        node_objects = {item.metadata.name: item for item in self.core.list_node().items or []}
+        usage = self._list_metrics("nodes")
+        metrics_by_name = {entry.get("metadata", {}).get("name"): _entry_usage(entry) for entry in usage}
+        result: list[NodeMetric] = []
+        names = list(metrics_by_name) if metrics_by_name else list(node_objects)
+        for name in names:
+            node = node_objects.get(name)
+            usage_value = metrics_by_name.get(name) or {}
+            result.append(
+                NodeMetric(
+                    name=name,
+                    cpu_usage_millicores=usage_value.get("cpu", 0.0),
+                    memory_usage_bytes=usage_value.get("memory", 0.0),
+                    cpu_allocatable_millicores=_node_quantity(node, "allocatable", "cpu", 1000.0),
+                    memory_allocatable_bytes=_node_quantity(node, "allocatable", "memory"),
+                    storage_capacity_bytes=_node_quantity(node, "capacity", "ephemeral-storage"),
+                    storage_allocatable_bytes=_node_quantity(node, "allocatable", "ephemeral-storage"),
+                )
+            )
+        return result
+
+    def _pod_metrics(self) -> list[PodMetric]:
+        usage = self._list_metrics("pods")
+        return [
+            PodMetric(
+                namespace=entry.get("metadata", {}).get("namespace") or "default",
+                name=entry.get("metadata", {}).get("name") or "unknown",
+                cpu_usage_millicores=_pod_usage(entry).get("cpu", 0.0),
+                memory_usage_bytes=_pod_usage(entry).get("memory", 0.0),
+            )
+            for entry in usage
+        ]
+
+    def _list_metrics(self, plural: str) -> list[dict[str, Any]]:
+        try:
+            result = self.metrics_api.list_cluster_custom_object(
+                group="metrics.k8s.io",
+                version="v1beta1",
+                plural=plural,
+            )
+        except ApiException as error:
+            if error.status in (401, 403, 404, 503):
+                raise ClusterMetricsError("Metrics API provider is unavailable") from error
+            raise ClusterMetricsError("Metrics API request failed") from error
+        if isinstance(result, dict):
+            return result.get("items") or []
+        return getattr(result, "items", None) or []
+
+    def storage_metrics(self) -> list[StorageMetricsItem]:
+        try:
+            pv_items = getattr(self.core.list_persistent_volume(), "items", None) or []
+            pvc_items = getattr(self.core.list_persistent_volume_claim_for_all_namespaces(), "items", None) or []
+        except Exception as error:
+            raise classify_kubernetes_error(error) from error
+        result: list[StorageMetricsItem] = []
+        for pv in pv_items:
+            capacity = _pv_quantity(pv, "capacity")
+            result.append(StorageMetricsItem(name=pv.metadata.name, kind="PersistentVolume", capacity_bytes=capacity, utilization=None))
+        for pvc in pvc_items:
+            capacity = _pvc_quantity(pvc, "requests")
+            result.append(StorageMetricsItem(name=pvc.metadata.name, kind="PersistentVolumeClaim", capacity_bytes=capacity, utilization=None))
+        return result
+
+
+def _pv_quantity(pv: Any, field: str) -> float | None:
+    spec = getattr(pv, "spec", None)
+    resources = getattr(spec, field, None) if spec is not None else None
+    value = getattr(resources, "storage", None) if resources is not None else None
+    if value is None:
+        return None
+    return round(_parse_quantity(str(value)))
+
+
+def _pvc_quantity(pvc: Any, field: str) -> float | None:
+    spec = getattr(pvc, "spec", None)
+    resources = getattr(spec, "resources", None) if spec is not None else None
+    values = getattr(resources, field, None) if resources is not None else None
+    value = getattr(values, "storage", None) if values is not None else None
+    if value is None:
+        return None
+    return round(_parse_quantity(str(value)))
+
 
 def create_cluster_client(settings: Settings, loader: Callable[[], None] = config.load_incluster_config) -> ClusterClient:
     try:
@@ -184,6 +319,7 @@ def create_cluster_client(settings: Settings, loader: Callable[[], None] = confi
             client.BatchV1Api(),
             client.RbacAuthorizationV1Api(),
             client.StorageV1Api(),
+            metrics_api=client.CustomObjectsApi(),
         )
     except (config.ConfigException, HTTPError, OSError) as error:
         raise ClusterUnavailableError("Kubernetes ServiceAccount configuration is unavailable") from error
@@ -195,6 +331,64 @@ def classify_kubernetes_error(error: Exception) -> ClusterClientError:
     if isinstance(error, (ApiException, HTTPError, TimeoutError, OSError)):
         return ClusterUnavailableError("Kubernetes cluster is unavailable")
     return ClusterClientError("Kubernetes request failed")
+
+
+def _entry_usage(entry: dict[str, Any]) -> dict[str, float]:
+    usage = entry.get("usage") or {}
+    cpu = _cpu_millicores(str(usage.get("cpu", "")))
+    memory = _memory_bytes(str(usage.get("memory", "")))
+    return {"cpu": cpu, "memory": memory}
+
+
+def _pod_usage(entry: dict[str, Any]) -> dict[str, float]:
+    containers = entry.get("containers") or []
+    cpu = sum(_cpu_millicores(str(container.get("usage", {}).get("cpu", ""))) for container in containers)
+    memory = sum(_memory_bytes(str(container.get("usage", {}).get("memory", ""))) for container in containers)
+    if not containers and entry.get("usage"):
+        fallback = _entry_usage(entry)
+        return {"cpu": fallback.get("cpu", 0.0), "memory": fallback.get("memory", 0.0)}
+    return {"cpu": cpu, "memory": memory}
+
+
+def _node_quantity(
+    node: Any, resource_field: str, resource_key: str, multiplier: float = 1.0
+) -> float | None:
+    status = getattr(node, "status", None)
+    resources = getattr(status, resource_field, None) if status is not None else None
+    value = getattr(resources, resource_key, None) if resources is not None else None
+    if value is None:
+        return None
+    return round(_parse_quantity(str(value)) * multiplier)
+
+
+def _cpu_millicores(value: str) -> float:
+    if not value:
+        return 0.0
+    return round(_parse_quantity(value) * 1000.0)
+
+
+def _memory_bytes(value: str) -> float:
+    if not value:
+        return 0.0
+    return round(_parse_quantity(value))
+
+
+def _parse_quantity(value: str) -> float:
+    match = re.match(r"^([-+]?[0-9]*\.?[0-9]+)([a-zA-Z]*)$", value.strip())
+    if not match:
+        return 0.0
+    number = float(match.group(1))
+    suffix = match.group(2)
+    if suffix in {"m", "n", "u"}:
+        divisors = {"m": 1e3, "n": 1e9, "u": 1e6}
+        return number / divisors[suffix]
+    if suffix in {"Ki", "Mi", "Gi", "Ti", "Pi", "Ei"}:
+        multipliers = {"Ki": 2**10, "Mi": 2**20, "Gi": 2**30, "Ti": 2**40, "Pi": 2**50, "Ei": 2**60}
+        return number * multipliers[suffix]
+    if suffix in {"k", "K", "M", "G", "T", "P", "E"}:
+        multipliers = {"k": 1e3, "K": 1e3, "M": 1e6, "G": 1e9, "T": 1e12, "P": 1e15, "E": 1e18}
+        return number * multipliers[suffix]
+    return number
 
 
 def _summary_status(item: Any, status_kind: str) -> str:

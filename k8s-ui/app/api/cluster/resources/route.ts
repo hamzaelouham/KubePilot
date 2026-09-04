@@ -15,6 +15,7 @@ const resourceTypes = new Set([
   "cron-jobs",
   "replication-controllers",
   "persistent-volumes",
+  "persistent-volume-claims",
   "cluster-roles",
   "storage-classes",
 ]);

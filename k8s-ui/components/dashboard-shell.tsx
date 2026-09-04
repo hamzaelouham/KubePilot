@@ -91,16 +91,16 @@ export function DashboardShell({ activeResource, activeNamespace, onNavigate, ch
               <span className="text-lg">⌕</span>
               <span className="text-base">Search</span>
             </div>
-            <button className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-[#f3f4f6] text-xl text-slate-500">
+            <button className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-[#f3f4f6] text-xl text-slate-500">
               +
             </button>
-            <button className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-[#f3f4f6] text-xl text-slate-500">
+            <button className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-[#f3f4f6] text-xl text-slate-500">
               🔔
             </button>
             <button
               type="button"
               onClick={signOut}
-              className="rounded-xl border border-slate-200 bg-[#f3f4f6] px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200"
+              className="cursor-pointer rounded-xl border border-slate-200 bg-[#f3f4f6] px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200"
             >
               Sign out
             </button>
@@ -124,7 +124,7 @@ export function DashboardShell({ activeResource, activeNamespace, onNavigate, ch
                   <button
                     type="button"
                     onClick={() => onNavigate(item.id, activeNamespace)}
-                    className="w-full rounded-md px-3 py-2 text-left text-lg transition hover:bg-slate-200/80"
+                    className="w-full cursor-pointer rounded-md px-3 py-2 text-left text-lg transition hover:bg-slate-200/80"
                   >
                     {item.label}
                   </button>
@@ -153,7 +153,7 @@ export function DashboardShell({ activeResource, activeNamespace, onNavigate, ch
                   key={item.id}
                   type="button"
                   onClick={() => onNavigate(item.id, activeNamespace)}
-                  className={`block w-full rounded-md px-3 py-2 text-left text-lg ${
+                  className={`block w-full cursor-pointer rounded-md px-3 py-2 text-left text-lg ${
                     isActive(item.id) ? "bg-[#eceef3] text-slate-700" : "text-slate-600 hover:bg-slate-200/80"
                   }`}
                 >
