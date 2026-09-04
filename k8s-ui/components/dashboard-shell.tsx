@@ -1,7 +1,5 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 async function signOut() {
@@ -52,12 +50,15 @@ const resourceTitles: Record<string, string> = {
   "storage-classes": "Storage Classes",
 };
 
-export function DashboardShell({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const currentResource = searchParams.get("resource") ?? "overview";
-  const currentNamespace = searchParams.get("namespace") ?? "default";
-  const headerLabel = resourceTitles[currentResource] ?? "Overview";
+type DashboardShellProps = {
+  activeResource: string;
+  activeNamespace: string;
+  onNavigate: (resource: string, namespace: string) => void;
+  children: React.ReactNode;
+};
+
+export function DashboardShell({ activeResource, activeNamespace, onNavigate, children }: DashboardShellProps) {
+  const headerLabel = resourceTitles[activeResource] ?? "Overview";
 
   const [namespaceOptions, setNamespaceOptions] = useState<string[]>(["default"]);
 
@@ -74,24 +75,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     return () => controller.abort();
   }, []);
 
-  useEffect(() => {
-    const hasResourceParam = searchParams.has("resource");
-    const hasNamespaceParam = searchParams.has("namespace");
-
-    if (!hasResourceParam || !hasNamespaceParam) {
-      const params = new URLSearchParams(searchParams.toString());
-      if (!hasResourceParam) params.set("resource", "overview");
-      if (!hasNamespaceParam) params.set("namespace", currentNamespace);
-      router.replace(`/dashboard?${params.toString()}`, { scroll: false });
-    }
-  }, [router, searchParams, currentNamespace]);
-
-  const updateRoute = (resourceId: string, namespaceValue = currentNamespace) => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("resource", resourceId);
-    params.set("namespace", namespaceValue);
-    router.push(`/dashboard?${params.toString()}`, { scroll: false });
-  };
+  const isActive = (id: string) => id === activeResource;
 
   return (
     <div className="min-h-screen bg-[#ebeff3] text-slate-800">
@@ -136,10 +120,10 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           <aside className="w-[286px] border-r border-slate-200 bg-[#f8f9fb] p-4">
             <nav className="space-y-2">
               {navItems.map((item) => (
-                <div key={item.id} className={item.id === currentResource ? "font-medium text-slate-700" : "text-slate-600"}>
+                <div key={item.id} className={isActive(item.id) ? "font-medium text-slate-700" : "text-slate-600"}>
                   <button
                     type="button"
-                    onClick={() => updateRoute(item.id)}
+                    onClick={() => onNavigate(item.id, activeNamespace)}
                     className="w-full rounded-md px-3 py-2 text-left text-lg transition hover:bg-slate-200/80"
                   >
                     {item.label}
@@ -151,8 +135,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             <div className="mt-8">
               <label className="mb-2 block text-slate-600">Namespace</label>
               <select
-                value={currentNamespace}
-                onChange={(event) => updateRoute(currentResource, event.target.value)}
+                value={activeNamespace}
+                onChange={(event) => onNavigate(activeResource, event.target.value)}
                 className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-lg text-slate-700 outline-none"
               >
                 {namespaceOptions.map((namespace) => (
@@ -165,15 +149,16 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
             <nav className="mt-8 space-y-1">
               {secondaryNav.map((item) => (
-                <Link
+                <button
                   key={item.id}
-                  href={`/dashboard?resource=${item.id}&namespace=${currentNamespace}`}
-                  className={`block rounded-md px-3 py-2 text-lg ${
-                    item.id === currentResource ? "bg-[#eceef3] text-slate-700" : "text-slate-600 hover:bg-slate-200/80"
+                  type="button"
+                  onClick={() => onNavigate(item.id, activeNamespace)}
+                  className={`block w-full rounded-md px-3 py-2 text-left text-lg ${
+                    isActive(item.id) ? "bg-[#eceef3] text-slate-700" : "text-slate-600 hover:bg-slate-200/80"
                   }`}
                 >
                   {item.label}
-                </Link>
+                </button>
               ))}
             </nav>
           </aside>

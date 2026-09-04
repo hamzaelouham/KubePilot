@@ -16,7 +16,7 @@
 
 ## Post-MVP
 
-- [ ] 10. **Real-time refresh and health updates** - add live refresh behavior, alerting cues, and operational status updates.
+- [x] 10. **Real-time refresh and health updates** - add live refresh behavior, alerting cues, and operational status updates.
 - [ ] 11. **RBAC and multi-user controls** - support role-based access and more granular permissions across cluster operations.
 - [ ] 12. **Multi-cluster support** - connect and compare multiple Kubernetes environments from one interface.
 - [ ] 13. **Observability enhancements** - expand resource insights, metrics summaries, and health trends across workloads and clusters.

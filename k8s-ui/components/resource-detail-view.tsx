@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard-shell";
 
 type DetailData = {
@@ -227,6 +228,12 @@ export default function ResourceDetailView({
   const [yamlState, setYamlState] = useState<YamlState>({ status: "loading" });
   const [logState, setLogState] = useState<LogState>({ status: "loading" });
   const [eventState, setEventState] = useState<EventState>({ status: "loading" });
+  const router = useRouter();
+
+  const handleNav = (resource: string, ns: string) => {
+    const params = new URLSearchParams({ resource, namespace: ns });
+    router.push(`/dashboard?${params.toString()}`);
+  };
 
   useEffect(() => {
     if (!name) return;
@@ -341,7 +348,11 @@ export default function ResourceDetailView({
 
   if (!name) {
     return (
-      <DashboardShell>
+      <DashboardShell
+        activeResource={resourceType}
+        activeNamespace={namespace ?? ""}
+        onNavigate={handleNav}
+      >
         <div className="space-y-6">
           <Link href="/dashboard?resource=pods" className="text-sm text-cyan-600 hover:underline">
             ← Back to resources
@@ -355,7 +366,11 @@ export default function ResourceDetailView({
   }
 
   return (
-    <DashboardShell>
+    <DashboardShell
+      activeResource={resourceType}
+      activeNamespace={namespace ?? ""}
+      onNavigate={handleNav}
+    >
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Link

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 import re
 
 import yaml
@@ -34,6 +34,7 @@ class ResourceSummary:
     kind: str
     name: str
     status: str
+    health: str
 
 
 @dataclass(frozen=True)
@@ -75,7 +76,7 @@ class ClusterClient:
                 api, method_name, kind, status_kind = cluster_scoped_methods[resource_type]
                 items = getattr(api, method_name)().items
                 return [
-                    ResourceSummary(self.cluster_name, None, kind, item.metadata.name, _summary_status(item, status_kind))
+                    ResourceSummary(self.cluster_name, None, kind, item.metadata.name, _summary_status(item, status_kind), _health_status(item, kind))
                     for item in items
                 ]
             api, namespaced_method, all_namespace_method, kind = namespaced_methods[resource_type]
@@ -87,6 +88,7 @@ class ClusterClient:
                     kind,
                     item.metadata.name,
                     str(getattr(item.status, "phase", None) or getattr(item.status, "available_replicas", None) or "Unknown"),
+                    _health_status(item, kind),
                 )
                 for item in items
             ]
@@ -202,6 +204,82 @@ def _summary_status(item: Any, status_kind: str) -> str:
     if status_kind == "phase" and status is not None and getattr(status, "phase", None):
         return status.phase
     return "Unknown"
+
+
+_HEALTH = Literal["healthy", "warning", "error", "unknown"]
+
+
+def _health_status(item: Any, kind: str) -> str:
+    status = getattr(item, "status", None)
+    if kind == "Pod":
+        return _pod_health(status)
+    if kind in {"Deployment", "ReplicaSet", "StatefulSet", "DaemonSet", "Job"}:
+        return _replicas_health(getattr(item, "spec", None), status)
+    if kind == "Node":
+        return _node_health(status)
+    if kind == "PersistentVolume":
+        return _pv_health(status)
+    return "unknown"
+
+
+def _pod_health(status: Any) -> str:
+    phase = getattr(status, "phase", None)
+    if phase != "Running":
+        return "error"
+    containers = getattr(status, "container_statuses", None) or []
+    if not containers:
+        return "healthy"
+    for container in containers:
+        if not getattr(container, "ready", False):
+            return "warning"
+        state = getattr(container, "state", None)
+        if state is not None and getattr(state, "waiting", None) is not None:
+            reason = (getattr(state.waiting, "reason", None) or "").lower()
+            if reason in {"crashloopbackoff", "imagepullbackoff", "createcontainererror", "invalidimagename"}:
+                return "error"
+            return "warning"
+    return "healthy"
+
+
+
+def _replicas_health(spec: Any, status: Any) -> str:
+    desired = getattr(spec, "replicas", None) if spec is not None else None
+    if desired is None or desired <= 0:
+        return "unknown"
+    ready = getattr(status, "ready_replicas", 0) or 0
+    available = getattr(status, "available_replicas", None)
+    unavailable = getattr(status, "unavailable_replicas", 0) or 0
+    all_ready = ready >= desired and (available is None or available == desired) and unavailable == 0
+    if all_ready:
+        return "healthy"
+    if ready > 0:
+        return "warning"
+    return "error"
+
+
+def _node_health(status: Any) -> str:
+    conditions = getattr(status, "conditions", None) or []
+    for condition in reversed(conditions):
+        if getattr(condition, "type", None) == "Ready":
+            ready = getattr(condition, "status", "")
+            if ready == "True":
+                return "healthy"
+            if ready == "False":
+                return "error"
+            if ready == "Unknown":
+                return "warning"
+    return "unknown"
+
+
+def _pv_health(status: Any) -> str:
+    phase = getattr(status, "phase", None)
+    if phase in {"Bound", "Available"}:
+        return "healthy"
+    if phase in {"Released", "Failed"}:
+        return "error"
+    if phase == "Pending":
+        return "warning"
+    return "unknown"
 
 
 def _safe_metadata(labels: dict[str, str] | None, annotations: dict[str, str] | None) -> dict[str, str]:

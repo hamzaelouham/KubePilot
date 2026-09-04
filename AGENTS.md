@@ -239,3 +239,13 @@ checks do not make the Blueprint unusable.
 Testing is opt-in for this project. There is no test runner configured yet, so no project-level `test` command is declared in this repo at the moment.
 
 If the team later adds a test runner, update this section with the real command and then use that command as the project verification gate for logic-bearing work. Browser testing remains a separate opt-in task and should only be added explicitly through `/browser-tests` or `$browser-tests` when the project is ready for UI automation.
+
+<!-- BEGIN:nextjs-agent-rules -->
+ 
+# This is NOT the Next.js you know
+ 
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+ 
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+ 
+<!-- END:nextjs-agent-rules -->

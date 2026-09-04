@@ -123,6 +123,7 @@ def cluster_resources(
                 kind=item.kind,
                 name=item.name,
                 status=item.status,
+                health=item.health,
             )
             for item in cluster.resources(resource_type, namespace)
         ]

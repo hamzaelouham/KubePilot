@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { healthTone, type Health } from "@/lib/status-tone";
+import { formatLastUpdated, usePolling } from "@/lib/use-polling";
 
-type Resource = { cluster: string; namespace: string | null; kind: string; name: string; status: string };
+type Resource = { cluster: string; namespace: string | null; kind: string; name: string; status: string; health: Health };
 type ResourceResponse = { items: Resource[]; message?: string };
 
 type OverviewState =
@@ -33,53 +35,89 @@ function DonutChart({ values, colors }: { values: number[]; colors: string[] }) 
 
 export function OverviewView() {
   const [state, setState] = useState<OverviewState>({ status: "loading" });
+  const abortRef = useRef<AbortController | null>(null);
+
+  const load = useCallback(async () => {
+    const controller = new AbortController();
+    abortRef.current?.abort();
+    abortRef.current = controller;
+    try {
+      const [deployments, pods] = await Promise.all([
+        fetch("/api/cluster/resources?resource=deployments", { signal: controller.signal, cache: "no-store" }).then(async (r) => {
+          const body = (await r.json()) as ResourceResponse;
+          if (!r.ok) throw new Error(body.message ?? "Unable to load deployments");
+          return body.items;
+        }),
+        fetch("/api/cluster/resources?resource=pods", { signal: controller.signal, cache: "no-store" }).then(async (r) => {
+          const body = (await r.json()) as ResourceResponse;
+          if (!r.ok) throw new Error(body.message ?? "Unable to load pods");
+          return body.items;
+        }),
+      ]);
+      setState({ status: "ready", deployments, pods });
+    } catch (error: unknown) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setState({ status: "error", message: error instanceof Error ? error.message : "Unable to load cluster data" });
+    }
+  }, []);
 
   useEffect(() => {
-    const controller = new AbortController();
+    abortRef.current?.abort();
     setState({ status: "loading" });
+    load();
+    return () => abortRef.current?.abort();
+  }, [load]);
 
-    Promise.all([
-      fetch("/api/cluster/resources?resource=deployments", { signal: controller.signal, cache: "no-store" }).then(async (r) => {
-        const body = (await r.json()) as ResourceResponse;
-        if (!r.ok) throw new Error(body.message ?? "Unable to load deployments");
-        return body.items;
-      }),
-      fetch("/api/cluster/resources?resource=pods", { signal: controller.signal, cache: "no-store" }).then(async (r) => {
-        const body = (await r.json()) as ResourceResponse;
-        if (!r.ok) throw new Error(body.message ?? "Unable to load pods");
-        return body.items;
-      }),
-    ])
-      .then(([deployments, pods]) => setState({ status: "ready", deployments, pods }))
-      .catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        setState({ status: "error", message: error instanceof Error ? error.message : "Unable to load cluster data" });
-      });
-
-    return () => controller.abort();
-  }, []);
+  const { refresh, lastUpdated } = usePolling(load);
 
   if (state.status === "loading") return <p className="rounded-lg bg-slate-100 p-5 text-slate-500">Loading cluster overview...</p>;
   if (state.status === "error") return <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-5 text-red-700">{state.message}</p>;
 
   const { deployments, pods } = state;
 
-  const deploymentsReady = deployments.filter((d) => d.status === "1").length;
-  const deploymentsNotReady = deployments.length - deploymentsReady;
-  const podsRunning = pods.filter((p) => p.status === "Running").length;
-  const podsNotRunning = pods.length - podsRunning;
+  const unhealthy = [...deployments, ...pods].filter((r) => r.health === "warning" || r.health === "error");
+  const deploymentsHealthy = deployments.filter((d) => d.health === "healthy").length;
+  const deploymentsNotHealthy = deployments.length - deploymentsHealthy;
+  const podsHealthy = pods.filter((p) => p.health === "healthy").length;
+  const podsNotHealthy = pods.length - podsHealthy;
 
   const pieData = [
-    { label: "Deployments", values: [deploymentsReady, deploymentsNotReady], color: ["#22c55e", "#e74c3c"] },
-    { label: "Pods", values: [podsRunning, podsNotRunning], color: ["#22c55e", "#e74c3c"] },
+    { label: "Deployments", values: [deploymentsHealthy, deploymentsNotHealthy], color: ["#22c55e", "#e74c3c"] },
+    { label: "Pods", values: [podsHealthy, podsNotHealthy], color: ["#22c55e", "#e74c3c"] },
   ];
 
   return (
     <div className="space-y-8">
-      <div>
-        <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-400">Live cluster data</p>
-        <h2 className="text-3xl font-semibold text-slate-700">Workloads</h2>
+      <div className="flex items-end justify-between gap-4">
+        <div>
+          <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-400">Live cluster data</p>
+          <h2 className="text-3xl font-semibold text-slate-700">Workloads</h2>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={refresh}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+          >
+            Refresh
+          </button>
+          <span className="text-sm text-slate-500">Updated {formatLastUpdated(lastUpdated)}</span>
+        </div>
       </div>
+
+      {unhealthy.length > 0 ? (
+        <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-800">
+          <p className="font-medium">{unhealthy.length} workload{unhealthy.length === 1 ? "" : "s"} need attention</p>
+          <ul className="mt-2 list-inside list-disc space-y-1 text-sm">
+            {unhealthy.map((r) => (
+              <li key={`${r.kind}-${r.namespace ?? "cluster"}-${r.name}`}>
+                {r.kind} <span className="font-medium">{r.name}</span>
+                {r.namespace ? ` (${r.namespace})` : ""} — {r.health}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <div className="rounded-xl border border-slate-200 bg-[#f2f5f7] p-5">
         <h3 className="mb-6 text-2xl font-semibold text-slate-700">Workload Status</h3>
@@ -90,7 +128,7 @@ export function OverviewView() {
                 <DonutChart values={pie.values} colors={pie.color} />
               </div>
               <p className="mt-3 text-lg text-slate-700">{pie.label}</p>
-              <p className="text-sm text-slate-500">{pie.values[0]} ready / {pie.values[0] + pie.values[1]} total</p>
+              <p className="text-sm text-slate-500">{pie.values[0]} healthy / {pie.values[0] + pie.values[1]} total</p>
             </div>
           ))}
         </div>
@@ -119,8 +157,8 @@ export function OverviewView() {
                   </td>
                   <td className="px-4 py-4">{item.status}</td>
                   <td className="px-4 py-4">
-                    <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-xs ${item.status === "1" ? "bg-green-500 text-white" : "bg-red-500 text-white"}`}>
-                      {item.status === "1" ? "\u2713" : "!"}
+                    <span className={`inline-flex rounded-full px-2 py-1 text-sm font-medium ${healthTone(item.health).pill}`}>
+                      {healthTone(item.health).short}
                     </span>
                   </td>
                 </tr>

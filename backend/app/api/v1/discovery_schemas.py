@@ -21,6 +21,8 @@ ResourceType = Literal[
     "storage-classes",
 ]
 
+Health = Literal["healthy", "warning", "error", "unknown"]
+
 
 class ClusterStatusResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -50,6 +52,7 @@ class ResourceItem(BaseModel):
     kind: str
     name: str
     status: str
+    health: Health
 
 
 class ResourceResponse(BaseModel):

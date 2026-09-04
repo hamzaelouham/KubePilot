@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { healthTone, type Health } from "@/lib/status-tone";
+import { formatLastUpdated, usePolling } from "@/lib/use-polling";
 
 type Resource = {
   cluster: string;
@@ -9,6 +11,7 @@ type Resource = {
   kind: string;
   name: string;
   status: string;
+  health: Health;
 };
 
 type ResourceResponse = { items: Resource[] };
@@ -38,26 +41,34 @@ const clusterScoped = new Set(["nodes", "persistent-volumes", "cluster-roles", "
 
 export function CoreResourceView({ resource, namespace }: { resource: string; namespace: string }) {
   const [state, setState] = useState<ResourceState>({ status: "loading" });
+  const abortRef = useRef<AbortController | null>(null);
+
+  const load = useCallback(async () => {
+    const controller = new AbortController();
+    abortRef.current?.abort();
+    abortRef.current = controller;
+    try {
+      const response = await fetch(
+        `/api/cluster/resources?resource=${encodeURIComponent(resource)}&namespace=${encodeURIComponent(namespace)}`,
+        { signal: controller.signal, cache: "no-store" },
+      );
+      const body = (await response.json()) as ResourceResponse & { message?: string };
+      if (!response.ok) throw new Error(body.message ?? "Unable to load resources");
+      setState({ status: "ready", items: body.items });
+    } catch (error: unknown) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setState({ status: "error", message: error instanceof Error ? error.message : "Unable to load resources" });
+    }
+  }, [namespace, resource]);
 
   useEffect(() => {
-    const controller = new AbortController();
+    abortRef.current?.abort();
     setState({ status: "loading" });
-    fetch(`/api/cluster/resources?resource=${encodeURIComponent(resource)}&namespace=${encodeURIComponent(namespace)}`, {
-      signal: controller.signal,
-      cache: "no-store",
-    })
-      .then(async (response) => {
-        const body = (await response.json()) as ResourceResponse & { message?: string };
-        if (!response.ok) throw new Error(body.message ?? "Unable to load resources");
-        setState({ status: "ready", items: body.items });
-      })
-      .catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        setState({ status: "error", message: error instanceof Error ? error.message : "Unable to load resources" });
-      });
+    load();
+    return () => abortRef.current?.abort();
+  }, [load]);
 
-    return () => controller.abort();
-  }, [namespace, resource]);
+  const { refresh, lastUpdated } = usePolling(load);
 
   const title = resource.charAt(0).toUpperCase() + resource.slice(1);
   const tableColumns = columns[resource] ?? columns.pods;
@@ -69,7 +80,17 @@ export function CoreResourceView({ resource, namespace }: { resource: string; na
           <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-400">Live cluster data</p>
           <h2 className="text-3xl font-semibold text-slate-700">{title}</h2>
         </div>
-        <span className="rounded-full bg-cyan-100 px-3 py-1 text-sm font-medium text-cyan-800">FastAPI</span>
+        <div className="flex items-center gap-3">
+          <span className="rounded-full bg-cyan-100 px-3 py-1 text-sm font-medium text-cyan-800">FastAPI</span>
+          <button
+            type="button"
+            onClick={refresh}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+          >
+            Refresh
+          </button>
+          <span className="text-sm text-slate-500">Updated {formatLastUpdated(lastUpdated)}</span>
+        </div>
       </div>
 
       {state.status === "loading" ? <p className="rounded-lg bg-slate-100 p-5 text-slate-500">Loading {title.toLowerCase()}...</p> : null}
@@ -100,7 +121,11 @@ export function CoreResourceView({ resource, namespace }: { resource: string; na
                       </Link>
                     </td>
                     {!clusterScoped.has(resource) ? <td className="px-4 py-3">{item.namespace ?? "All namespaces"}</td> : null}
-                    <td className="px-4 py-3">{item.status}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex rounded-full px-2 py-1 text-sm font-medium ${healthTone(item.health).pill}`}>
+                        {item.status}
+                      </span>
+                    </td>
                     {resource === "nodes" ? <td className="px-4 py-3">{item.cluster}</td> : null}
                   </tr>
                 );

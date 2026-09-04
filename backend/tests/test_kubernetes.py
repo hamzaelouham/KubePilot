@@ -13,6 +13,8 @@ from app.kubernetes.client import (
     ClusterForbiddenError,
     ClusterUnavailableError,
     ResourceNotFoundError,
+    ResourceSummary,
+    _health_status,
     classify_kubernetes_error,
     create_cluster_client,
 )
@@ -276,3 +278,134 @@ def test_detail_unauthenticated_is_rejected(monkeypatch: pytest.MonkeyPatch) -> 
         )
     assert response.status_code == 401
     assert response.json()["code"] == "authentication_required"
+
+
+def _container(ready: bool = True, restart_count: int = 0, waiting: str | None = None) -> SimpleNamespace:
+    return SimpleNamespace(
+        ready=ready,
+        restart_count=restart_count,
+        state=SimpleNamespace(waiting=SimpleNamespace(reason=waiting) if waiting else None),
+    )
+
+
+@pytest.mark.parametrize(
+    ("phase", "containers", "expected"),
+    [
+        ("Running", None, "healthy"),
+        ("Running", [_container()], "healthy"),
+        ("Running", [_container(ready=False)], "warning"),
+        ("Running", [_container(restart_count=2)], "healthy"),
+        ("Running", [_container(waiting="ContainerCreating")], "warning"),
+        ("Running", [_container(waiting="CrashLoopBackOff")], "error"),
+        ("Running", [_container(waiting="ImagePullBackOff")], "error"),
+        ("Pending", None, "error"),
+        ("Failed", None, "error"),
+        ("Unknown", None, "error"),
+        (None, None, "error"),
+    ],
+)
+def test_pod_health_classification(phase, containers, expected) -> None:
+    status = SimpleNamespace(phase=phase, container_statuses=containers)
+    item = SimpleNamespace(status=status, spec=None)
+    assert _health_status(item, "Pod") == expected
+
+
+def test_deployment_health_classification() -> None:
+    def build(replicas: int, ready: int | None, available: int | None, unavailable: int = 0) -> SimpleNamespace:
+        spec = SimpleNamespace(replicas=replicas)
+        status = SimpleNamespace(
+            ready_replicas=ready,
+            available_replicas=available,
+            unavailable_replicas=unavailable,
+        )
+        return SimpleNamespace(spec=spec, status=status)
+
+    assert _health_status(build(3, 3, 3, 0), "Deployment") == "healthy"
+    assert _health_status(build(3, 2, 2, 1), "Deployment") == "warning"
+    assert _health_status(build(3, 0, 0, 3), "Deployment") == "error"
+    assert _health_status(build(0, 0, 0, 0), "Deployment") == "unknown"
+    assert _health_status(build(3, 3, None, 0), "Deployment") == "healthy"
+    assert _health_status(build(3, 3, 3, 1), "Deployment") == "warning"
+
+
+def test_replica_set_uses_replicas_health() -> None:
+    spec = SimpleNamespace(replicas=2)
+    status = SimpleNamespace(ready_replicas=1, available_replicas=1, unavailable_replicas=1)
+    item = SimpleNamespace(spec=spec, status=status)
+    assert _health_status(item, "ReplicaSet") == "warning"
+
+
+@pytest.mark.parametrize(
+    ("conditions", "expected"),
+    [
+        ([SimpleNamespace(type="Ready", status="True")], "healthy"),
+        ([SimpleNamespace(type="MemoryPressure", status="True"), SimpleNamespace(type="Ready", status="True")], "healthy"),
+        ([SimpleNamespace(type="Ready", status="False")], "error"),
+        ([SimpleNamespace(type="Ready", status="Unknown")], "warning"),
+        ([], "unknown"),
+    ],
+)
+def test_node_health_classification(conditions, expected) -> None:
+    status = SimpleNamespace(conditions=conditions)
+    item = SimpleNamespace(status=status)
+    assert _health_status(item, "Node") == expected
+
+
+@pytest.mark.parametrize(
+    ("phase", "expected"),
+    [
+        ("Bound", "healthy"),
+        ("Available", "healthy"),
+        ("Released", "error"),
+        ("Failed", "error"),
+        ("Pending", "warning"),
+        (None, "unknown"),
+    ],
+)
+def test_persistent_volume_health_classification(phase, expected) -> None:
+    status = SimpleNamespace(phase=phase)
+    item = SimpleNamespace(status=status)
+    assert _health_status(item, "PersistentVolume") == expected
+
+
+def test_types_without_health_signal_are_unknown() -> None:
+    assert _health_status(SimpleNamespace(status=None), "Service") == "unknown"
+    assert _health_status(SimpleNamespace(status=None), "StorageClass") == "unknown"
+    assert _health_status(SimpleNamespace(status=None), "ClusterRole") == "unknown"
+
+
+def test_resource_summary_exposes_health() -> None:
+    class FakeApps:
+        def list_namespaced_deployment(self, namespace: str):
+            return SimpleNamespace(
+                items=[
+                    SimpleNamespace(
+                        metadata=SimpleNamespace(namespace=namespace, name="web"),
+                        spec=SimpleNamespace(replicas=2),
+                        status=SimpleNamespace(ready_replicas=2, available_replicas=2, unavailable_replicas=0),
+                    )
+                ]
+            )
+
+    cluster = ClusterClient("test-cluster", object(), FakeApps())
+    resource = cluster.resources("deployments", "default")[0]
+    assert resource.status == "2"
+    assert resource.health == "healthy"
+
+
+def test_resources_route_returns_health_field(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KUBEPILOT_AUTH_SECRET", "x" * 32)
+    monkeypatch.setenv("KUBEPILOT_DATABASE_URL", "sqlite:///:memory:")
+    from app.main import create_app
+
+    class HealthClient(ClusterClient):
+        def resources(self, resource_type: str, namespace: str | None):
+            return [ResourceSummary("test-cluster", namespace, "Deployment", "web", "2", "healthy")]
+
+    app = create_app()
+    app.dependency_overrides[get_current_actor] = lambda: AuthenticatedActor("ops", "admin")
+    app.dependency_overrides[get_cluster_client] = lambda: HealthClient("test", object(), object())
+    with TestClient(app) as client:
+        response = client.get("/api/v1/cluster/resources/deployments?namespace=default")
+    assert response.status_code == 200
+    assert response.json()["items"][0]["health"] == "healthy"
