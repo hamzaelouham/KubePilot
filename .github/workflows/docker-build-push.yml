@@ -9,6 +9,12 @@ on:
           Leave empty to use the branch name (slashes are converted to dashes).
         required: false
         default: ""
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "backend/**"
+      - "k8s-ui/**"
+      - ".github/workflows/docker-build-push.yml"
 
 permissions:
   contents: read
@@ -30,7 +36,7 @@ jobs:
         run: |
           TAG="${{ github.event.inputs.tag }}"
           if [ -z "$TAG" ]; then
-            TAG="${{ github.ref_name }}"
+            TAG="${{ github.head_ref || github.ref_name }}"
           fi
           TAG="${TAG//\//-}"
           echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
