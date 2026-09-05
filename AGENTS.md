@@ -229,6 +229,7 @@ checks do not make the Blueprint unusable.
 - Backend syntax check: `cd backend && python3 -m compileall -q app`
 - Backend tests: `cd backend && python3 -m pytest`
 - Backend migration SQL check: `cd backend && PYTHONPATH=. alembic upgrade head --sql`
+- Verify: `cd backend && .venv/bin/python3 -m pytest && cd k8s-ui && yarn verify`
 - Docker images (GitHub Actions, reliable egress - use instead of local builds when the local `yarn install` hangs):
   - The manual workflow `.github/workflows/docker-build-push.yml` builds both images on a GitHub runner and pushes
     `hamzaelouham/kubepilot-backend:<tag>` and `hamzaelouham/kubepilot-ui:<tag>` plus `latest` to Docker Hub.
@@ -243,9 +244,7 @@ checks do not make the Blueprint unusable.
   - Open UI: `minikube service kubepilot-ui -n kubepilot`
   - Teardown: `minikube kubectl -- delete -f backend/deploy/kubernetes/`
 
-Testing is opt-in for this project. There is no test runner configured yet, so no project-level `test` command is declared in this repo at the moment.
-
-If the team later adds a test runner, update this section with the real command and then use that command as the project verification gate for logic-bearing work. Browser testing remains a separate opt-in task and should only be added explicitly through `/browser-tests` or `$browser-tests` when the project is ready for UI automation.
+The backend uses pytest as its unit test runner (see Backend tests above); the frontend has no test runner. The combined project gate is the `Verify` command above. Browser testing remains a separate opt-in task and should only be added explicitly through `/browser-tests` or `$browser-tests` when the project is ready for UI automation.
 
 <!-- BEGIN:nextjs-agent-rules -->
  
