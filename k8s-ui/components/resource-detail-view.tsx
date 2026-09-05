@@ -360,6 +360,23 @@ export default function ResourceDetailView({
   const [eventState, setEventState] = useState<EventState>({ status: "loading" });
   const router = useRouter();
 
+  const requestKey = `${resourceType}\0${name}\0${namespace ?? ""}`;
+  const [prevRequestKey, setPrevRequestKey] = useState(requestKey);
+  if (prevRequestKey !== requestKey) {
+    setPrevRequestKey(requestKey);
+    setDetailState({ status: "loading" });
+    setYamlState({ status: "loading" });
+    setLogState({ status: "loading" });
+    setEventState({ status: "loading" });
+  }
+  const [prevActiveTab, setPrevActiveTab] = useState(activeTab);
+  if (prevActiveTab !== activeTab) {
+    setPrevActiveTab(activeTab);
+    if (activeTab === "yaml") setYamlState({ status: "loading" });
+    if (activeTab === "logs") setLogState({ status: "loading" });
+    if (activeTab === "events") setEventState({ status: "loading" });
+  }
+
   const handleNav = (resource: string, ns: string) => {
     const params = new URLSearchParams({ resource, namespace: ns });
     router.push(`/dashboard?${params.toString()}`);
@@ -369,7 +386,6 @@ export default function ResourceDetailView({
     if (!name) return;
 
     const controller = new AbortController();
-    setDetailState({ status: "loading" });
 
     const params = new URLSearchParams({ tab: "detail" });
     if (namespace) params.set("namespace", namespace);
@@ -395,7 +411,6 @@ export default function ResourceDetailView({
     if (!name || activeTab !== "yaml") return;
 
     const controller = new AbortController();
-    setYamlState({ status: "loading" });
 
     const params = new URLSearchParams({ tab: "yaml" });
     if (namespace) params.set("namespace", namespace);
@@ -421,7 +436,6 @@ export default function ResourceDetailView({
     if (!name || activeTab !== "logs") return;
 
     const controller = new AbortController();
-    setLogState({ status: "loading" });
 
     const params = new URLSearchParams({ tab: "logs" });
     if (namespace) params.set("namespace", namespace);
@@ -447,7 +461,6 @@ export default function ResourceDetailView({
     if (!name || activeTab !== "events") return;
 
     const controller = new AbortController();
-    setEventState({ status: "loading" });
 
     const params = new URLSearchParams({ tab: "events" });
     if (namespace) params.set("namespace", namespace);

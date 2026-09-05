@@ -131,8 +131,7 @@ export function OverviewView() {
 
   useEffect(() => {
     abortRef.current?.abort();
-    setState({ status: "loading" });
-    load();
+    void Promise.resolve().then(load);
     return () => abortRef.current?.abort();
   }, [load]);
 

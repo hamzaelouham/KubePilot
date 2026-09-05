@@ -18,6 +18,7 @@ from app.core.dependencies import (
     get_settings,
 )
 from app.core.config import Settings
+from app.core.passwords import hash_password, verify_password
 from app.models.entities import Session, UserAccount
 
 from .schemas import ActorResponse, HealthResponse
@@ -44,12 +45,6 @@ from .metrics_schemas import (
 from app.kubernetes.client import ClusterClient, ClusterMetricsError
 
 router = APIRouter()
-
-
-def _password_hash(password: str) -> str:
-    salt = hashlib.sha256(b"kubepilot-password-salt").digest()
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 120_000)
-    return "pbkdf2_sha256$120000$" + digest.hex()
 
 
 def _signed_cookie(email: str, expires_at: int, secret: str) -> tuple[str, str]:
@@ -80,15 +75,25 @@ def login(
     settings: Annotated[Settings, Depends(get_settings)],
     database: Annotated[SQLAlchemySession, Depends(get_database_session)],
 ) -> LoginResponse:
-    if credentials.email.strip().lower() != settings.admin_email or credentials.password != settings.admin_password:
-        raise HTTPException(status_code=401, detail={"code": "authentication_required", "message": "Authentication is required"})
-    user = database.scalar(select(UserAccount).where(UserAccount.email == settings.admin_email))
+    _forbidden = {"code": "authentication_required", "message": "Authentication is required"}
+    email = credentials.email.strip().lower()
+    is_admin_email = email == settings.admin_email
+    user = database.scalar(select(UserAccount).where(UserAccount.email == email))
     if user is None:
-        user = UserAccount(email=settings.admin_email, password_hash=_password_hash(credentials.password), role="admin")
+        if not is_admin_email or credentials.password != settings.admin_password:
+            raise HTTPException(status_code=401, detail=_forbidden)
+        user = UserAccount(email=email, password_hash=hash_password(credentials.password), role="admin")
         database.add(user)
         database.flush()
+    elif is_admin_email:
+        if credentials.password != settings.admin_password:
+            raise HTTPException(status_code=401, detail=_forbidden)
+        if not verify_password(credentials.password, user.password_hash):
+            user.password_hash = hash_password(credentials.password)
+    elif not verify_password(credentials.password, user.password_hash):
+        raise HTTPException(status_code=401, detail=_forbidden)
     expires_at = int((time.time() + 60 * 60 * 12) * 1000)
-    cookie, token_hash = _signed_cookie(settings.admin_email, expires_at, settings.auth_secret)
+    cookie, token_hash = _signed_cookie(email, expires_at, settings.auth_secret)
     database.add(Session(user_id=user.id, token_hash=token_hash, expires_at=datetime.fromtimestamp(expires_at / 1000, tz=timezone.utc)))
     database.commit()
     return LoginResponse(cookie=cookie, expires_at=expires_at)

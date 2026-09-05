@@ -235,13 +235,19 @@ export function CoreResourceView({ resource, namespace }: { resource: string; na
     }
   }, [resource, namespace]);
 
+  const requestKey = `${resource}\0${namespace}`;
+  const [prevRequestKey, setPrevRequestKey] = useState(requestKey);
+  if (prevRequestKey !== requestKey) {
+    setPrevRequestKey(requestKey);
+    setState({ status: "loading" });
+    setMetricsState({ status: "idle" });
+  }
+
   useEffect(() => {
     abortRef.current?.abort();
     metricsAbortRef.current?.abort();
-    setState({ status: "loading" });
-    setMetricsState({ status: "idle" });
-    load();
-    if (metricsEnabledResources.has(resource)) loadMetrics();
+    void Promise.resolve().then(load);
+    if (metricsEnabledResources.has(resource)) void Promise.resolve().then(loadMetrics);
     return () => {
       abortRef.current?.abort();
       metricsAbortRef.current?.abort();
