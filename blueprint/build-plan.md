@@ -30,7 +30,7 @@
 * [ ] 12. **RBAC and multi-user controls** - support role-based access and more granular permissions across cluster operations.
 
   * [x] 12a. **Multi-user authentication** - authenticate any provisioned app user against database-backed accounts, seed the environment-configured admin on first login, and keep per-user sessions.
-  * [ ] 12b. **User management** - add admin-only user provisioning: create and list users, assign admin/operator/viewer roles, and deactivate accounts through backend endpoints and an admin UI.
+  * [x] 12b. **User management** - add admin-only user provisioning: create and list users, assign admin/operator/viewer roles, and deactivate accounts through backend endpoints and an admin UI.
   * [ ] 12c. **Role-based access enforcement** - enforce admin/operator/viewer permissions on cluster operations in the backend and make the frontend navigation and surfaces role-aware.
 
 * [ ] 13. **Multi-cluster support** - connect and compare multiple Kubernetes environments from one interface.

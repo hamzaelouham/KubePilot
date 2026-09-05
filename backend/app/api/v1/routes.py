@@ -92,6 +92,8 @@ def login(
             user.password_hash = hash_password(credentials.password)
     elif not verify_password(credentials.password, user.password_hash):
         raise HTTPException(status_code=401, detail=_forbidden)
+    if not user.is_active:
+        raise HTTPException(status_code=401, detail=_forbidden)
     expires_at = int((time.time() + 60 * 60 * 12) * 1000)
     cookie, token_hash = _signed_cookie(email, expires_at, settings.auth_secret)
     database.add(Session(user_id=user.id, token_hash=token_hash, expires_at=datetime.fromtimestamp(expires_at / 1000, tz=timezone.utc)))
