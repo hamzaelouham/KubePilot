@@ -5,6 +5,7 @@ import Link from "next/link";
 import { healthTone, type Health } from "@/lib/status-tone";
 import { formatLastUpdated, usePolling } from "@/lib/use-polling";
 import { MetricBar } from "@/components/metric-bar";
+import { DataTable, type DataTableColumn } from "@/components/data-table";
 import {
   formatMillicores,
   formatBytes,
@@ -34,6 +35,87 @@ type ClusterState =
       metricsAvailable: boolean;
     }
   | { status: "error"; message: string };
+
+type ClusterResourceRow = Resource;
+
+function nodeNameColumn(): DataTableColumn<ClusterResourceRow> {
+  return {
+    accessorKey: "name",
+    header: "Name",
+    cell: ({ row }) => (
+      <Link
+        href={`/dashboard/detail?resourceType=nodes&name=${encodeURIComponent(row.original.name)}`}
+        className="font-medium text-cyan-600 hover:underline"
+      >
+        {row.original.name}
+      </Link>
+    ),
+  };
+}
+
+function nodeUtilizationColumn(
+  kind: "cpu" | "memory",
+  metrics: Map<string, NodeMetricItem>,
+): DataTableColumn<ClusterResourceRow> {
+  const header = kind === "cpu" ? "CPU" : "Memory";
+  const label = header;
+  const usage = (metric: NodeMetricItem) =>
+    kind === "cpu" ? metric.cpu_usage_millicores : metric.memory_usage_bytes;
+  const allocatable = (metric: NodeMetricItem) =>
+    kind === "cpu" ? metric.cpu_allocatable_millicores : metric.memory_allocatable_bytes;
+  const format = (value: number) => (kind === "cpu" ? formatMillicores(value) : formatBytes(value));
+  return {
+    id: kind,
+    header,
+    cell: ({ row }) => {
+      const metric = metrics.get(row.original.name);
+      const percent = metric ? utilizationPercent(usage(metric), allocatable(metric)) : null;
+      return (
+        <MetricBar
+          label={label}
+          value={metric ? `${format(usage(metric))}${percent !== null ? ` (${percent}%)` : ""}` : "—"}
+          percent={percent}
+          toneClass="text-slate-700"
+        />
+      );
+    },
+  };
+}
+
+const clusterStatusColumn: DataTableColumn<ClusterResourceRow> = {
+  accessorKey: "health",
+  header: "Status",
+  cell: ({ row }) => (
+    <span className={`inline-flex rounded-full px-2 py-1 text-sm font-medium ${healthTone(row.original.health).pill}`}>
+      {healthTone(row.original.health).short}
+    </span>
+  ),
+};
+
+function pvNameColumn(): DataTableColumn<ClusterResourceRow> {
+  return {
+    accessorKey: "name",
+    header: "Name",
+    cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
+  };
+}
+
+function pvCapacityColumn(metrics: Map<string, StorageMetricsItem>): DataTableColumn<ClusterResourceRow> {
+  return {
+    id: "capacity",
+    header: "Capacity",
+    cell: ({ row }) => {
+      const capacityBytes = metrics.get(row.original.name)?.capacity_bytes;
+      return <span className="text-sm">{capacityBytes != null ? formatBytes(capacityBytes) : "—"}</span>;
+    },
+  };
+}
+
+const storageClassNameColumn: DataTableColumn<ClusterResourceRow> = {
+  accessorKey: "name",
+  header: "Name",
+  cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
+};
 
 export function ClusterView() {
   const [state, setState] = useState<ClusterState>({ status: "loading" });
@@ -106,6 +188,23 @@ export function ClusterView() {
   const nodeMetricsByName = new Map(nodeMetrics.map((n) => [n.name, n]));
   const storageMetricsByName = new Map(storageMetrics.map((s) => [s.name, s]));
 
+  const nodeColumns: DataTableColumn<ClusterResourceRow>[] = [
+    nodeNameColumn(),
+    nodeUtilizationColumn("cpu", nodeMetricsByName),
+    nodeUtilizationColumn("memory", nodeMetricsByName),
+    clusterStatusColumn,
+  ];
+  const pvColumns: DataTableColumn<ClusterResourceRow>[] = [
+    pvNameColumn(),
+    pvCapacityColumn(storageMetricsByName),
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }) => <span className="text-sm">{row.original.status}</span>,
+    },
+  ];
+  const storageClassColumns: DataTableColumn<ClusterResourceRow>[] = [storageClassNameColumn];
+
   const totalCpu = nodeMetrics.reduce((sum, n) => sum + (n.cpu_usage_millicores ?? 0), 0);
   const totalMemory = nodeMetrics.reduce((sum, n) => sum + (n.memory_usage_bytes ?? 0), 0);
   const unhealthyNodes = nodes.filter((n) => n.health === "warning" || n.health === "error").length;
@@ -154,119 +253,34 @@ export function ClusterView() {
         </div>
       )}
 
-      <div className="rounded-xl border border-slate-200 bg-white">
-        <div className="border-b border-slate-200 px-4 py-3">
-          <h3 className="text-2xl font-semibold text-slate-700">Node Utilization</h3>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-base">
-            <thead className="bg-slate-100 text-slate-600">
-              <tr>
-                <th className="px-4 py-3 font-medium">Name</th>
-                <th className="px-4 py-3 font-medium">CPU</th>
-                <th className="px-4 py-3 font-medium">Memory</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {nodes.map((node) => {
-                const metric = nodeMetricsByName.get(node.name);
-                const cpuPct = metric ? utilizationPercent(metric.cpu_usage_millicores, metric.cpu_allocatable_millicores) : null;
-                const memPct = metric ? utilizationPercent(metric.memory_usage_bytes, metric.memory_allocatable_bytes) : null;
-                return (
-                  <tr key={node.name} className="border-t border-slate-200 text-slate-700 hover:bg-slate-50">
-                    <td className="px-4 py-3 font-medium">
-                      <Link href={`/dashboard/detail?resourceType=nodes&name=${encodeURIComponent(node.name)}`} className="text-cyan-600 hover:underline">
-                        {node.name}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3">
-                      <MetricBar
-                        label="CPU"
-                        value={metric ? `${formatMillicores(metric.cpu_usage_millicores)}${cpuPct !== null ? ` (${cpuPct}%)` : ""}` : "—"}
-                        percent={cpuPct}
-                        toneClass="text-slate-700"
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <MetricBar
-                        label="Memory"
-                        value={metric ? `${formatBytes(metric.memory_usage_bytes)}${memPct !== null ? ` (${memPct}%)` : ""}` : "—"}
-                        percent={memPct}
-                        toneClass="text-slate-700"
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex rounded-full px-2 py-1 text-sm font-medium ${healthTone(node.health).pill}`}>
-                        {healthTone(node.health).short}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-              {nodes.length === 0 ? <tr><td colSpan={4} className="px-4 py-4 text-slate-500">No nodes found.</td></tr> : null}
-            </tbody>
-          </table>
-        </div>
-        {!metricsAvailable && (
-          <p className="border-t border-slate-200 px-4 py-3 text-sm text-amber-700">
-            Node metrics are unavailable. Metrics server may not be installed in this cluster.
-          </p>
-        )}
-      </div>
+      <DataTable
+        title={<h3 className="text-2xl font-semibold text-slate-700">Node Utilization</h3>}
+        columns={nodeColumns}
+        data={nodes}
+        placeholder="No nodes found."
+        searchPlaceholder="Filter nodes…"
+      />
+      {!metricsAvailable && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
+          Node metrics are unavailable. Metrics server may not be installed in this cluster.
+        </p>
+      )}
 
-      <div className="rounded-xl border border-slate-200 bg-white">
-        <div className="border-b border-slate-200 px-4 py-3">
-          <h3 className="text-2xl font-semibold text-slate-700">Persistent Volumes</h3>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-base">
-            <thead className="bg-slate-100 text-slate-600">
-              <tr>
-                <th className="px-4 py-3 font-medium">Name</th>
-                <th className="px-4 py-3 font-medium">Capacity</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {persistentVolumes.map((pv) => {
-                const storageMetric = storageMetricsByName.get(pv.name);
-                return (
-                  <tr key={pv.name} className="border-t border-slate-200 text-slate-700">
-                    <td className="px-4 py-3 font-medium">{pv.name}</td>
-                    <td className="px-4 py-3 text-sm">{storageMetric?.capacity_bytes != null ? formatBytes(storageMetric.capacity_bytes) : "—"}</td>
-                    <td className="px-4 py-3 text-sm">{pv.status}</td>
-                  </tr>
-                );
-              })}
-              {persistentVolumes.length === 0 ? <tr><td colSpan={3} className="px-4 py-4 text-slate-500">No persistent volumes found.</td></tr> : null}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <DataTable
+        title={<h3 className="text-2xl font-semibold text-slate-700">Persistent Volumes</h3>}
+        columns={pvColumns}
+        data={persistentVolumes}
+        placeholder="No persistent volumes found."
+        searchPlaceholder="Filter persistent volumes…"
+      />
 
-      <div className="rounded-xl border border-slate-200 bg-white">
-        <div className="border-b border-slate-200 px-4 py-3">
-          <h3 className="text-2xl font-semibold text-slate-700">Storage Classes</h3>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-base">
-            <thead className="bg-slate-100 text-slate-600">
-              <tr>
-                <th className="px-4 py-3 font-medium">Name</th>
-              </tr>
-            </thead>
-            <tbody>
-              {storageClasses.map((sc) => (
-                <tr key={sc.name} className="border-t border-slate-200 text-slate-700">
-                  <td className="px-4 py-3 font-medium">{sc.name}</td>
-                </tr>
-              ))}
-              {storageClasses.length === 0 ? <tr><td className="px-4 py-4 text-slate-500">No storage classes found.</td></tr> : null}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <DataTable
+        title={<h3 className="text-2xl font-semibold text-slate-700">Storage Classes</h3>}
+        columns={storageClassColumns}
+        data={storageClasses}
+        placeholder="No storage classes found."
+        searchPlaceholder="Filter storage classes…"
+      />
     </div>
   );
 }

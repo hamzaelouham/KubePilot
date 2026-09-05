@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { healthTone, type Health } from "@/lib/status-tone";
 import { formatLastUpdated, usePolling } from "@/lib/use-polling";
+import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { formatMillicores, formatBytes, type NamespaceMetricSummary, type MetricsSummaryResponse } from "@/lib/metrics";
 
 type Resource = { cluster: string; namespace: string | null; kind: string; name: string; status: string; health: Health };
@@ -12,6 +13,62 @@ type OverviewState =
   | { status: "loading" }
   | { status: "ready"; deployments: Resource[]; pods: Resource[]; namespaceSummary: NamespaceMetricSummary[]; metricsAvailable: boolean }
   | { status: "error"; message: string };
+
+type OverviewResourceRow = Resource;
+
+const namespaceUtilizationColumns: DataTableColumn<NamespaceMetricSummary>[] = [
+  {
+    accessorKey: "namespace",
+    header: "Namespace",
+    cell: ({ row }) => <span className="font-medium">{row.original.namespace}</span>,
+  },
+  {
+    accessorKey: "cpu_usage_millicores",
+    header: "CPU",
+    cell: ({ row }) => <span className="text-sm">{formatMillicores(row.original.cpu_usage_millicores)}</span>,
+  },
+  {
+    accessorKey: "memory_usage_bytes",
+    header: "Memory",
+    cell: ({ row }) => <span className="text-sm">{formatBytes(row.original.memory_usage_bytes)}</span>,
+  },
+  {
+    accessorKey: "pod_count",
+    header: "Pods",
+    cell: ({ row }) => <span>{row.original.pod_count}</span>,
+  },
+];
+
+const deploymentColumns: DataTableColumn<OverviewResourceRow>[] = [
+  {
+    accessorKey: "name",
+    header: "Name",
+    cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
+  },
+  {
+    accessorKey: "namespace",
+    header: "Namespace",
+    cell: ({ row }) => (
+      <span className="inline-flex rounded-full bg-slate-200 px-2 py-1 text-sm text-slate-600">
+        {row.original.namespace ?? "All namespaces"}
+      </span>
+    ),
+  },
+  {
+    accessorKey: "status",
+    header: "Ready",
+    cell: ({ row }) => <span>{row.original.status}</span>,
+  },
+  {
+    accessorKey: "health",
+    header: "Status",
+    cell: ({ row }) => (
+      <span className={`inline-flex rounded-full px-2 py-1 text-sm font-medium ${healthTone(row.original.health).pill}`}>
+        {healthTone(row.original.health).short}
+      </span>
+    ),
+  },
+];
 
 function DonutChart({ values, colors }: { values: number[]; colors: string[] }) {
   const [a, b] = values;
@@ -146,33 +203,12 @@ export function OverviewView() {
       </div>
 
       {namespaceSummary.length > 0 && (
-        <div className="rounded-xl border border-slate-200 bg-white">
-          <div className="border-b border-slate-200 px-4 py-3">
-            <h3 className="text-2xl font-semibold text-slate-700">Namespace Utilization</h3>
-          </div>
-          <div className="overflow-hidden">
-            <table className="min-w-full text-left text-base">
-              <thead className="bg-slate-100 text-slate-600">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Namespace</th>
-                  <th className="px-4 py-3 font-medium">CPU</th>
-                  <th className="px-4 py-3 font-medium">Memory</th>
-                  <th className="px-4 py-3 font-medium">Pods</th>
-                </tr>
-              </thead>
-              <tbody>
-                {namespaceSummary.map((ns) => (
-                  <tr key={ns.namespace} className="border-t border-slate-200 text-slate-700">
-                    <td className="px-4 py-4 font-medium">{ns.namespace}</td>
-                    <td className="px-4 py-4 text-sm">{formatMillicores(ns.cpu_usage_millicores)}</td>
-                    <td className="px-4 py-4 text-sm">{formatBytes(ns.memory_usage_bytes)}</td>
-                    <td className="px-4 py-4">{ns.pod_count}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <DataTable
+          title={<h3 className="text-2xl font-semibold text-slate-700">Namespace Utilization</h3>}
+          columns={namespaceUtilizationColumns}
+          data={namespaceSummary}
+          searchPlaceholder="Filter namespaces…"
+        />
       )}
 
       {!metricsAvailable && namespaceSummary.length === 0 && (
@@ -181,42 +217,13 @@ export function OverviewView() {
         </p>
       )}
 
-      <div className="rounded-xl border border-slate-200 bg-white">
-        <div className="border-b border-slate-200 px-4 py-3">
-          <h3 className="text-2xl font-semibold text-slate-700">Deployments</h3>
-        </div>
-        <div className="overflow-hidden">
-          <table className="min-w-full text-left text-base">
-            <thead className="bg-slate-100 text-slate-600">
-              <tr>
-                <th className="px-4 py-3 font-medium">Name</th>
-                <th className="px-4 py-3 font-medium">Namespace</th>
-                <th className="px-4 py-3 font-medium">Ready</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {deployments.map((item) => (
-                <tr key={`${item.namespace}-${item.name}`} className="border-t border-slate-200 text-slate-700">
-                  <td className="px-4 py-4 font-medium">{item.name}</td>
-                  <td className="px-4 py-4">
-                    <span className="inline-flex rounded-full bg-slate-200 px-2 py-1 text-sm text-slate-600">{item.namespace ?? "All namespaces"}</span>
-                  </td>
-                  <td className="px-4 py-4">{item.status}</td>
-                  <td className="px-4 py-4">
-                    <span className={`inline-flex rounded-full px-2 py-1 text-sm font-medium ${healthTone(item.health).pill}`}>
-                      {healthTone(item.health).short}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-              {deployments.length === 0 ? (
-                <tr><td colSpan={4} className="px-4 py-4 text-slate-500">No deployments found.</td></tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <DataTable
+        title={<h3 className="text-2xl font-semibold text-slate-700">Deployments</h3>}
+        columns={deploymentColumns}
+        data={deployments}
+        placeholder="No deployments found."
+        searchPlaceholder="Filter deployments…"
+      />
     </div>
   );
 }

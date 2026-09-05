@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { healthTone, type Health } from "@/lib/status-tone";
 import { formatLastUpdated, usePolling } from "@/lib/use-polling";
-import { MetricBar } from "@/components/metric-bar";
+import { DataTable, type DataTableColumn } from "@/components/data-table";
 import {
   formatMillicores,
   formatBytes,
@@ -39,29 +39,138 @@ type MetricsState =
   | { status: "ready"; available: boolean; nodeItems: NodeMetricItem[]; workloadItems: WorkloadMetricItem[]; storageItems: StorageMetricsItem[] }
   | { status: "error"; message: string };
 
-const columns: Record<string, string[]> = {
-  pods: ["Name", "Namespace", "CPU", "Memory", "Status"],
-  deployments: ["Name", "Namespace", "CPU", "Memory", "Status"],
-  replicaSets: ["Name", "Namespace", "Status"],
-  services: ["Name", "Namespace", "Status"],
-  "replica-sets": ["Name", "Namespace", "Status"],
-  "daemon-sets": ["Name", "Namespace", "CPU", "Memory", "Status"],
-  "stateful-sets": ["Name", "Namespace", "CPU", "Memory", "Status"],
-  jobs: ["Name", "Namespace", "Status"],
-  "cron-jobs": ["Name", "Namespace", "Status"],
-  "replication-controllers": ["Name", "Namespace", "Status"],
-  nodes: ["Name", "CPU", "Memory", "Status", "Cluster"],
-  "persistent-volumes": ["Name", "Capacity", "Status"],
-  "persistent-volume-claims": ["Name", "Namespace", "Capacity", "Status"],
-  "cluster-roles": ["Name", "Status"],
-  "storage-classes": ["Name", "Status"],
-};
-
 const clusterScoped = new Set(["nodes", "persistent-volumes", "cluster-roles", "storage-classes"]);
 const nodeMetricsResources = new Set(["nodes"]);
 const workloadMetricsResources = new Set(["pods", "deployments", "daemon-sets", "stateful-sets"]);
 const storageMetricsResources = new Set(["persistent-volumes", "persistent-volume-claims"]);
 const metricsEnabledResources = new Set([...nodeMetricsResources, ...workloadMetricsResources, ...storageMetricsResources]);
+
+type ResourceRow = Resource;
+
+function nameColumn(resource: string): DataTableColumn<ResourceRow> {
+  return {
+    accessorKey: "name",
+    header: "Name",
+    cell: ({ row }) => {
+      const item = row.original;
+      const detailParams = new URLSearchParams({
+        resourceType: resource,
+        name: item.name,
+      });
+      if (item.namespace) detailParams.set("namespace", item.namespace);
+      return (
+        <Link
+          href={`/dashboard/detail?${detailParams}`}
+          className="font-medium text-cyan-600 hover:underline"
+        >
+          {item.name}
+        </Link>
+      );
+    },
+  };
+}
+
+const namespaceColumn: DataTableColumn<ResourceRow> = {
+  accessorKey: "namespace",
+  header: "Namespace",
+  cell: ({ row }) => row.original.namespace ?? "All namespaces",
+};
+
+const clusterColumn: DataTableColumn<ResourceRow> = {
+  accessorKey: "cluster",
+  header: "Cluster",
+};
+
+function nodeCpuColumn(metrics: Map<string, NodeMetricItem>): DataTableColumn<ResourceRow> {
+  return {
+    id: "cpu",
+    header: "CPU",
+    cell: ({ row }) => {
+      const metric = metrics.get(row.original.name);
+      if (!metric) return <span className="text-slate-400">—</span>;
+      const cpuPercent = utilizationPercent(metric.cpu_usage_millicores, metric.cpu_allocatable_millicores);
+      return (
+        <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${utilizationToneClasses(cpuPercent !== null && cpuPercent >= 90 ? "critical" : cpuPercent !== null && cpuPercent >= 70 ? "warning" : "good")}`}>
+          {formatMillicores(metric.cpu_usage_millicores)} / {metric.cpu_allocatable_millicores !== null ? formatMillicores(metric.cpu_allocatable_millicores) : "—"}
+          {cpuPercent !== null ? ` (${cpuPercent}%)` : ""}
+        </span>
+      );
+    },
+  };
+}
+
+function nodeMemoryColumn(metrics: Map<string, NodeMetricItem>): DataTableColumn<ResourceRow> {
+  return {
+    id: "memory",
+    header: "Memory",
+    cell: ({ row }) => {
+      const metric = metrics.get(row.original.name);
+      if (!metric) return <span className="text-slate-400">—</span>;
+      const memPercent = utilizationPercent(metric.memory_usage_bytes, metric.memory_allocatable_bytes);
+      return (
+        <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${utilizationToneClasses(memPercent !== null && memPercent >= 90 ? "critical" : memPercent !== null && memPercent >= 70 ? "warning" : "good")}`}>
+          {formatBytes(metric.memory_usage_bytes)} / {metric.memory_allocatable_bytes !== null ? formatBytes(metric.memory_allocatable_bytes) : "—"}
+          {memPercent !== null ? ` (${memPercent}%)` : ""}
+        </span>
+      );
+    },
+  };
+}
+
+function workloadCpuColumn(metrics: Map<string, WorkloadMetricItem>): DataTableColumn<ResourceRow> {
+  return {
+    id: "cpu",
+    header: "CPU",
+    cell: ({ row }) => {
+      const metric = metrics.get(row.original.name);
+      return metric ? (
+        <span className="text-sm">{formatMillicores(metric.cpu_usage_millicores)}</span>
+      ) : (
+        <span className="text-slate-400">—</span>
+      );
+    },
+  };
+}
+
+function workloadMemoryColumn(metrics: Map<string, WorkloadMetricItem>): DataTableColumn<ResourceRow> {
+  return {
+    id: "memory",
+    header: "Memory",
+    cell: ({ row }) => {
+      const metric = metrics.get(row.original.name);
+      return metric ? (
+        <span className="text-sm">{formatBytes(metric.memory_usage_bytes)}</span>
+      ) : (
+        <span className="text-slate-400">—</span>
+      );
+    },
+  };
+}
+
+function capacityColumn(metrics: Map<string, StorageMetricsItem>): DataTableColumn<ResourceRow> {
+  return {
+    id: "capacity",
+    header: "Capacity",
+    cell: ({ row }) => {
+      const capacityBytes = metrics.get(row.original.name)?.capacity_bytes;
+      return capacityBytes != null ? (
+        <span className="text-sm">{formatBytes(capacityBytes)}</span>
+      ) : (
+        <span className="text-slate-400">—</span>
+      );
+    },
+  };
+}
+
+const statusColumn: DataTableColumn<ResourceRow> = {
+  accessorKey: "status",
+  header: "Status",
+  cell: ({ row }) => (
+    <span className={`inline-flex rounded-full px-2 py-1 text-sm font-medium ${healthTone(row.original.health).pill}`}>
+      {row.original.status}
+    </span>
+  ),
+};
 
 export function CoreResourceView({ resource, namespace }: { resource: string; namespace: string }) {
   const [state, setState] = useState<ResourceState>({ status: "loading" });
@@ -147,7 +256,6 @@ export function CoreResourceView({ resource, namespace }: { resource: string; na
   });
 
   const title = resource.charAt(0).toUpperCase() + resource.slice(1);
-  const tableColumns = columns[resource] ?? columns.pods;
 
   const nodeMetricsByName = new Map<string, NodeMetricItem>();
   const workloadMetricsByName = new Map<string, WorkloadMetricItem>();
@@ -158,7 +266,19 @@ export function CoreResourceView({ resource, namespace }: { resource: string; na
     for (const item of metricsState.storageItems) storageMetricsByName.set(item.name, item);
   }
 
-  const metricsUnavailable = metricsEnabledResources.has(resource) && metricsState.status === "ready" && !metricsState.available;
+  const tableColumns: DataTableColumn<ResourceRow>[] = [
+    nameColumn(resource),
+    ...(clusterScoped.has(resource) ? [] : [namespaceColumn]),
+    ...(nodeMetricsResources.has(resource)
+      ? [nodeCpuColumn(nodeMetricsByName), nodeMemoryColumn(nodeMetricsByName)]
+      : []),
+    ...(workloadMetricsResources.has(resource)
+      ? [workloadCpuColumn(workloadMetricsByName), workloadMemoryColumn(workloadMetricsByName)]
+      : []),
+    ...(storageMetricsResources.has(resource) ? [capacityColumn(storageMetricsByName)] : []),
+    statusColumn,
+    ...(resource === "nodes" ? [clusterColumn] : []),
+  ];
 
   return (
     <div className="space-y-6">
@@ -191,101 +311,12 @@ export function CoreResourceView({ resource, namespace }: { resource: string; na
 
       {state.status === "ready" && state.items.length === 0 ? <p className="rounded-lg bg-slate-100 p-5 text-slate-500">No {title.toLowerCase()} found for this scope.</p> : null}
       {state.status === "ready" && state.items.length > 0 ? (
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-          <table className="min-w-full text-left text-base">
-            <thead className="bg-slate-100 text-slate-600">
-              <tr>{tableColumns.map((column) => <th key={column} className="px-4 py-3 font-medium">{column}</th>)}</tr>
-            </thead>
-            <tbody>
-              {state.items.map((item) => {
-                const detailParams = new URLSearchParams({
-                  resourceType: resource,
-                  name: item.name,
-                });
-                if (item.namespace) detailParams.set("namespace", item.namespace);
-
-                const nodeMetric = nodeMetricsByName.get(item.name);
-                const cpuPercent = nodeMetric ? utilizationPercent(nodeMetric.cpu_usage_millicores, nodeMetric.cpu_allocatable_millicores) : null;
-                const memPercent = nodeMetric ? utilizationPercent(nodeMetric.memory_usage_bytes, nodeMetric.memory_allocatable_bytes) : null;
-
-                const workloadMetric = workloadMetricsByName.get(item.name);
-
-                return (
-                  <tr key={`${item.kind}-${item.namespace ?? "cluster"}-${item.name}`} className="border-t border-slate-200 text-slate-700 hover:bg-slate-50">
-                    <td className="px-4 py-3 font-medium">
-                      <Link
-                        href={`/dashboard/detail?${detailParams}`}
-                        className="text-cyan-600 hover:underline"
-                      >
-                        {item.name}
-                      </Link>
-                    </td>
-                    {!clusterScoped.has(resource) ? <td className="px-4 py-3">{item.namespace ?? "All namespaces"}</td> : null}
-                    {nodeMetricsResources.has(resource) ? (
-                      <>
-                        <td className="px-4 py-3">
-                          {nodeMetric ? (
-                            <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${utilizationToneClasses(cpuPercent !== null && cpuPercent >= 90 ? "critical" : cpuPercent !== null && cpuPercent >= 70 ? "warning" : "good")}`}>
-                              {formatMillicores(nodeMetric.cpu_usage_millicores)} / {nodeMetric.cpu_allocatable_millicores !== null ? formatMillicores(nodeMetric.cpu_allocatable_millicores) : "—"}
-                              {cpuPercent !== null ? ` (${cpuPercent}%)` : ""}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400">—</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          {nodeMetric ? (
-                            <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${utilizationToneClasses(memPercent !== null && memPercent >= 90 ? "critical" : memPercent !== null && memPercent >= 70 ? "warning" : "good")}`}>
-                              {formatBytes(nodeMetric.memory_usage_bytes)} / {nodeMetric.memory_allocatable_bytes !== null ? formatBytes(nodeMetric.memory_allocatable_bytes) : "—"}
-                              {memPercent !== null ? ` (${memPercent}%)` : ""}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400">—</span>
-                          )}
-                        </td>
-                      </>
-                    ) : null}
-                    {workloadMetricsResources.has(resource) ? (
-                      <>
-                        <td className="px-4 py-3">
-                          {workloadMetric ? (
-                            <span className="text-sm">{formatMillicores(workloadMetric.cpu_usage_millicores)}</span>
-                          ) : (
-                            <span className="text-slate-400">—</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          {workloadMetric ? (
-                            <span className="text-sm">{formatBytes(workloadMetric.memory_usage_bytes)}</span>
-                          ) : (
-                            <span className="text-slate-400">—</span>
-                          )}
-                        </td>
-                      </>
-                    ) : null}
-                    {storageMetricsResources.has(resource) ? (
-                      <td className="px-4 py-3">
-                        {(() => {
-                          const storageMetric = storageMetricsByName.get(item.name);
-                          if (storageMetric?.capacity_bytes != null) {
-                            return <span className="text-sm">{formatBytes(storageMetric.capacity_bytes)}</span>;
-                          }
-                          return <span className="text-slate-400">—</span>;
-                        })()}
-                      </td>
-                    ) : null}
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex rounded-full px-2 py-1 text-sm font-medium ${healthTone(item.health).pill}`}>
-                        {item.status}
-                      </span>
-                    </td>
-                    {resource === "nodes" ? <td className="px-4 py-3">{item.cluster}</td> : null}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          columns={tableColumns}
+          data={state.items}
+          placeholder={`No ${title.toLowerCase()} found for this scope.`}
+          searchPlaceholder={`Filter ${title.toLowerCase()}…`}
+        />
       ) : null}
     </div>
   );

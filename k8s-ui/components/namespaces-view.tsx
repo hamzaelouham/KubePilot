@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatLastUpdated, usePolling } from "@/lib/use-polling";
+import { DataTable, type DataTableColumn } from "@/components/data-table";
 
 type Namespace = { name: string; status: string };
 type NamespaceResponse = { items: Namespace[] };
@@ -9,6 +10,19 @@ type NamespaceState =
   | { status: "loading" }
   | { status: "ready"; items: Namespace[] }
   | { status: "error"; message: string };
+
+const tableColumns: DataTableColumn<Namespace>[] = [
+  {
+    accessorKey: "name",
+    header: "Name",
+    cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
+  },
+  {
+    accessorKey: "status",
+    header: "Status",
+    cell: ({ row }) => <span>{row.original.status}</span>,
+  },
+];
 
 export function NamespacesView() {
   const [state, setState] = useState<NamespaceState>({ status: "loading" });
@@ -61,24 +75,12 @@ export function NamespacesView() {
       {state.status === "error" ? <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-5 text-red-700">{state.message}</p> : null}
       {state.status === "ready" && state.items.length === 0 ? <p className="rounded-lg bg-slate-100 p-5 text-slate-500">No namespaces found.</p> : null}
       {state.status === "ready" && state.items.length > 0 ? (
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-          <table className="min-w-full text-left text-base">
-            <thead className="bg-slate-100 text-slate-600">
-              <tr>
-                <th className="px-4 py-3 font-medium">Name</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {state.items.map((item) => (
-                <tr key={item.name} className="border-t border-slate-200 text-slate-700">
-                  <td className="px-4 py-3 font-medium">{item.name}</td>
-                  <td className="px-4 py-3">{item.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          columns={tableColumns}
+          data={state.items}
+          placeholder="No namespaces found."
+          searchPlaceholder="Filter namespaces…"
+        />
       ) : null}
     </div>
   );

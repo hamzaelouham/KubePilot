@@ -41,7 +41,7 @@ Secondary users may include engineering managers and technical operators who nee
 
 ## 5. Tech - What stack are we using?
 
-- Frontend: Next.js with TypeScript and Tailwind CSS
+- Frontend: Next.js with TypeScript, Tailwind CSS, and shadcn/ui component library
 - Backend: FastAPI for the application API layer
 - Database: PostgreSQL for application data and operational metadata
 - Kubernetes integration: Kubernetes Python client and Kubernetes API access through FastAPI only

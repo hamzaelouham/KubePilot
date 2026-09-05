@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { MetricBar } from "@/components/metric-bar";
 import { usePolling } from "@/lib/use-polling";
+import { DataTable, type DataTableColumn } from "@/components/data-table";
 import {
   formatMillicores,
   formatBytes,
@@ -49,6 +50,41 @@ type EventData = {
   items: EventItem[];
   truncated: boolean;
 };
+
+const eventColumns: DataTableColumn<EventItem>[] = [
+  {
+    accessorKey: "type",
+    header: "Type",
+    cell: ({ row }) => {
+      const warning = row.original.type === "Warning";
+      return (
+        <span className={`rounded-full px-2 py-1 text-xs font-medium ${warning ? "bg-amber-100 text-amber-700" : "bg-green-100 text-green-700"}`}>
+          {row.original.type}
+        </span>
+      );
+    },
+  },
+  {
+    accessorKey: "reason",
+    header: "Reason",
+    cell: ({ row }) => <span className="font-medium">{row.original.reason}</span>,
+  },
+  {
+    accessorKey: "message",
+    header: "Message",
+    cell: ({ row }) => <span className="block max-w-md truncate">{row.original.message}</span>,
+  },
+  {
+    accessorKey: "source",
+    header: "Source",
+    cell: ({ row }) => <span>{row.original.source}</span>,
+  },
+  {
+    accessorKey: "created_at",
+    header: "Time",
+    cell: ({ row }) => <span className="text-sm text-slate-500">{row.original.created_at ?? "Unknown"}</span>,
+  },
+];
 
 type Tab = "status" | "yaml" | "logs" | "events";
 
@@ -297,36 +333,12 @@ function EventsPanel({ state }: { state: EventState }) {
           Events were truncated. Showing most recent entries.
         </p>
       )}
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-        <table className="min-w-full text-left text-base">
-          <thead className="bg-slate-100 text-slate-600">
-            <tr>
-              <th className="px-4 py-3 font-medium">Type</th>
-              <th className="px-4 py-3 font-medium">Reason</th>
-              <th className="px-4 py-3 font-medium">Message</th>
-              <th className="px-4 py-3 font-medium">Source</th>
-              <th className="px-4 py-3 font-medium">Time</th>
-            </tr>
-          </thead>
-          <tbody>
-            {state.data.items.map((item, index) => (
-              <tr key={index} className="border-t border-slate-200 text-slate-700">
-                <td className="px-4 py-3">
-                  <span className={`rounded-full px-2 py-1 text-xs font-medium ${
-                    item.type === "Warning" ? "bg-amber-100 text-amber-700" : "bg-green-100 text-green-700"
-                  }`}>
-                    {item.type}
-                  </span>
-                </td>
-                <td className="px-4 py-3 font-medium">{item.reason}</td>
-                <td className="px-4 py-3 max-w-md truncate">{item.message}</td>
-                <td className="px-4 py-3">{item.source}</td>
-                <td className="px-4 py-3 text-sm text-slate-500">{item.created_at ?? "Unknown"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        columns={eventColumns}
+        data={state.data.items}
+        placeholder="No events found for this resource."
+        searchPlaceholder="Filter events…"
+      />
     </div>
   );
 }

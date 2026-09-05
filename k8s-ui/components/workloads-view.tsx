@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { healthTone, type Health } from "@/lib/status-tone";
 import { formatLastUpdated, usePolling } from "@/lib/use-polling";
+import { DataTable, type DataTableColumn } from "@/components/data-table";
 
 type Resource = { cluster: string; namespace: string | null; kind: string; name: string; status: string; health: Health };
 type ResourceResponse = { items: Resource[]; message?: string };
@@ -22,6 +23,50 @@ const workloadKinds: { resource: string; kind: string; label: string }[] = [
 ];
 
 const resourceTypeByKind = new Map(workloadKinds.map(({ kind, resource }) => [kind, resource]));
+
+type WorkloadRow = Resource;
+
+const tableColumns: DataTableColumn<WorkloadRow>[] = [
+  {
+    accessorKey: "name",
+    header: "Name",
+    cell: ({ row }) => {
+      const item = row.original;
+      return (
+        <Link
+          href={`/dashboard/detail?resourceType=${resourceTypeByKind.get(item.kind) ?? "pods"}&name=${encodeURIComponent(item.name)}${item.namespace ? `&namespace=${encodeURIComponent(item.namespace)}` : ""}`}
+          className="font-medium text-cyan-600 hover:underline"
+        >
+          {item.name}
+        </Link>
+      );
+    },
+  },
+  {
+    accessorKey: "kind",
+    header: "Kind",
+    cell: ({ row }) => <span className="text-sm">{row.original.kind}</span>,
+  },
+  {
+    accessorKey: "namespace",
+    header: "Namespace",
+    cell: ({ row }) => <span className="text-sm">{row.original.namespace ?? "All namespaces"}</span>,
+  },
+  {
+    accessorKey: "status",
+    header: "Status",
+    cell: ({ row }) => <span className="text-sm">{row.original.status}</span>,
+  },
+  {
+    accessorKey: "health",
+    header: "Health",
+    cell: ({ row }) => (
+      <span className={`inline-flex rounded-full px-2 py-1 text-sm font-medium ${healthTone(row.original.health).pill}`}>
+        {healthTone(row.original.health).short}
+      </span>
+    ),
+  },
+];
 
 export function WorkloadsView() {
   const [state, setState] = useState<WorkloadsState>({ status: "loading" });
@@ -108,42 +153,7 @@ export function WorkloadsView() {
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-        <table className="min-w-full text-left text-base">
-          <thead className="bg-slate-100 text-slate-600">
-            <tr>
-              <th className="px-4 py-3 font-medium">Name</th>
-              <th className="px-4 py-3 font-medium">Kind</th>
-              <th className="px-4 py-3 font-medium">Namespace</th>
-              <th className="px-4 py-3 font-medium">Status</th>
-              <th className="px-4 py-3 font-medium">Health</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item) => (
-              <tr key={`${item.kind}-${item.namespace ?? "cluster"}-${item.name}`} className="border-t border-slate-200 text-slate-700 hover:bg-slate-50">
-                <td className="px-4 py-3 font-medium">
-                  <Link
-                    href={`/dashboard/detail?resourceType=${resourceTypeByKind.get(item.kind) ?? "pods"}&name=${encodeURIComponent(item.name)}${item.namespace ? `&namespace=${encodeURIComponent(item.namespace)}` : ""}`}
-                    className="text-cyan-600 hover:underline"
-                  >
-                    {item.name}
-                  </Link>
-                </td>
-                <td className="px-4 py-3 text-sm">{item.kind}</td>
-                <td className="px-4 py-3 text-sm">{item.namespace ?? "All namespaces"}</td>
-                <td className="px-4 py-3 text-sm">{item.status}</td>
-                <td className="px-4 py-3">
-                  <span className={`inline-flex rounded-full px-2 py-1 text-sm font-medium ${healthTone(item.health).pill}`}>
-                    {healthTone(item.health).short}
-                  </span>
-                </td>
-              </tr>
-            ))}
-            {items.length === 0 ? <tr><td colSpan={5} className="px-4 py-4 text-slate-500">No workloads found.</td></tr> : null}
-          </tbody>
-        </table>
-      </div>
+      <DataTable columns={tableColumns} data={items} placeholder="No workloads found." />
     </div>
   );
 }

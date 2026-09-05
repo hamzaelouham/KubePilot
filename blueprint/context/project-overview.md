@@ -1,6 +1,6 @@
 # Project Overview
 
-<!-- blueprint:source-hash 2bc65a74c2f3f45ee7c001dc13268d61ada6a542af5262682702092fead7d4c8 -->
+<!-- blueprint:source-hash 69c3de379c87b779c7da0ffab204ca78fcfad69fdac51d3e67ab3e7dd2bf7a34 -->
 
 ## Problem
 
@@ -33,9 +33,10 @@ MVP (build-plan order):
 
 Post-MVP:
 - Real-time refresh and health updates
+- Live resource metrics and observability
+- shadcn/ui integration and table migration
 - RBAC and multi-user controls
 - Multi-cluster support
-- Observability enhancements
 - AI Copilot for Kubernetes operations
 
 ## Data model
@@ -59,7 +60,7 @@ These entities support cluster overview, workload investigation, resource detail
 
 ## Tech stack
 
-- **Next.js (TypeScript, Tailwind CSS)** - frontend UI and same-origin API proxy layer
+- **Next.js (TypeScript, Tailwind CSS, shadcn/ui)** - frontend UI and same-origin API proxy layer
 - **FastAPI (Python)** - backend API, session validation, and Kubernetes integration
 - **PostgreSQL** - application data: users, sessions, cluster metadata, settings
 - **Kubernetes Python client** - cluster API access through FastAPI only; frontend never connects to Kubernetes directly
