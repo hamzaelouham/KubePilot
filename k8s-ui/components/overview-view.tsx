@@ -49,7 +49,7 @@ const deploymentColumns: DataTableColumn<OverviewResourceRow>[] = [
     accessorKey: "namespace",
     header: "Namespace",
     cell: ({ row }) => (
-      <span className="inline-flex rounded-full bg-slate-200 px-2 py-1 text-sm text-slate-600">
+      <span className="inline-flex rounded-full bg-muted px-2 py-1 text-sm text-muted-foreground">
         {row.original.namespace ?? "All namespaces"}
       </span>
     ),
@@ -83,8 +83,8 @@ function DonutChart({ values, colors }: { values: number[]; colors: string[] }) 
           background: `conic-gradient(${colors[0]} 0deg ${degrees}deg, ${colors[1]} ${degrees}deg 360deg)`,
         }}
       />
-      <div className="absolute inset-[18px] rounded-full bg-[#f5f7f9]" />
-      <div className="absolute inset-0 flex items-center justify-center text-sm font-medium text-slate-700">
+      <div className="absolute inset-[18px] rounded-full bg-surface" />
+      <div className="absolute inset-0 flex items-center justify-center text-sm font-medium text-foreground">
         <span>{total > 0 ? Math.round((a / total) * 100) : 0}%</span>
       </div>
     </div>
@@ -138,7 +138,7 @@ export function OverviewView() {
 
   const { refresh, lastUpdated } = usePolling(load);
 
-  if (state.status === "loading") return <p className="rounded-lg bg-slate-100 p-5 text-slate-500">Loading cluster overview...</p>;
+  if (state.status === "loading") return <p className="rounded-lg bg-muted p-5 text-muted-foreground">Loading cluster overview...</p>;
   if (state.status === "error") return <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-5 text-red-700">{state.message}</p>;
 
   const { deployments, pods, namespaceSummary, metricsAvailable } = state;
@@ -158,18 +158,18 @@ export function OverviewView() {
     <div className="space-y-8">
       <div className="flex items-end justify-between gap-4">
         <div>
-          <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-400">Live cluster data</p>
-          <h2 className="text-3xl font-semibold text-slate-700">Overview</h2>
+          <p className="text-sm font-medium uppercase tracking-[0.2em] text-muted-foreground">Live cluster data</p>
+          <h2 className="text-3xl font-semibold text-foreground">Overview</h2>
         </div>
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={refresh}
-            className="cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+            className="cursor-pointer rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition hover:bg-muted"
           >
             Refresh
           </button>
-          <span className="text-sm text-slate-500">Updated {formatLastUpdated(lastUpdated)}</span>
+          <span className="text-sm text-muted-foreground">Updated {formatLastUpdated(lastUpdated)}</span>
         </div>
       </div>
 
@@ -187,16 +187,16 @@ export function OverviewView() {
         </div>
       ) : null}
 
-      <div className="rounded-xl border border-slate-200 bg-[#f2f5f7] p-5">
-        <h3 className="mb-6 text-2xl font-semibold text-slate-700">Workload Status</h3>
+      <div className="rounded-xl border border-border bg-muted p-5">
+        <h3 className="mb-6 text-2xl font-semibold text-foreground">Workload Status</h3>
         <div className="grid gap-8 md:grid-cols-2">
           {pieData.map((pie) => (
             <div key={pie.label} className="text-center">
               <div className="flex justify-center">
                 <DonutChart values={pie.values} colors={pie.color} />
               </div>
-              <p className="mt-3 text-lg text-slate-700">{pie.label}</p>
-              <p className="text-sm text-slate-500">{pie.values[0]} healthy / {pie.values[0] + pie.values[1]} total</p>
+              <p className="mt-3 text-lg text-foreground">{pie.label}</p>
+              <p className="text-sm text-muted-foreground">{pie.values[0]} healthy / {pie.values[0] + pie.values[1]} total</p>
             </div>
           ))}
         </div>
@@ -204,7 +204,7 @@ export function OverviewView() {
 
       {namespaceSummary.length > 0 && (
         <DataTable
-          title={<h3 className="text-2xl font-semibold text-slate-700">Namespace Utilization</h3>}
+          title={<h3 className="text-2xl font-semibold text-foreground">Namespace Utilization</h3>}
           columns={namespaceUtilizationColumns}
           data={namespaceSummary}
           searchPlaceholder="Filter namespaces…"
@@ -218,7 +218,7 @@ export function OverviewView() {
       )}
 
       <DataTable
-        title={<h3 className="text-2xl font-semibold text-slate-700">Deployments</h3>}
+        title={<h3 className="text-2xl font-semibold text-foreground">Deployments</h3>}
         columns={deploymentColumns}
         data={deployments}
         placeholder="No deployments found."

@@ -75,7 +75,7 @@ function nodeUtilizationColumn(
           label={label}
           value={metric ? `${format(usage(metric))}${percent !== null ? ` (${percent}%)` : ""}` : "—"}
           percent={percent}
-          toneClass="text-slate-700"
+          toneClass="text-foreground"
         />
       );
     },
@@ -181,7 +181,7 @@ export function ClusterView() {
 
   const { refresh, lastUpdated } = usePolling(load);
 
-  if (state.status === "loading") return <p className="rounded-lg bg-slate-100 p-5 text-slate-500">Loading cluster data...</p>;
+  if (state.status === "loading") return <p className="rounded-lg bg-muted p-5 text-muted-foreground">Loading cluster data...</p>;
   if (state.status === "error") return <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-5 text-red-700">{state.message}</p>;
 
   const { namespaces, nodes, storageClasses, persistentVolumes, nodeMetrics, storageMetrics, metricsAvailable } = state;
@@ -213,37 +213,37 @@ export function ClusterView() {
     <div className="space-y-8">
       <div className="flex items-end justify-between gap-4">
         <div>
-          <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-400">Live cluster data</p>
-          <h2 className="text-3xl font-semibold text-slate-700">Cluster</h2>
+          <p className="text-sm font-medium uppercase tracking-[0.2em] text-muted-foreground">Live cluster data</p>
+          <h2 className="text-3xl font-semibold text-foreground">Cluster</h2>
         </div>
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={refresh}
-            className="cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+            className="cursor-pointer rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition hover:bg-muted"
           >
             Refresh
           </button>
-          <span className="text-sm text-slate-500">Updated {formatLastUpdated(lastUpdated)}</span>
+          <span className="text-sm text-muted-foreground">Updated {formatLastUpdated(lastUpdated)}</span>
         </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
-        <div className="rounded-xl border border-slate-200 bg-white p-5">
-          <p className="text-sm text-slate-500">Namespaces</p>
-          <p className="mt-1 text-3xl font-semibold text-slate-700">{namespaces.length}</p>
+        <div className="rounded-xl border border-border bg-card p-5">
+          <p className="text-sm text-muted-foreground">Namespaces</p>
+          <p className="mt-1 text-3xl font-semibold text-foreground">{namespaces.length}</p>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-5">
-          <p className="text-sm text-slate-500">Nodes</p>
-          <p className="mt-1 text-3xl font-semibold text-slate-700">{nodes.length}</p>
+        <div className="rounded-xl border border-border bg-card p-5">
+          <p className="text-sm text-muted-foreground">Nodes</p>
+          <p className="mt-1 text-3xl font-semibold text-foreground">{nodes.length}</p>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-5">
-          <p className="text-sm text-slate-500">Aggregate CPU</p>
-          <p className="mt-1 text-3xl font-semibold text-slate-700">{metricsAvailable ? formatMillicores(totalCpu) : "—"}</p>
+        <div className="rounded-xl border border-border bg-card p-5">
+          <p className="text-sm text-muted-foreground">Aggregate CPU</p>
+          <p className="mt-1 text-3xl font-semibold text-foreground">{metricsAvailable ? formatMillicores(totalCpu) : "—"}</p>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-5">
-          <p className="text-sm text-slate-500">Aggregate Memory</p>
-          <p className="mt-1 text-3xl font-semibold text-slate-700">{metricsAvailable ? formatBytes(totalMemory) : "—"}</p>
+        <div className="rounded-xl border border-border bg-card p-5">
+          <p className="text-sm text-muted-foreground">Aggregate Memory</p>
+          <p className="mt-1 text-3xl font-semibold text-foreground">{metricsAvailable ? formatBytes(totalMemory) : "—"}</p>
         </div>
       </div>
 
@@ -254,7 +254,7 @@ export function ClusterView() {
       )}
 
       <DataTable
-        title={<h3 className="text-2xl font-semibold text-slate-700">Node Utilization</h3>}
+        title={<h3 className="text-2xl font-semibold text-foreground">Node Utilization</h3>}
         columns={nodeColumns}
         data={nodes}
         placeholder="No nodes found."
@@ -267,7 +267,7 @@ export function ClusterView() {
       )}
 
       <DataTable
-        title={<h3 className="text-2xl font-semibold text-slate-700">Persistent Volumes</h3>}
+        title={<h3 className="text-2xl font-semibold text-foreground">Persistent Volumes</h3>}
         columns={pvColumns}
         data={persistentVolumes}
         placeholder="No persistent volumes found."
@@ -275,7 +275,7 @@ export function ClusterView() {
       />
 
       <DataTable
-        title={<h3 className="text-2xl font-semibold text-slate-700">Storage Classes</h3>}
+        title={<h3 className="text-2xl font-semibold text-foreground">Storage Classes</h3>}
         columns={storageClassColumns}
         data={storageClasses}
         placeholder="No storage classes found."
