@@ -69,7 +69,7 @@ def _resolve_cookie_actor(
         if datetime.fromtimestamp(expires_at / 1000, tz=timezone.utc) <= datetime.now(timezone.utc):
             return None
         user = database.scalar(select(UserAccount).where(UserAccount.email == email.lower().strip()))
-        if user is None or not user.is_active:
+        if user is None:
             return None
         from app.models.entities import Session
 
@@ -85,19 +85,6 @@ def _resolve_cookie_actor(
         return AuthenticatedActor(identifier=user.email, role=user.role)
     except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError):
         return None
-
-
-def require_admin(
-    actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
-) -> AuthenticatedActor:
-    if actor.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={"code": "insufficient_permissions", "message": "Admin access is required"},
-        )
-    return actor
-
-
 def get_cluster_client(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> ClusterClient:

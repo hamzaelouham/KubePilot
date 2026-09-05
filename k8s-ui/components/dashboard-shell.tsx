@@ -19,8 +19,6 @@ const navItems = [
   { id: "storage-classes", label: "Storage Classes" },
 ];
 
-const adminNavItems = [{ id: "admin", label: "Users" }];
-
 const secondaryNav = [
   { id: "overview", label: "Overview" },
   { id: "workloads", label: "Workloads" },
@@ -37,7 +35,6 @@ const secondaryNav = [
 
 const resourceTitles: Record<string, string> = {
   overview: "Overview",
-  admin: "Users",
   workloads: "Workloads",
   "cron-jobs": "Cron Jobs",
   "daemon-sets": "Daemon Sets",
@@ -67,19 +64,6 @@ export function DashboardShell({ activeResource, activeNamespace, onNavigate, ch
   const headerLabel = resourceTitles[activeResource] ?? "Overview";
 
   const [namespaceOptions, setNamespaceOptions] = useState<string[]>(["default"]);
-  const [isAdmin, setIsAdmin] = useState(false);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetch("/api/auth/context", { signal: controller.signal, cache: "no-store" })
-      .then(async (response) => {
-        if (!response.ok) return;
-        const body = (await response.json()) as { role?: string };
-        setIsAdmin(body.role === "admin");
-      })
-      .catch(() => {});
-    return () => controller.abort();
-  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -141,23 +125,6 @@ export function DashboardShell({ activeResource, activeNamespace, onNavigate, ch
                 </div>
               ))}
             </nav>
-
-            {isAdmin ? (
-              <nav className="mt-8 space-y-1">
-                {adminNavItems.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => onNavigate(item.id, "default")}
-                    className={`block w-full cursor-pointer rounded-md px-3 py-2 text-left text-lg ${
-                      isActive(item.id) ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground/70 hover:bg-sidebar-accent"
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </nav>
-            ) : null}
 
             <div className="mt-8">
               <label className="mb-2 block text-sidebar-foreground/70">Namespace</label>
