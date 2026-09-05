@@ -27,11 +27,11 @@
   * [x] 11d. **Metrics API integration** - integrate the Kubernetes Metrics API and, where needed, Prometheus for historical metrics and advanced observability.
   * [x] 11e. **Metrics UI** - add charts, utilization indicators, time ranges, and resource-level metrics to the dashboard and detail pages.
 
-* [x] 12. **RBAC and multi-user controls** - support role-based access and more granular permissions across cluster operations.
+* [ ] 12. **RBAC and multi-user controls** - support role-based access and more granular permissions across cluster operations.
 
   * [x] 12a. **Multi-user authentication** - authenticate any provisioned app user against database-backed accounts, seed the environment-configured admin on first login, and keep per-user sessions.
   * [x] 12b. **User management** - add admin-only user provisioning: create and list users, assign admin/operator/viewer roles, and deactivate accounts through backend endpoints and an admin UI.
-  * [x] 12c. **Role-based access enforcement** - enforce admin/operator/viewer permissions on cluster operations in the backend and make the frontend navigation and surfaces role-aware.
+  * [ ] 12c. **Role-based access enforcement** - enforce admin/operator/viewer permissions on cluster operations in the backend and make the frontend navigation and surfaces role-aware. Rolled back 2026-09-06 (`blueprint/history/rollbacks/2026-09-06-12c-role-based-access-enforcement.md`).
 
 * [ ] 13. **Multi-cluster support** - connect and compare multiple Kubernetes environments from one interface.
 

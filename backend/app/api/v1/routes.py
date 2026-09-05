@@ -19,7 +19,6 @@ from app.core.dependencies import (
 )
 from app.core.config import Settings
 from app.core.passwords import hash_password, verify_password
-from app.core.roles import require_minimum_role
 from app.models.entities import Session, UserAccount
 
 from .schemas import ActorResponse, HealthResponse
@@ -104,7 +103,7 @@ def login(
 
 @router.get("/cluster/status", response_model=ClusterStatusResponse)
 def cluster_status(
-    _actor: Annotated[AuthenticatedActor, Depends(require_minimum_role("viewer"))],
+    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
     cluster: Annotated[ClusterClient, Depends(get_cluster_client)],
 ) -> ClusterStatusResponse:
     cluster.namespaces()
@@ -113,7 +112,7 @@ def cluster_status(
 
 @router.get("/cluster/namespaces", response_model=NamespaceResponse)
 def cluster_namespaces(
-    _actor: Annotated[AuthenticatedActor, Depends(require_minimum_role("viewer"))],
+    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
     cluster: Annotated[ClusterClient, Depends(get_cluster_client)],
 ) -> NamespaceResponse:
     return NamespaceResponse(
@@ -124,7 +123,7 @@ def cluster_namespaces(
 @router.get("/cluster/resources/{resource_type}", response_model=ResourceResponse)
 def cluster_resources(
     resource_type: ResourceType,
-    _actor: Annotated[AuthenticatedActor, Depends(require_minimum_role("viewer"))],
+    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
     cluster: Annotated[ClusterClient, Depends(get_cluster_client)],
     namespace: str | None = None,
 ) -> ResourceResponse:
@@ -162,7 +161,7 @@ def resource_detail(
     resource_type: DetailResourceType,
     name: str,
     cluster: str,
-    _actor: Annotated[AuthenticatedActor, Depends(require_minimum_role("viewer"))],
+    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
     client: Annotated[ClusterClient, Depends(get_cluster_client)],
     settings: Annotated[Settings, Depends(get_settings)],
     namespace: str | None = None,
@@ -177,7 +176,7 @@ def resource_yaml(
     resource_type: DetailResourceType,
     name: str,
     cluster: str,
-    _actor: Annotated[AuthenticatedActor, Depends(require_minimum_role("viewer"))],
+    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
     client: Annotated[ClusterClient, Depends(get_cluster_client)],
     settings: Annotated[Settings, Depends(get_settings)],
     namespace: str | None = None,
@@ -192,7 +191,7 @@ def resource_logs(
     resource_type: DetailResourceType,
     name: str,
     cluster: str,
-    _actor: Annotated[AuthenticatedActor, Depends(require_minimum_role("viewer"))],
+    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
     client: Annotated[ClusterClient, Depends(get_cluster_client)],
     settings: Annotated[Settings, Depends(get_settings)],
     namespace: str | None = None,
@@ -209,7 +208,7 @@ def resource_events(
     resource_type: DetailResourceType,
     name: str,
     cluster: str,
-    _actor: Annotated[AuthenticatedActor, Depends(require_minimum_role("viewer"))],
+    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
     client: Annotated[ClusterClient, Depends(get_cluster_client)],
     settings: Annotated[Settings, Depends(get_settings)],
     namespace: str | None = None,
@@ -226,7 +225,7 @@ _UNAVAILABLE_SUMMARY = MetricsSummaryResponse(available=False, reason="unavailab
 
 @router.get("/cluster/metrics/nodes", response_model=NodesMetricsResponse)
 def cluster_metrics_nodes(
-    _actor: Annotated[AuthenticatedActor, Depends(require_minimum_role("viewer"))],
+    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
     cluster: Annotated[ClusterClient, Depends(get_cluster_client)],
 ) -> NodesMetricsResponse:
     try:
@@ -253,7 +252,7 @@ def cluster_metrics_nodes(
 @router.get("/cluster/metrics/namespaces/{namespace}", response_model=NamespaceMetricsResponse)
 def cluster_metrics_namespace(
     namespace: str,
-    _actor: Annotated[AuthenticatedActor, Depends(require_minimum_role("viewer"))],
+    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
     cluster: Annotated[ClusterClient, Depends(get_cluster_client)],
 ) -> NamespaceMetricsResponse:
     try:
@@ -286,7 +285,7 @@ def cluster_metrics_namespace(
 
 @router.get("/cluster/metrics/summary", response_model=MetricsSummaryResponse)
 def cluster_metrics_summary(
-    _actor: Annotated[AuthenticatedActor, Depends(require_minimum_role("viewer"))],
+    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
     cluster: Annotated[ClusterClient, Depends(get_cluster_client)],
 ) -> MetricsSummaryResponse:
     try:
@@ -320,7 +319,7 @@ _UNAVAILABLE_STORAGE = StorageMetricsResponse(available=False, reason="unavailab
 
 @router.get("/cluster/metrics/storage", response_model=StorageMetricsResponse)
 def cluster_metrics_storage(
-    _actor: Annotated[AuthenticatedActor, Depends(require_minimum_role("viewer"))],
+    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
     cluster: Annotated[ClusterClient, Depends(get_cluster_client)],
 ) -> StorageMetricsResponse:
     try:
