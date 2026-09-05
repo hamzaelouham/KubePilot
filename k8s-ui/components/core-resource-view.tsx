@@ -87,7 +87,7 @@ function nodeCpuColumn(metrics: Map<string, NodeMetricItem>): DataTableColumn<Re
     header: "CPU",
     cell: ({ row }) => {
       const metric = metrics.get(row.original.name);
-      if (!metric) return <span className="text-slate-400">—</span>;
+      if (!metric) return <span className="text-muted-foreground">—</span>;
       const cpuPercent = utilizationPercent(metric.cpu_usage_millicores, metric.cpu_allocatable_millicores);
       return (
         <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${utilizationToneClasses(cpuPercent !== null && cpuPercent >= 90 ? "critical" : cpuPercent !== null && cpuPercent >= 70 ? "warning" : "good")}`}>
@@ -105,7 +105,7 @@ function nodeMemoryColumn(metrics: Map<string, NodeMetricItem>): DataTableColumn
     header: "Memory",
     cell: ({ row }) => {
       const metric = metrics.get(row.original.name);
-      if (!metric) return <span className="text-slate-400">—</span>;
+      if (!metric) return <span className="text-muted-foreground">—</span>;
       const memPercent = utilizationPercent(metric.memory_usage_bytes, metric.memory_allocatable_bytes);
       return (
         <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${utilizationToneClasses(memPercent !== null && memPercent >= 90 ? "critical" : memPercent !== null && memPercent >= 70 ? "warning" : "good")}`}>
@@ -126,7 +126,7 @@ function workloadCpuColumn(metrics: Map<string, WorkloadMetricItem>): DataTableC
       return metric ? (
         <span className="text-sm">{formatMillicores(metric.cpu_usage_millicores)}</span>
       ) : (
-        <span className="text-slate-400">—</span>
+        <span className="text-muted-foreground">—</span>
       );
     },
   };
@@ -141,7 +141,7 @@ function workloadMemoryColumn(metrics: Map<string, WorkloadMetricItem>): DataTab
       return metric ? (
         <span className="text-sm">{formatBytes(metric.memory_usage_bytes)}</span>
       ) : (
-        <span className="text-slate-400">—</span>
+        <span className="text-muted-foreground">—</span>
       );
     },
   };
@@ -156,7 +156,7 @@ function capacityColumn(metrics: Map<string, StorageMetricsItem>): DataTableColu
       return capacityBytes != null ? (
         <span className="text-sm">{formatBytes(capacityBytes)}</span>
       ) : (
-        <span className="text-slate-400">—</span>
+        <span className="text-muted-foreground">—</span>
       );
     },
   };
@@ -284,23 +284,23 @@ export function CoreResourceView({ resource, namespace }: { resource: string; na
     <div className="space-y-6">
       <div className="flex items-end justify-between gap-4">
         <div>
-          <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-400">Live cluster data</p>
-          <h2 className="text-3xl font-semibold text-slate-700">{title}</h2>
+          <p className="text-sm font-medium uppercase tracking-[0.2em] text-muted-foreground">Live cluster data</p>
+          <h2 className="text-3xl font-semibold text-foreground">{title}</h2>
         </div>
         <div className="flex items-center gap-3">
           <span className="rounded-full bg-cyan-100 px-3 py-1 text-sm font-medium text-cyan-800">FastAPI</span>
           <button
             type="button"
             onClick={refresh}
-            className="cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+            className="cursor-pointer rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition hover:bg-muted"
           >
             Refresh
           </button>
-          <span className="text-sm text-slate-500">Updated {formatLastUpdated(lastUpdated)}</span>
+          <span className="text-sm text-muted-foreground">Updated {formatLastUpdated(lastUpdated)}</span>
         </div>
       </div>
 
-      {state.status === "loading" ? <p className="rounded-lg bg-slate-100 p-5 text-slate-500">Loading {title.toLowerCase()}...</p> : null}
+      {state.status === "loading" ? <p className="rounded-lg bg-muted p-5 text-muted-foreground">Loading {title.toLowerCase()}...</p> : null}
       {state.status === "error" ? <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-5 text-red-700">{state.message}</p> : null}
 
       {metricsEnabledResources.has(resource) && metricsState.status === "ready" && !metricsState.available && (
@@ -309,7 +309,7 @@ export function CoreResourceView({ resource, namespace }: { resource: string; na
         </p>
       )}
 
-      {state.status === "ready" && state.items.length === 0 ? <p className="rounded-lg bg-slate-100 p-5 text-slate-500">No {title.toLowerCase()} found for this scope.</p> : null}
+      {state.status === "ready" && state.items.length === 0 ? <p className="rounded-lg bg-muted p-5 text-muted-foreground">No {title.toLowerCase()} found for this scope.</p> : null}
       {state.status === "ready" && state.items.length > 0 ? (
         <DataTable
           columns={tableColumns}

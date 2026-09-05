@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: kubepilot-ui:latest
+          image: hamzaelouham/kubepilot-ui:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000

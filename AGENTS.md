@@ -229,9 +229,16 @@ checks do not make the Blueprint unusable.
 - Backend syntax check: `cd backend && python3 -m compileall -q app`
 - Backend tests: `cd backend && python3 -m pytest`
 - Backend migration SQL check: `cd backend && PYTHONPATH=. alembic upgrade head --sql`
+- Docker images (GitHub Actions, reliable egress - use instead of local builds when the local `yarn install` hangs):
+  - The manual workflow `.github/workflows/docker-build-push.yml` builds both images on a GitHub runner and pushes
+    `hamzaelouham/kubepilot-backend:<tag>` and `hamzaelouham/kubepilot-ui:<tag>` plus `latest` to Docker Hub.
+  - To live-test a pushed feature branch before `/complete`: commit and push the branch, then run the
+    `Build and push Docker images` workflow from GitHub Actions selecting that branch (tag optional).
+  - Requires repo secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`.
 - Minikube deploy (requires running Minikube; `kubectl` is not on PATH, use the wrapper):
-  - Build images: `docker build -t kubepilot-backend ./backend && docker build -t kubepilot-ui ./k8s-ui`
-  - Load images: `minikube image load kubepilot-backend:latest kubepilot-ui:latest`
+  - Local builds: `docker build -t kubepilot-backend ./backend && docker build -t kubepilot-ui ./k8s-ui`
+  - Pull a GitHub-Actions-built image instead of building locally: `docker pull hamzaelouham/kubepilot-backend:latest && docker pull hamzaelouham/kubepilot-ui:latest`
+  - Load images (manifest refs are the Docker Hub names, no retag): `minikube image load hamzaelouham/kubepilot-backend:latest hamzaelouham/kubepilot-ui:latest`
   - Apply all workloads: `minikube kubectl -- apply -f backend/deploy/kubernetes/`
   - Open UI: `minikube service kubepilot-ui -n kubepilot`
   - Teardown: `minikube kubectl -- delete -f backend/deploy/kubernetes/`

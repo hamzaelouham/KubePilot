@@ -9,10 +9,10 @@ export function MetricBar({ label, value, percent, toneClass }: MetricBarProps) 
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between text-xs">
-        <span className="text-slate-500">{label}</span>
+        <span className="text-muted-foreground">{label}</span>
         <span className={toneClass}>{value}</span>
       </div>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
         <div
           className={`h-full rounded-full ${percent === null ? "bg-slate-300" : "bg-slate-600"}`}
           style={{

@@ -1,6 +1,6 @@
 # Project Overview
 
-<!-- blueprint:source-hash 69c3de379c87b779c7da0ffab204ca78fcfad69fdac51d3e67ab3e7dd2bf7a34 -->
+<!-- blueprint:source-hash e104a530e5b4606f9b6b7e4cb5c31a9a059d8ae2fb83d7d64657ba9bd0988270 -->
 
 ## Problem
 
@@ -35,6 +35,7 @@ Post-MVP:
 - Real-time refresh and health updates
 - Live resource metrics and observability
 - shadcn/ui integration and table migration
+- Header components and theme support - remove non-functional header search, migrate header controls (notification, logout) to shadcn/ui, and add light/dark theme support with a theme switcher.
 - RBAC and multi-user controls
 - Multi-cluster support
 - AI Copilot for Kubernetes operations
@@ -78,7 +79,7 @@ Desktop-first operations dashboard with strong status emphasis:
 - `/dashboard?resource=<type>&namespace=<ns>` - overview, workloads, pods, deployments, services, nodes, namespaces
 - `/dashboard/detail?resourceType=<type>&name=<name>&namespace=<ns>` - resource detail with Status, YAML, Logs, Events tabs
 
-Design direction: calm operational surfaces, readable hierarchy, clear status indicators, low-noise layouts. Tailwind CSS with a polished control-plane aesthetic.
+Design direction: calm operational surfaces, readable hierarchy, clear status indicators, low-noise layouts. Tailwind CSS with a polished control-plane aesthetic, theme-aware via semantic tokens with light/dark mode support and a header theme switcher.
 
 ## Deployment shape
 

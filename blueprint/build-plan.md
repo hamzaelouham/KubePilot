@@ -34,3 +34,5 @@
 * [ ] 14. **AI Copilot for Kubernetes operations** - add natural-language investigation support to explain issues and help apply approved actions.
 
 * [x] 15. **shadcn/ui integration and table migration** - integrate shadcn/ui into the Next.js app and migrate the existing resource tables to reusable shadcn/ui Data Table components while preserving the current visual design.
+
+* [x] 16. **Header components and theme support** - remove the non-functional header search, migrate the header controls (notification, logout) to shadcn/ui components, and add light/dark theme support with a theme switcher while preserving the existing design.

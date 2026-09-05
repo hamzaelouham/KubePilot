@@ -109,35 +109,35 @@ const table = useTable<typeof features, TData, SelectedState>(
 
   return (
     <div
-      className={cn("rounded-xl border border-slate-200 bg-white", className)}
+      className={cn("rounded-xl border border-border bg-card", className)}
     >
       {title ? (
-        <div className="border-b border-slate-200 px-4 py-3">{title}</div>
+        <div className="border-b border-border px-4 py-3">{title}</div>
       ) : null}
 
       {searchable ? (
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+        <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
           <div className="relative w-full max-w-sm">
-            <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-slate-400" />
+            <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={globalFilter}
               onChange={(event) => setGlobalFilter(event.target.value)}
               placeholder={searchPlaceholder}
               aria-label="Filter rows"
-              className="bg-white ps-8 pr-8"
+              className="bg-card ps-8 pr-8"
             />
             {globalFilter ? (
               <button
                 type="button"
                 onClick={() => setGlobalFilter("")}
                 aria-label="Clear filter"
-                className="absolute top-1/2 right-2 flex size-4 -translate-y-1/2 items-center justify-center text-slate-400 transition hover:text-slate-600"
+                className="absolute top-1/2 right-2 flex size-4 -translate-y-1/2 items-center justify-center text-muted-foreground transition hover:text-foreground"
               >
                 <X className="size-3.5" />
               </button>
             ) : null}
           </div>
-          <p className="text-sm whitespace-nowrap text-slate-500">
+          <p className="text-sm whitespace-nowrap text-muted-foreground">
             Showing {filteredCount} of {data.length}
           </p>
         </div>
@@ -148,7 +148,7 @@ const table = useTable<typeof features, TData, SelectedState>(
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow
               key={headerGroup.id}
-              className="border-b border-slate-200 bg-slate-100 hover:bg-slate-100"
+              className="border-b border-border bg-muted hover:bg-muted"
             >
               {headerGroup.headers.map((header) => {
                 const canSort = header.column.getCanSort() && !header.isPlaceholder
@@ -156,7 +156,7 @@ const table = useTable<typeof features, TData, SelectedState>(
                 return (
                   <TableHead
                     key={header.id}
-                    className="px-4 py-3 text-base font-medium text-slate-600"
+                    className="px-4 py-3 text-base font-medium text-muted-foreground"
                   >
                     {canSort ? (
                       <button
@@ -167,7 +167,7 @@ const table = useTable<typeof features, TData, SelectedState>(
                             ? `Sort by ${String(header.column.id)} descending`
                             : `Sort by ${String(header.column.id)}`
                         }
-                        className="inline-flex items-center gap-1.5 transition hover:text-slate-900"
+                        className="inline-flex items-center gap-1.5 transition hover:text-foreground"
                       >
                         <table.FlexRender header={header} />
                         {sorted === "asc" ? (
@@ -190,7 +190,7 @@ const table = useTable<typeof features, TData, SelectedState>(
             rows.map((row) => (
               <TableRow
                 key={row.id}
-                className="border-t border-slate-200 text-slate-700 hover:bg-slate-50"
+                className="border-t border-border text-foreground hover:bg-muted/50"
               >
                 {row.getAllCells().map((cell) => (
                   <TableCell key={cell.id} className="px-4 py-3 text-base">
@@ -203,7 +203,7 @@ const table = useTable<typeof features, TData, SelectedState>(
             <TableRow>
               <TableCell
                 colSpan={table.getAllLeafColumns().length}
-                className="px-4 py-8 text-center text-base text-slate-400"
+                className="px-4 py-8 text-center text-base text-muted-foreground"
               >
                 {placeholder}
               </TableCell>
@@ -212,8 +212,8 @@ const table = useTable<typeof features, TData, SelectedState>(
         </TableBody>
       </Table>
 
-      <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-4 py-3">
-        <p className="text-sm text-slate-500" data-testid="pagination-page">
+      <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-3">
+        <p className="text-sm text-muted-foreground" data-testid="pagination-page">
           Page {table.state.pagination.pageIndex + 1} of{" "}
           {Math.max(1, table.getPageCount())}
         </p>

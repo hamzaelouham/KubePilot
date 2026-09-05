@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { NotificationPopover } from "@/components/notification-popover";
+import { ThemeSwitcher } from "@/components/theme-switcher";
 
 async function signOut() {
   await fetch("/api/logout", { method: "POST" });
@@ -78,8 +81,8 @@ export function DashboardShell({ activeResource, activeNamespace, onNavigate, ch
   const isActive = (id: string) => id === activeResource;
 
   return (
-    <div className="min-h-screen bg-[#ebeff3] text-slate-800">
-      <div className="border-b border-slate-200 bg-white">
+    <div className="min-h-screen bg-background text-foreground">
+      <div className="border-b border-border bg-card">
         <div className="mx-auto flex max-w-[1600px] items-center gap-4 px-4 py-4">
           <div className="flex items-center gap-3 text-[#3b4edb]">
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#e8ebff] text-xl">◈</div>
@@ -87,23 +90,14 @@ export function DashboardShell({ activeResource, activeNamespace, onNavigate, ch
           </div>
 
           <div className="ml-auto flex items-center gap-3">
-            <div className="flex w-[520px] items-center gap-3 rounded-xl border border-slate-200 bg-[#f2f4f6] px-4 py-2 text-slate-500">
-              <span className="text-lg">⌕</span>
-              <span className="text-base">Search</span>
-            </div>
-            <button className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-[#f3f4f6] text-xl text-slate-500">
+            <button className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-xl border border-border bg-header-control text-xl text-slate-500">
               +
             </button>
-            <button className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-[#f3f4f6] text-xl text-slate-500">
-              🔔
-            </button>
-            <button
-              type="button"
-              onClick={signOut}
-              className="cursor-pointer rounded-xl border border-slate-200 bg-[#f3f4f6] px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200"
-            >
+            <ThemeSwitcher />
+            <NotificationPopover />
+            <Button variant="header" size="header-lg" onClick={signOut} aria-label="Sign out">
               Sign out
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -117,14 +111,14 @@ export function DashboardShell({ activeResource, activeNamespace, onNavigate, ch
 
       <div className="mx-auto max-w-[1600px] px-0 py-0">
         <div className="flex min-h-[calc(100vh-180px)]">
-          <aside className="w-[286px] border-r border-slate-200 bg-[#f8f9fb] p-4">
+          <aside className="w-[286px] border-r border-sidebar-border bg-sidebar p-4">
             <nav className="space-y-2">
               {navItems.map((item) => (
-                <div key={item.id} className={isActive(item.id) ? "font-medium text-slate-700" : "text-slate-600"}>
+                <div key={item.id} className={isActive(item.id) ? "font-medium text-sidebar-accent-foreground" : "text-sidebar-foreground/70"}>
                   <button
                     type="button"
                     onClick={() => onNavigate(item.id, activeNamespace)}
-                    className="w-full cursor-pointer rounded-md px-3 py-2 text-left text-lg transition hover:bg-slate-200/80"
+                    className="w-full cursor-pointer rounded-md px-3 py-2 text-left text-lg transition hover:bg-sidebar-accent"
                   >
                     {item.label}
                   </button>
@@ -133,11 +127,11 @@ export function DashboardShell({ activeResource, activeNamespace, onNavigate, ch
             </nav>
 
             <div className="mt-8">
-              <label className="mb-2 block text-slate-600">Namespace</label>
+              <label className="mb-2 block text-sidebar-foreground/70">Namespace</label>
               <select
                 value={activeNamespace}
                 onChange={(event) => onNavigate(activeResource, event.target.value)}
-                className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-lg text-slate-700 outline-none"
+                className="w-full rounded-md border border-border bg-card px-3 py-2 text-lg text-foreground outline-none"
               >
                 {namespaceOptions.map((namespace) => (
                   <option key={namespace} value={namespace}>
@@ -154,7 +148,7 @@ export function DashboardShell({ activeResource, activeNamespace, onNavigate, ch
                   type="button"
                   onClick={() => onNavigate(item.id, activeNamespace)}
                   className={`block w-full cursor-pointer rounded-md px-3 py-2 text-left text-lg ${
-                    isActive(item.id) ? "bg-[#eceef3] text-slate-700" : "text-slate-600 hover:bg-slate-200/80"
+                    isActive(item.id) ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground/70 hover:bg-sidebar-accent"
                   }`}
                 >
                   {item.label}
@@ -163,8 +157,8 @@ export function DashboardShell({ activeResource, activeNamespace, onNavigate, ch
             </nav>
           </aside>
 
-          <main className="flex-1 bg-[#f5f7f9] p-6">
-            <div className="rounded-md border border-slate-200 bg-[#f9fafb] p-5 shadow-sm">{children}</div>
+          <main className="flex-1 bg-surface p-6">
+            <div className="rounded-md border border-border bg-surface-elevated p-5 shadow-sm">{children}</div>
           </main>
         </div>
       </div>
