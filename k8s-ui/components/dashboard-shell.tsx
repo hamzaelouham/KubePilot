@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { NotificationPopover } from "@/components/notification-popover";
 import { ThemeSwitcher } from "@/components/theme-switcher";
@@ -67,7 +68,7 @@ export function DashboardShell({ activeResource, activeNamespace, onNavigate, ch
   const headerLabel = resourceTitles[activeResource] ?? "Overview";
 
   const [namespaceOptions, setNamespaceOptions] = useState<string[]>(["default"]);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [actorRole, setActorRole] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -75,7 +76,7 @@ export function DashboardShell({ activeResource, activeNamespace, onNavigate, ch
       .then(async (response) => {
         if (!response.ok) return;
         const body = (await response.json()) as { role?: string };
-        setIsAdmin(body.role === "admin");
+        setActorRole(body.role ?? null);
       })
       .catch(() => {});
     return () => controller.abort();
@@ -106,6 +107,7 @@ export function DashboardShell({ activeResource, activeNamespace, onNavigate, ch
           </div>
 
           <div className="ml-auto flex items-center gap-3">
+            {actorRole ? <Badge variant="secondary">{actorRole}</Badge> : null}
             <button className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-xl border border-border bg-header-control text-xl text-slate-500">
               +
             </button>
@@ -142,7 +144,7 @@ export function DashboardShell({ activeResource, activeNamespace, onNavigate, ch
               ))}
             </nav>
 
-            {isAdmin ? (
+            {actorRole === "admin" ? (
               <nav className="mt-8 space-y-1">
                 {adminNavItems.map((item) => (
                   <button
