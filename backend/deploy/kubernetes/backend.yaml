@@ -18,7 +18,7 @@ spec:
       serviceAccountName: kubepilot-api
       containers:
         - name: backend
-          image: kubepilot-backend:latest
+          image: hamzaelouham/kubepilot-backend:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000

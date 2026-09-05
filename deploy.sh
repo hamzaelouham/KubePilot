@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build and deploy KubePilot to a local Minikube cluster.
+# Pull prebuilt KubePilot images from Docker Hub and deploy to a local Minikube cluster.
+# Images are built and pushed by the GitHub Actions workflow .github/workflows/docker-build-push.yml.
 # Usage: ./deploy.sh [--no-build] [--teardown]
 
 NAMESPACE="kubepilot"
 BACKEND_IMAGE="kubepilot-backend"
 UI_IMAGE="kubepilot-ui"
+BACKEND_IMAGE_HUB="hamzaelouham/kubepilot-backend"
+UI_IMAGE_HUB="hamzaelouham/kubepilot-ui"
 
 # Deployment names differ from image/service names in the manifests.
 BACKEND_DEPLOYMENT="backend"
@@ -32,12 +35,16 @@ case "${1:-}" in
 esac
 
 if [ "${1:-}" != "--no-build" ]; then
-  info "Building backend image"
-  docker build -t "$BACKEND_IMAGE" ./backend
-  info "Building UI image"
-  docker build -t "$UI_IMAGE" ./k8s-ui
+  info "Pulling backend image from Docker Hub"
+  docker pull "$BACKEND_IMAGE_HUB:latest"
+  info "Pulling UI image from Docker Hub"
+  docker pull "$UI_IMAGE_HUB:latest"
+  # Local builds are commented out: GitHub Actions-built images avoid slow local
+  # egress hanging `yarn install`. Kept here for offline or image-customizing setups.
+  # docker build -t "$BACKEND_IMAGE" ./backend
+  # docker build -t "$UI_IMAGE" ./k8s-ui
   info "Loading images into Minikube"
-  minikube image load "$BACKEND_IMAGE:latest" "$UI_IMAGE:latest"
+  minikube image load "$BACKEND_IMAGE_HUB:latest" "$UI_IMAGE_HUB:latest"
 fi
 
 info "Applying all workloads"

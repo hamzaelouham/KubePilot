@@ -238,7 +238,7 @@ checks do not make the Blueprint unusable.
 - Minikube deploy (requires running Minikube; `kubectl` is not on PATH, use the wrapper):
   - Local builds: `docker build -t kubepilot-backend ./backend && docker build -t kubepilot-ui ./k8s-ui`
   - Pull a GitHub-Actions-built image instead of building locally: `docker pull hamzaelouham/kubepilot-backend:latest && docker pull hamzaelouham/kubepilot-ui:latest`
-  - Load images: `minikube image load kubepilot-backend:latest kubepilot-ui:latest`
+  - Load images (manifest refs are the Docker Hub names, no retag): `minikube image load hamzaelouham/kubepilot-backend:latest hamzaelouham/kubepilot-ui:latest`
   - Apply all workloads: `minikube kubectl -- apply -f backend/deploy/kubernetes/`
   - Open UI: `minikube service kubepilot-ui -n kubepilot`
   - Teardown: `minikube kubectl -- delete -f backend/deploy/kubernetes/`
