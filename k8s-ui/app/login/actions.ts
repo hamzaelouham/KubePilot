@@ -1,11 +1,15 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { createSession } from "@/lib/auth";
+import { createSession, isValidCredential } from "@/lib/auth";
 
 export async function signInAction(formData: FormData) {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
+
+  if (!(await isValidCredential(email, password))) {
+    redirect("/login?error=invalid");
+  }
 
   const backendUrl = process.env.KUBEPILOT_BACKEND_URL ?? "http://127.0.0.1:8000";
   let response: Response;
@@ -18,9 +22,6 @@ export async function signInAction(formData: FormData) {
     });
   } catch {
     redirect("/login?error=backend");
-  }
-  if (response.status === 401) {
-    redirect("/login?error=invalid");
   }
   if (!response.ok) {
     redirect("/login?error=backend");

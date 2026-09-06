@@ -3,12 +3,18 @@ import { redirect } from "next/navigation";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { SESSION_COOKIE_NAME } from "@/lib/auth-constants";
 
-export const SESSION_SECRET = process.env.KUBEPILOT_AUTH_SECRET ?? "local-development-secret-change-me";
+export const DEFAULT_ADMIN_EMAIL = "ops@kubepilot.io";
+export const DEFAULT_ADMIN_PASSWORD = "kubepilot";
+const SESSION_SECRET = process.env.KUBEPILOT_AUTH_SECRET ?? "local-development-secret-change-me";
 
 export type SessionData = {
   email: string;
   expiresAt: number;
 };
+
+function normalizeCredential(value: string | null | undefined) {
+  return (value ?? "").trim().toLowerCase();
+}
 
 function encode(value: string) {
   return Buffer.from(value).toString("base64url");
@@ -66,6 +72,20 @@ export async function requireSession() {
   }
 
   return session;
+}
+
+export async function getAdminCredentials() {
+  return {
+    email: normalizeCredential(process.env.KUBEPILOT_ADMIN_EMAIL ?? DEFAULT_ADMIN_EMAIL),
+    password: process.env.KUBEPILOT_ADMIN_PASSWORD ?? DEFAULT_ADMIN_PASSWORD,
+  };
+}
+
+export async function isValidCredential(email: string, password: string) {
+  const credentials = await getAdminCredentials();
+  const normalizedEmail = normalizeCredential(email);
+
+  return normalizedEmail === credentials.email && password === credentials.password;
 }
 
 export async function createSession(email: string, cookieValue?: string, sessionExpiresAt?: number) {

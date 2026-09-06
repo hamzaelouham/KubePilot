@@ -29,7 +29,7 @@
 
 * [ ] 12. **RBAC and multi-user controls** - support role-based access and more granular permissions across cluster operations.
 
-  * [x] 12a. **Multi-user authentication** - authenticate any provisioned app user against database-backed accounts, seed the environment-configured admin on first login, and keep per-user sessions.
+  * [ ] 12a. **Multi-user authentication** - authenticate any provisioned app user against database-backed accounts, seed the environment-configured admin on first login, and keep per-user sessions. Rolled back 2026-09-06 (`blueprint/history/rollbacks/2026-09-06-12-multi-user-authentication.md`).
   * [ ] 12b. **User management** - add admin-only user provisioning: create and list users, assign admin/operator/viewer roles, and deactivate accounts through backend endpoints and an admin UI. Rolled back 2026-09-06 (`blueprint/history/rollbacks/2026-09-06-12b-user-management.md`).
   * [ ] 12c. **Role-based access enforcement** - enforce admin/operator/viewer permissions on cluster operations in the backend and make the frontend navigation and surfaces role-aware. Rolled back 2026-09-06 (`blueprint/history/rollbacks/2026-09-06-12c-role-based-access-enforcement.md`).
 

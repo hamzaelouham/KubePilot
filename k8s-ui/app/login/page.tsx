@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { signInAction } from "./actions";
 
 export default async function LoginPage({
@@ -109,7 +110,9 @@ export default async function LoginPage({
             </form>
 
             <div className="mt-6 rounded-xl border border-slate-700 bg-slate-900/80 p-3 text-sm text-slate-300">
-              <p>Sign in with a KubePilot account provisioned for the cluster dashboard.</p>
+              <p>
+                Use the admin credential configured for the app to continue to the cluster dashboard.
+              </p>
             </div>
           </div>
         </div>
