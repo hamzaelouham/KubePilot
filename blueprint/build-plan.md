@@ -36,3 +36,5 @@
 * [x] 15. **shadcn/ui integration and table migration** - integrate shadcn/ui into the Next.js app and migrate the existing resource tables to reusable shadcn/ui Data Table components while preserving the current visual design.
 
 * [x] 16. **Header components and theme support** - remove the non-functional header search, migrate the header controls (notification, logout) to shadcn/ui components, and add light/dark theme support with a theme switcher while preserving the existing design.
+
+* [x] 17. **UI polish & design consistency** - unify the home, login, and change-password pages onto the dashboard's light palette with simple centered forms, restructure the sidebar into grouped sections (OVERVIEW / WORKLOADS / NETWORK / CONFIGURATION / STORAGE / CLUSTER / ADMINISTRATION) that show only existing resources, rework the header with the KubePilot brand, cluster selector, notifications, and user menu, and design the shell around a `clusterId` context so the future Multi-cluster feature (13) slots in without a redesign.

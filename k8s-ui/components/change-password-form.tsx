@@ -66,10 +66,13 @@ export function ChangePasswordForm({ forced }: ChangePasswordFormProps) {
     }
   };
 
+  const inputClass =
+    "w-full rounded-xl border border-input bg-background px-4 py-3 text-foreground outline-none placeholder:text-muted-foreground focus:border-primary";
+
   return (
     <form onSubmit={submit} className="space-y-5">
       <div>
-        <label htmlFor="current-password" className="mb-2 block text-sm text-slate-300">
+        <label htmlFor="current-password" className="mb-2 block text-sm text-muted-foreground">
           Current password
         </label>
         <input
@@ -78,13 +81,13 @@ export function ChangePasswordForm({ forced }: ChangePasswordFormProps) {
           type="password"
           value={currentPassword}
           onChange={(event) => setCurrentPassword(event.target.value)}
-          className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none ring-0 placeholder:text-slate-500 focus:border-cyan-400"
+          className={inputClass}
           required
         />
       </div>
 
       <div>
-        <label htmlFor="new-password" className="mb-2 block text-sm text-slate-300">
+        <label htmlFor="new-password" className="mb-2 block text-sm text-muted-foreground">
           New password
         </label>
         <input
@@ -93,13 +96,13 @@ export function ChangePasswordForm({ forced }: ChangePasswordFormProps) {
           type="password"
           value={newPassword}
           onChange={(event) => setNewPassword(event.target.value)}
-          className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none ring-0 placeholder:text-slate-500 focus:border-cyan-400"
+          className={inputClass}
           required
         />
       </div>
 
       <div>
-        <label htmlFor="confirm-password" className="mb-2 block text-sm text-slate-300">
+        <label htmlFor="confirm-password" className="mb-2 block text-sm text-muted-foreground">
           Confirm new password
         </label>
         <input
@@ -108,17 +111,19 @@ export function ChangePasswordForm({ forced }: ChangePasswordFormProps) {
           type="password"
           value={confirmPassword}
           onChange={(event) => setConfirmPassword(event.target.value)}
-          className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none ring-0 placeholder:text-slate-500 focus:border-cyan-400"
+          className={inputClass}
           required
         />
       </div>
 
       {error ? (
-        <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</div>
+        <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </div>
       ) : null}
 
       {success ? (
-        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
+        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700">
           Your password has been updated.
         </div>
       ) : null}
@@ -126,7 +131,7 @@ export function ChangePasswordForm({ forced }: ChangePasswordFormProps) {
       <button
         type="submit"
         disabled={submitting}
-        className="flex w-full cursor-pointer items-center justify-center rounded-xl bg-cyan-500 px-4 py-3 font-medium text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+        className="flex w-full cursor-pointer items-center justify-center rounded-xl bg-primary px-4 py-3 font-medium text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {submitting ? "Updating…" : "Update password"}
       </button>

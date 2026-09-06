@@ -5,17 +5,18 @@ import { requireUsableBackendUser } from "@/lib/auth";
 export default async function DetailPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ resourceType?: string; name?: string; namespace?: string }> | { resourceType?: string; name?: string; namespace?: string };
+  searchParams?: Promise<{ resourceType?: string; name?: string; namespace?: string; cluster?: string }> | { resourceType?: string; name?: string; namespace?: string; cluster?: string };
 }) {
   await requireUsableBackendUser();
   const params = await Promise.resolve(searchParams ?? {});
   const resourceType = params.resourceType ?? "pods";
   const name = params.name ?? "";
   const namespace = params.namespace ?? null;
+  const cluster = params.cluster;
 
   return (
-    <Suspense fallback={<ResourceDetailView resourceType={resourceType} name={name} namespace={namespace} />}>
-      <ResourceDetailView resourceType={resourceType} name={name} namespace={namespace} />
+    <Suspense fallback={<ResourceDetailView resourceType={resourceType} name={name} namespace={namespace} cluster={cluster} />}>
+      <ResourceDetailView resourceType={resourceType} name={name} namespace={namespace} cluster={cluster} />
     </Suspense>
   );
 }

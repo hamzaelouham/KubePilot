@@ -288,7 +288,7 @@ export function CoreResourceView({ resource, namespace }: { resource: string; na
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
         <div>
           <p className="text-sm font-medium uppercase tracking-[0.2em] text-muted-foreground">Live cluster data</p>
           <h2 className="text-3xl font-semibold text-foreground">{title}</h2>

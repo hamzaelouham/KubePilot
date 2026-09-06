@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { useClusterStatus } from "@/lib/use-cluster-status";
 import { MetricBar } from "@/components/metric-bar";
 import { usePolling } from "@/lib/use-polling";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
@@ -347,12 +348,14 @@ export default function ResourceDetailView({
   resourceType,
   name,
   namespace,
+  cluster: initialCluster,
 }: {
   resourceType: string;
   name: string;
   namespace: string | null;
+  cluster?: string;
 }) {
-
+  const activeCluster = useClusterStatus(initialCluster);
   const [activeTab, setActiveTab] = useState<Tab>("status");
   const [detailState, setDetailState] = useState<DetailState>({ status: "loading" });
   const [yamlState, setYamlState] = useState<YamlState>({ status: "loading" });
@@ -494,6 +497,7 @@ export default function ResourceDetailView({
       <DashboardShell
         activeResource={resourceType}
         activeNamespace={namespace ?? ""}
+        activeCluster={activeCluster}
         onNavigate={handleNav}
       >
         <div className="space-y-6">
@@ -512,6 +516,7 @@ export default function ResourceDetailView({
     <DashboardShell
       activeResource={resourceType}
       activeNamespace={namespace ?? ""}
+      activeCluster={activeCluster}
       onNavigate={handleNav}
     >
     <div className="space-y-6">

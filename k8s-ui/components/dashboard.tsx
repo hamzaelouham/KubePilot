@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { BackendUser } from "@/lib/auth";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { useClusterStatus } from "@/lib/use-cluster-status";
 import { CoreResourceView } from "@/components/core-resource-view";
 import { OverviewView } from "@/components/overview-view";
 import { ClusterView } from "@/components/cluster-view";
@@ -29,21 +30,36 @@ export function Dashboard({
   user,
   initResource,
   initNamespace,
+  initCluster,
 }: {
   user: BackendUser;
   initResource: string;
   initNamespace: string;
+  initCluster?: string;
 }) {
   const [resource, setResource] = useState(initResource);
   const [namespace, setNamespace] = useState(initNamespace);
+  const cluster = useClusterStatus(initCluster);
+
+  useEffect(() => {
+    if (!cluster || cluster === initCluster) return;
+    const params = new URLSearchParams(window.location.search);
+    params.set("cluster", cluster);
+    window.history.replaceState(null, "", `/dashboard?${params.toString()}`);
+  }, [cluster, initCluster]);
+
+  const syncUrl = (nextResource: string, nextNamespace: string, nextCluster: string) => {
+    const params = new URLSearchParams();
+    params.set("resource", nextResource);
+    params.set("namespace", nextNamespace);
+    if (nextCluster) params.set("cluster", nextCluster);
+    window.history.replaceState(null, "", `/dashboard?${params.toString()}`);
+  };
 
   const navigate = (nextResource: string, nextNamespace: string) => {
     setResource(nextResource);
     setNamespace(nextNamespace);
-    const params = new URLSearchParams();
-    params.set("resource", nextResource);
-    params.set("namespace", nextNamespace);
-    window.history.replaceState(null, "", `/dashboard?${params.toString()}`);
+    syncUrl(nextResource, nextNamespace, cluster);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -70,6 +86,7 @@ export function Dashboard({
       user={user}
       activeResource={resource}
       activeNamespace={namespace}
+      activeCluster={cluster}
       onNavigate={navigate}
     >
       {renderView}
