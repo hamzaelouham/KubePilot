@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any
 import uuid
 
-from sqlalchemy import Boolean, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, CreatedAt, PrimaryKey
@@ -16,9 +16,22 @@ class UserAccount(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(64), nullable=False, default="operator", server_default="operator")
     created_at: Mapped[CreatedAt]
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now().astimezone(),
+        server_default=text("now()"),
+    )
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    password_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
 
     sessions: Mapped[list["Session"]] = relationship(back_populates="user", cascade="all, delete-orphan")
-    audit_actions: Mapped[list["AuditAction"]] = relationship(back_populates="actor")
+    audit_actions: Mapped[list["AuditAction"]] = relationship(
+        back_populates="actor", foreign_keys="AuditAction.actor_id"
+    )
     preferences: Mapped["UserPreference | None"] = relationship(back_populates="user", uselist=False, cascade="all, delete-orphan")
 
 
@@ -30,6 +43,7 @@ class Session(Base):
     token_hash: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
     issued_at: Mapped[CreatedAt]
     expires_at: Mapped[datetime]
+    restricted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
 
     user: Mapped[UserAccount] = relationship(back_populates="sessions")
     __table_args__ = (Index("ix_sessions_active_expiry", "user_id", "expires_at"),)
@@ -151,13 +165,20 @@ class AuditAction(Base):
     __tablename__ = "audit_actions"
 
     id: Mapped[PrimaryKey]
-    actor_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("user_accounts.id", ondelete="RESTRICT"), nullable=False, index=True)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("user_accounts.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
     action: Mapped[str] = mapped_column(String(128), nullable=False)
     resource_type: Mapped[str] = mapped_column(String(128), nullable=False)
     resource_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    target_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("user_accounts.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    result: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="")
+    context: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[CreatedAt]
 
-    actor: Mapped[UserAccount] = relationship(back_populates="audit_actions")
+    actor: Mapped[UserAccount | None] = relationship(back_populates="audit_actions", foreign_keys="AuditAction.actor_id")
     __table_args__ = (Index("ix_audit_actions_created", "created_at"),)
 
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type { BackendUser } from "@/lib/auth";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { CoreResourceView } from "@/components/core-resource-view";
 import { OverviewView } from "@/components/overview-view";
@@ -24,7 +25,15 @@ const resourceViewTypes = new Set([
   "storage-classes",
 ]);
 
-export function Dashboard({ initResource, initNamespace }: { initResource: string; initNamespace: string }) {
+export function Dashboard({
+  user,
+  initResource,
+  initNamespace,
+}: {
+  user: BackendUser;
+  initResource: string;
+  initNamespace: string;
+}) {
   const [resource, setResource] = useState(initResource);
   const [namespace, setNamespace] = useState(initNamespace);
 
@@ -57,7 +66,12 @@ export function Dashboard({ initResource, initNamespace }: { initResource: strin
   }, [resource, namespace]);
 
   return (
-    <DashboardShell activeResource={resource} activeNamespace={namespace} onNavigate={navigate}>
+    <DashboardShell
+      user={user}
+      activeResource={resource}
+      activeNamespace={namespace}
+      onNavigate={navigate}
+    >
       {renderView}
     </DashboardShell>
   );

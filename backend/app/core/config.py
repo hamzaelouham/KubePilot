@@ -14,6 +14,8 @@ class Settings:
     cluster_name: str = "primary"
     admin_email: str = "ops@kubepilot.io"
     admin_password: str = "kubepilot"
+    password_ttl_days: int = 15
+    password_min_length: int = 10
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -23,6 +25,8 @@ class Settings:
         cluster_name = os.getenv("KUBEPILOT_CLUSTER_NAME", "primary").strip()
         admin_email = os.getenv("KUBEPILOT_ADMIN_EMAIL", "ops@kubepilot.io").strip().lower()
         admin_password = os.getenv("KUBEPILOT_ADMIN_PASSWORD", "kubepilot")
+        password_ttl_days = cls._positive_int("KUBEPILOT_PASSWORD_TTL_DAYS", 15)
+        password_min_length = cls._positive_int("KUBEPILOT_PASSWORD_MIN_LENGTH", 10)
 
         missing = [
             name
@@ -52,4 +56,19 @@ class Settings:
             cluster_name=cluster_name,
             admin_email=admin_email,
             admin_password=admin_password,
+            password_ttl_days=password_ttl_days,
+            password_min_length=password_min_length,
         )
+
+    @staticmethod
+    def _positive_int(name: str, default: int) -> int:
+        raw = os.getenv(name, "")
+        if not raw.strip():
+            return default
+        try:
+            value = int(raw)
+        except ValueError:
+            raise ConfigurationError(f"{name} must be a positive integer")
+        if value < 1:
+            raise ConfigurationError(f"{name} must be a positive integer")
+        return value

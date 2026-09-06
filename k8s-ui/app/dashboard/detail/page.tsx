@@ -1,11 +1,13 @@
 import { Suspense } from "react";
 import ResourceDetailView from "@/components/resource-detail-view";
+import { requireUsableBackendUser } from "@/lib/auth";
 
 export default async function DetailPage({
   searchParams,
 }: {
   searchParams?: Promise<{ resourceType?: string; name?: string; namespace?: string }> | { resourceType?: string; name?: string; namespace?: string };
 }) {
+  await requireUsableBackendUser();
   const params = await Promise.resolve(searchParams ?? {});
   const resourceType = params.resourceType ?? "pods";
   const name = params.name ?? "";

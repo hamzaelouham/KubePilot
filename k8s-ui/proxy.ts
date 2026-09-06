@@ -33,11 +33,11 @@ async function isAuthenticated(request: NextRequest) {
   }
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const authenticated = await isAuthenticated(request);
 
-  if (pathname.startsWith("/dashboard")) {
+  if (pathname.startsWith("/dashboard") || pathname.startsWith("/settings")) {
     if (!authenticated) {
       return NextResponse.redirect(new URL("/login", request.url));
     }
@@ -55,5 +55,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/login"],
+  matcher: ["/dashboard/:path*", "/settings/:path*", "/login"],
 };

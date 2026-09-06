@@ -3,9 +3,10 @@ import base64
 import hashlib
 import hmac
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Annotated
+from uuid import UUID, uuid4
 
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session as SQLAlchemySession
@@ -21,6 +22,9 @@ from app.kubernetes.client import ClusterClient, create_cluster_client
 class AuthenticatedActor:
     identifier: str
     role: str
+    user_id: UUID = field(default_factory=uuid4)
+    session_id: UUID = field(default_factory=uuid4)
+    restricted: bool = False
 
 
 async def get_settings(request: Request) -> Settings:
@@ -71,6 +75,8 @@ def _resolve_cookie_actor(
         user = database.scalar(select(UserAccount).where(UserAccount.email == email.lower().strip()))
         if user is None:
             return None
+        if not user.is_active:
+            return None
         from app.models.entities import Session
 
         active_session = database.scalar(
@@ -82,7 +88,13 @@ def _resolve_cookie_actor(
         )
         if active_session is None:
             return None
-        return AuthenticatedActor(identifier=user.email, role=user.role)
+        return AuthenticatedActor(
+            identifier=user.email,
+            role=user.role,
+            user_id=user.id,
+            session_id=active_session.id,
+            restricted=active_session.restricted,
+        )
     except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError):
         return None
 def get_cluster_client(

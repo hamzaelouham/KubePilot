@@ -65,7 +65,7 @@ export default async function LoginPage({
                   id="email"
                   name="email"
                   type="email"
-                  defaultValue="ops@kubepilot.io"
+                  placeholder="you@example.com"
                   className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none ring-0 placeholder:text-slate-500 focus:border-cyan-400"
                   required
                 />
@@ -79,7 +79,7 @@ export default async function LoginPage({
                   id="password"
                   name="password"
                   type="password"
-                  defaultValue="kubepilot"
+                  placeholder="••••••••••"
                   className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none ring-0 focus:border-cyan-400"
                   required
                 />
@@ -111,7 +111,7 @@ export default async function LoginPage({
 
             <div className="mt-6 rounded-xl border border-slate-700 bg-slate-900/80 p-3 text-sm text-slate-300">
               <p>
-                Use the admin credential configured for the app to continue to the cluster dashboard.
+                Sign in with an account provisioned for this deployment. The initial admin uses the credential configured for the app.
               </p>
             </div>
           </div>

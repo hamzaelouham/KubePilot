@@ -3,11 +3,11 @@ import hashlib
 import hmac
 import json
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session as SQLAlchemySession
 
 from app.core.dependencies import (
@@ -17,7 +17,11 @@ from app.core.dependencies import (
     get_database_session,
     get_settings,
 )
+from app.core.rbac import Permission, require_permission
 from app.core.config import Settings
+from app.core.audit import AuditEvent, record_audit
+from app.core.passwords import hash_password, password_matches, validate_password_policy
+from app.core.timeutils import is_expired, now
 from app.models.entities import Session, UserAccount
 
 from .schemas import ActorResponse, HealthResponse
@@ -29,7 +33,7 @@ from .discovery_schemas import (
     ResourceResponse,
     ResourceType,
 )
-from .auth_schemas import LoginRequest, LoginResponse
+from .auth_schemas import ChangePasswordRequest, LoginRequest, LoginResponse, MeResponse
 from .detail_schemas import DetailResourceType, EventResponse, LogResponse, ResourceDetailResponse, YamlResponse
 from .metrics_schemas import (
     MetricsSummaryResponse,
@@ -44,12 +48,6 @@ from .metrics_schemas import (
 from app.kubernetes.client import ClusterClient, ClusterMetricsError
 
 router = APIRouter()
-
-
-def _password_hash(password: str) -> str:
-    salt = hashlib.sha256(b"kubepilot-password-salt").digest()
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 120_000)
-    return "pbkdf2_sha256$120000$" + digest.hex()
 
 
 def _signed_cookie(email: str, expires_at: int, secret: str) -> tuple[str, str]:
@@ -80,23 +78,169 @@ def login(
     settings: Annotated[Settings, Depends(get_settings)],
     database: Annotated[SQLAlchemySession, Depends(get_database_session)],
 ) -> LoginResponse:
-    if credentials.email.strip().lower() != settings.admin_email or credentials.password != settings.admin_password:
-        raise HTTPException(status_code=401, detail={"code": "authentication_required", "message": "Authentication is required"})
-    user = database.scalar(select(UserAccount).where(UserAccount.email == settings.admin_email))
-    if user is None:
-        user = UserAccount(email=settings.admin_email, password_hash=_password_hash(credentials.password), role="admin")
+    email = credentials.email.strip().lower()
+    user = database.scalar(select(UserAccount).where(UserAccount.email == email))
+
+    if user is None and email == settings.admin_email and credentials.password == settings.admin_password:
+        user = UserAccount(
+            email=settings.admin_email,
+            password_hash=hash_password(credentials.password),
+            role="admin",
+            is_active=True,
+            must_change_password=False,
+            updated_at=now(),
+        )
         database.add(user)
         database.flush()
+        record_audit(
+            database,
+            AuditEvent.USER_CREATED,
+            actor_id=user.id,
+            resource_type="user",
+            resource_id=str(user.id),
+            target_user_id=user.id,
+            result="success",
+            context={"email": email, "role": "admin", "source": "environment_bootstrap"},
+        )
+
+    if user is None:
+        record_audit(
+            database,
+            AuditEvent.USER_LOGIN_FAILURE,
+            actor_id=None,
+            resource_type="user",
+            resource_id=email,
+            result="unknown_user",
+        )
+        database.commit()
+        raise HTTPException(status_code=401, detail={"code": "authentication_required", "message": "Authentication is required"})
+
+    if not password_matches(credentials.password, user.password_hash):
+        record_audit(
+            database,
+            AuditEvent.USER_LOGIN_FAILURE,
+            actor_id=user.id,
+            resource_type="user",
+            resource_id=str(user.id),
+            result="bad_credentials",
+        )
+        database.commit()
+        raise HTTPException(status_code=401, detail={"code": "authentication_required", "message": "Authentication is required"})
+
+    if not user.is_active:
+        record_audit(
+            database,
+            AuditEvent.USER_LOGIN_FAILURE,
+            actor_id=user.id,
+            resource_type="user",
+            resource_id=str(user.id),
+            result="account_disabled",
+        )
+        database.commit()
+        raise HTTPException(status_code=401, detail={"code": "authentication_required", "message": "Authentication is required"})
+
+    restricted = user.must_change_password or is_expired(user.password_expires_at)
     expires_at = int((time.time() + 60 * 60 * 12) * 1000)
-    cookie, token_hash = _signed_cookie(settings.admin_email, expires_at, settings.auth_secret)
-    database.add(Session(user_id=user.id, token_hash=token_hash, expires_at=datetime.fromtimestamp(expires_at / 1000, tz=timezone.utc)))
+    cookie, token_hash = _signed_cookie(email, expires_at, settings.auth_secret)
+    database.add(
+        Session(
+            user_id=user.id,
+            token_hash=token_hash,
+            expires_at=datetime.fromtimestamp(expires_at / 1000, tz=timezone.utc),
+            restricted=restricted,
+        )
+    )
+    current_time = now()
+    user.last_login_at = current_time
+    user.updated_at = current_time
+    record_audit(
+        database,
+        AuditEvent.USER_LOGIN_SUCCESS,
+        actor_id=user.id,
+        resource_type="user",
+        resource_id=str(user.id),
+        result="change_required" if restricted else "success",
+    )
     database.commit()
-    return LoginResponse(cookie=cookie, expires_at=expires_at)
+    return LoginResponse(cookie=cookie, expires_at=expires_at, change_required=restricted)
+
+
+@router.get("/auth/me", response_model=MeResponse)
+def auth_me(
+    actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+) -> MeResponse:
+    user = database.get(UserAccount, actor.user_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail={"code": "authentication_required", "message": "Authentication is required"})
+    return MeResponse(
+        id=user.id,
+        email=user.email,
+        role=user.role,
+        is_active=user.is_active,
+        must_change_password=user.must_change_password,
+        password_expires_at=user.password_expires_at,
+        password_expired=is_expired(user.password_expires_at),
+        last_login_at=user.last_login_at,
+        created_at=user.created_at,
+    )
+
+
+@router.post("/auth/change-password", response_model=MeResponse)
+def change_password(
+    request: ChangePasswordRequest,
+    actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> MeResponse:
+    user = database.get(UserAccount, actor.user_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail={"code": "authentication_required", "message": "Authentication is required"})
+    if not password_matches(request.current_password, user.password_hash):
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_current_password", "message": "The current password is incorrect"},
+        )
+    valid, reason = validate_password_policy(request.new_password, settings.password_min_length)
+    if not valid:
+        raise HTTPException(status_code=422, detail={"code": "invalid_password", "message": reason})
+
+    current_time = now()
+    user.password_hash = hash_password(request.new_password)
+    user.must_change_password = False
+    user.password_changed_at = current_time
+    user.password_expires_at = current_time + timedelta(days=settings.password_ttl_days)
+    user.updated_at = current_time
+    database.execute(delete(Session).where(Session.user_id == user.id, Session.id != actor.session_id))
+    current_session = database.get(Session, actor.session_id)
+    if current_session is not None:
+        current_session.restricted = False
+    record_audit(
+        database,
+        AuditEvent.USER_PASSWORD_CHANGED,
+        actor_id=user.id,
+        resource_type="user",
+        resource_id=str(user.id),
+        target_user_id=user.id,
+        result="success",
+    )
+    database.commit()
+    return MeResponse(
+        id=user.id,
+        email=user.email,
+        role=user.role,
+        is_active=user.is_active,
+        must_change_password=user.must_change_password,
+        password_expires_at=user.password_expires_at,
+        password_expired=is_expired(user.password_expires_at),
+        last_login_at=user.last_login_at,
+        created_at=user.created_at,
+    )
 
 
 @router.get("/cluster/status", response_model=ClusterStatusResponse)
 def cluster_status(
-    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
+    _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.CLUSTERS_READ))],
     cluster: Annotated[ClusterClient, Depends(get_cluster_client)],
 ) -> ClusterStatusResponse:
     cluster.namespaces()
@@ -105,7 +249,7 @@ def cluster_status(
 
 @router.get("/cluster/namespaces", response_model=NamespaceResponse)
 def cluster_namespaces(
-    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
+    _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.CLUSTERS_READ))],
     cluster: Annotated[ClusterClient, Depends(get_cluster_client)],
 ) -> NamespaceResponse:
     return NamespaceResponse(
@@ -116,7 +260,7 @@ def cluster_namespaces(
 @router.get("/cluster/resources/{resource_type}", response_model=ResourceResponse)
 def cluster_resources(
     resource_type: ResourceType,
-    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
+    _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.RESOURCES_READ))],
     cluster: Annotated[ClusterClient, Depends(get_cluster_client)],
     namespace: str | None = None,
 ) -> ResourceResponse:
@@ -154,7 +298,7 @@ def resource_detail(
     resource_type: DetailResourceType,
     name: str,
     cluster: str,
-    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
+    _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.RESOURCES_READ))],
     client: Annotated[ClusterClient, Depends(get_cluster_client)],
     settings: Annotated[Settings, Depends(get_settings)],
     namespace: str | None = None,
@@ -169,7 +313,7 @@ def resource_yaml(
     resource_type: DetailResourceType,
     name: str,
     cluster: str,
-    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
+    _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.RESOURCES_READ))],
     client: Annotated[ClusterClient, Depends(get_cluster_client)],
     settings: Annotated[Settings, Depends(get_settings)],
     namespace: str | None = None,
@@ -184,7 +328,7 @@ def resource_logs(
     resource_type: DetailResourceType,
     name: str,
     cluster: str,
-    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
+    _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.RESOURCES_READ))],
     client: Annotated[ClusterClient, Depends(get_cluster_client)],
     settings: Annotated[Settings, Depends(get_settings)],
     namespace: str | None = None,
@@ -201,7 +345,7 @@ def resource_events(
     resource_type: DetailResourceType,
     name: str,
     cluster: str,
-    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
+    _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.RESOURCES_READ))],
     client: Annotated[ClusterClient, Depends(get_cluster_client)],
     settings: Annotated[Settings, Depends(get_settings)],
     namespace: str | None = None,
@@ -218,7 +362,7 @@ _UNAVAILABLE_SUMMARY = MetricsSummaryResponse(available=False, reason="unavailab
 
 @router.get("/cluster/metrics/nodes", response_model=NodesMetricsResponse)
 def cluster_metrics_nodes(
-    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
+    _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.RESOURCES_READ))],
     cluster: Annotated[ClusterClient, Depends(get_cluster_client)],
 ) -> NodesMetricsResponse:
     try:
@@ -245,7 +389,7 @@ def cluster_metrics_nodes(
 @router.get("/cluster/metrics/namespaces/{namespace}", response_model=NamespaceMetricsResponse)
 def cluster_metrics_namespace(
     namespace: str,
-    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
+    _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.RESOURCES_READ))],
     cluster: Annotated[ClusterClient, Depends(get_cluster_client)],
 ) -> NamespaceMetricsResponse:
     try:
@@ -278,7 +422,7 @@ def cluster_metrics_namespace(
 
 @router.get("/cluster/metrics/summary", response_model=MetricsSummaryResponse)
 def cluster_metrics_summary(
-    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
+    _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.RESOURCES_READ))],
     cluster: Annotated[ClusterClient, Depends(get_cluster_client)],
 ) -> MetricsSummaryResponse:
     try:
@@ -312,7 +456,7 @@ _UNAVAILABLE_STORAGE = StorageMetricsResponse(available=False, reason="unavailab
 
 @router.get("/cluster/metrics/storage", response_model=StorageMetricsResponse)
 def cluster_metrics_storage(
-    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
+    _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.RESOURCES_READ))],
     cluster: Annotated[ClusterClient, Depends(get_cluster_client)],
 ) -> StorageMetricsResponse:
     try:

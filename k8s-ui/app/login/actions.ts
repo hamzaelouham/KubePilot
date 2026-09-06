@@ -1,20 +1,22 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { createSession, isValidCredential } from "@/lib/auth";
+import { backendUrl } from "@/lib/backend";
+import { setBackendSession } from "@/lib/auth";
+
+type LoginResult = {
+  cookie: string;
+  expires_at: number;
+  change_required: boolean;
+};
 
 export async function signInAction(formData: FormData) {
-  const email = String(formData.get("email") ?? "");
+  const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
 
-  if (!(await isValidCredential(email, password))) {
-    redirect("/login?error=invalid");
-  }
-
-  const backendUrl = process.env.KUBEPILOT_BACKEND_URL ?? "http://127.0.0.1:8000";
   let response: Response;
   try {
-    response = await fetch(`${backendUrl}/api/v1/auth/login`, {
+    response = await fetch(`${backendUrl()}/api/v1/auth/login`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ email, password }),
@@ -23,10 +25,19 @@ export async function signInAction(formData: FormData) {
   } catch {
     redirect("/login?error=backend");
   }
-  if (!response.ok) {
+
+  if (response.status === 503) {
     redirect("/login?error=backend");
   }
-  const session = (await response.json()) as { cookie: string; expires_at: number };
-  await createSession(email, session.cookie, session.expires_at);
+  if (!response.ok) {
+    redirect("/login?error=invalid");
+  }
+
+  const result = (await response.json()) as LoginResult;
+  await setBackendSession(result.cookie, result.expires_at);
+
+  if (result.change_required) {
+    redirect("/settings/password?forced=1");
+  }
   redirect("/dashboard");
 }

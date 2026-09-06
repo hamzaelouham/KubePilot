@@ -27,11 +27,7 @@
   * [x] 11d. **Metrics API integration** - integrate the Kubernetes Metrics API and, where needed, Prometheus for historical metrics and advanced observability.
   * [x] 11e. **Metrics UI** - add charts, utilization indicators, time ranges, and resource-level metrics to the dashboard and detail pages.
 
-* [ ] 12. **RBAC and multi-user controls** - support role-based access and more granular permissions across cluster operations.
-
-  * [ ] 12a. **Multi-user authentication** - authenticate any provisioned app user against database-backed accounts, seed the environment-configured admin on first login, and keep per-user sessions. Rolled back 2026-09-06 (`blueprint/history/rollbacks/2026-09-06-12-multi-user-authentication.md`).
-  * [ ] 12b. **User management** - add admin-only user provisioning: create and list users, assign admin/operator/viewer roles, and deactivate accounts through backend endpoints and an admin UI. Rolled back 2026-09-06 (`blueprint/history/rollbacks/2026-09-06-12b-user-management.md`).
-  * [ ] 12c. **Role-based access enforcement** - enforce admin/operator/viewer permissions on cluster operations in the backend and make the frontend navigation and surfaces role-aware. Rolled back 2026-09-06 (`blueprint/history/rollbacks/2026-09-06-12c-role-based-access-enforcement.md`).
+* [x] 12. **Users, Authentication & RBAC** - database-backed multi-user authentication with exactly three roles (admin/operator/viewer), admin-managed user provisioning (create, role assignment, activate/deactivate, password reset/force change), 15-day password expiration, forced password change, self-service password change, centralized backend permission enforcement, audit logging, and a role-aware admin UI. The previous 12a/12b/12c attempts were rolled back 2026-09-06 and re-speced as this single item (`blueprint/context/current-feature.md`; rollback archives in `blueprint/history/rollbacks/`).
 
 * [ ] 13. **Multi-cluster support** - connect and compare multiple Kubernetes environments from one interface.
 

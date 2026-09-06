@@ -2,31 +2,25 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { SESSION_COOKIE_NAME } from "@/lib/auth-constants";
+import { backendUrl } from "@/lib/backend";
+import { ADMIN_ROLE, type BackendUser } from "@/lib/auth-client";
 
-export const DEFAULT_ADMIN_EMAIL = "ops@kubepilot.io";
-export const DEFAULT_ADMIN_PASSWORD = "kubepilot";
+export { ADMIN_ROLE, ROLE_LABELS } from "@/lib/auth-client";
+export type { BackendUser } from "@/lib/auth-client";
+
+export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 12;
+
+export const SESSION_REDIRECT_PATHS = ["/settings/password"];
+
 const SESSION_SECRET = process.env.KUBEPILOT_AUTH_SECRET ?? "local-development-secret-change-me";
 
-export type SessionData = {
+type SessionData = {
   email: string;
   expiresAt: number;
 };
 
-function normalizeCredential(value: string | null | undefined) {
-  return (value ?? "").trim().toLowerCase();
-}
-
-function encode(value: string) {
-  return Buffer.from(value).toString("base64url");
-}
-
 function sign(payload: string) {
   return createHmac("sha256", SESSION_SECRET).update(payload).digest("base64url");
-}
-
-function serializeSession(session: SessionData) {
-  const payload = encode(JSON.stringify(session));
-  return `${payload}.${sign(payload)}`;
 }
 
 function parseSession(value: string): SessionData | null {
@@ -57,54 +51,66 @@ export async function getSession(): Promise<SessionData | null> {
     return null;
   }
 
-  try {
-    return parseSession(sessionCookie);
-  } catch {
-    return null;
-  }
+  return parseSession(sessionCookie);
 }
 
-export async function requireSession() {
-  const session = await getSession();
-
-  if (!session) {
-    redirect("/login");
-  }
-
-  return session;
-}
-
-export async function getAdminCredentials() {
-  return {
-    email: normalizeCredential(process.env.KUBEPILOT_ADMIN_EMAIL ?? DEFAULT_ADMIN_EMAIL),
-    password: process.env.KUBEPILOT_ADMIN_PASSWORD ?? DEFAULT_ADMIN_PASSWORD,
-  };
-}
-
-export async function isValidCredential(email: string, password: string) {
-  const credentials = await getAdminCredentials();
-  const normalizedEmail = normalizeCredential(email);
-
-  return normalizedEmail === credentials.email && password === credentials.password;
-}
-
-export async function createSession(email: string, cookieValue?: string, sessionExpiresAt?: number) {
+export async function setBackendSession(cookieValue: string, expiresAt?: number) {
   const cookieStore = await cookies();
-  const expiresAt = sessionExpiresAt ?? Date.now() + 1000 * 60 * 60 * 12;
-  const session: SessionData = { email, expiresAt };
-
-  cookieStore.set(SESSION_COOKIE_NAME, cookieValue ?? serializeSession(session), {
+  const maxAge = expiresAt
+    ? Math.max(1, Math.round((expiresAt - Date.now()) / 1000))
+    : SESSION_MAX_AGE_SECONDS;
+  cookieStore.set(SESSION_COOKIE_NAME, cookieValue, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: 60 * 60 * 12,
+    maxAge,
   });
-
-  return session;
 }
 
 export async function clearSession() {
   const cookieStore = await cookies();
   cookieStore.delete(SESSION_COOKIE_NAME);
+}
+
+export async function fetchBackendUser(): Promise<BackendUser | null> {
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+
+  if (!sessionCookie) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(`${backendUrl()}/api/v1/auth/me`, {
+      headers: { cookie: `${SESSION_COOKIE_NAME}=${sessionCookie}` },
+      cache: "no-store",
+    });
+    if (response.status !== 200) {
+      return null;
+    }
+    return (await response.json()) as BackendUser;
+  } catch {
+    return null;
+  }
+}
+
+export async function requireBackendUser(): Promise<BackendUser> {
+  const user = await fetchBackendUser();
+  if (!user) {
+    redirect("/login");
+  }
+  return user;
+}
+
+export function requiresPasswordChange(user: BackendUser) {
+  return user.mustChangePassword || user.passwordExpired;
+}
+
+export async function requireUsableBackendUser(): Promise<BackendUser> {
+  const user = await requireBackendUser();
+  if (requiresPasswordChange(user)) {
+    redirect("/settings/password?forced=1");
+  }
+  return user;
 }

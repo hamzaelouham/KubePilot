@@ -1,14 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
+import Link from "next/link";
 import { NotificationPopover } from "@/components/notification-popover";
-import { ThemeSwitcher } from "@/components/theme-switcher";
-
-async function signOut() {
-  await fetch("/api/logout", { method: "POST" });
-  window.location.href = "/login";
-}
+import { UserMenu } from "@/components/user-menu";
+import { ADMIN_ROLE, type BackendUser } from "@/lib/auth-client";
 
 const navItems = [
   { id: "cluster", label: "Cluster" },
@@ -54,13 +50,14 @@ const resourceTitles: Record<string, string> = {
 };
 
 type DashboardShellProps = {
+  user?: BackendUser;
   activeResource: string;
   activeNamespace: string;
   onNavigate: (resource: string, namespace: string) => void;
   children: React.ReactNode;
 };
 
-export function DashboardShell({ activeResource, activeNamespace, onNavigate, children }: DashboardShellProps) {
+export function DashboardShell({ user, activeResource, activeNamespace, onNavigate, children }: DashboardShellProps) {
   const headerLabel = resourceTitles[activeResource] ?? "Overview";
 
   const [namespaceOptions, setNamespaceOptions] = useState<string[]>(["default"]);
@@ -93,11 +90,8 @@ export function DashboardShell({ activeResource, activeNamespace, onNavigate, ch
             <button className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-xl border border-border bg-header-control text-xl text-slate-500">
               +
             </button>
-            <ThemeSwitcher />
             <NotificationPopover />
-            <Button variant="header" size="header-lg" onClick={signOut} aria-label="Sign out">
-              Sign out
-            </Button>
+            {user ? <UserMenu user={user} /> : null}
           </div>
         </div>
       </div>
@@ -155,6 +149,27 @@ export function DashboardShell({ activeResource, activeNamespace, onNavigate, ch
                 </button>
               ))}
             </nav>
+          {user ? (
+            <nav className="mt-8 space-y-1">
+              <p className="mb-1 px-3 text-xs font-medium uppercase tracking-[0.15em] text-sidebar-foreground/70">
+                Settings
+              </p>
+              {user.role === ADMIN_ROLE ? (
+                <Link
+                  href="/settings/users"
+                  className="block w-full cursor-pointer rounded-md px-3 py-2 text-left text-lg text-sidebar-foreground/70 transition hover:bg-sidebar-accent sm:text-base"
+                >
+                  Users
+                </Link>
+              ) : null}
+              <Link
+                href="/settings/password"
+                className="block w-full cursor-pointer rounded-md px-3 py-2 text-left text-lg text-sidebar-foreground/70 transition hover:bg-sidebar-accent sm:text-base"
+              >
+                Password
+              </Link>
+            </nav>
+          ) : null}
           </aside>
 
           <main className="flex-1 bg-surface p-6">
