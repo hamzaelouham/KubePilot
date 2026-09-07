@@ -225,7 +225,7 @@ def test_detail_namespaced_resource_requires_namespace(monkeypatch: pytest.Monke
     app.dependency_overrides[get_cluster_client] = lambda: ClusterClient("test-cluster", FakeDetailCore(), object())
     with TestClient(app) as client:
         response = client.get(
-            "/api/v1/cluster/resources/pods/api-1?cluster=primary"
+            "/api/v1/cluster/resources/pods/api-1?cluster=test-cluster"
         )
     assert response.status_code == 422
     assert response.json() == {"code": "invalid_resource_identity", "message": "Namespace is required"}
@@ -245,7 +245,7 @@ def test_detail_not_found_maps_to_404(monkeypatch: pytest.MonkeyPatch) -> None:
     app.dependency_overrides[get_cluster_client] = lambda: NotFoundClient("test", object(), object())
     with TestClient(app) as client:
         response = client.get(
-            "/api/v1/cluster/resources/pods/missing?cluster=primary&namespace=default"
+            "/api/v1/cluster/resources/pods/missing?cluster=test&namespace=default"
         )
     assert response.status_code == 404
     assert response.json() == {"code": "resource_not_found", "message": "Kubernetes resource was not found"}
@@ -265,7 +265,7 @@ def test_detail_forbidden_maps_to_403(monkeypatch: pytest.MonkeyPatch) -> None:
     app.dependency_overrides[get_cluster_client] = lambda: ForbiddenClient("test", object(), object())
     with TestClient(app) as client:
         response = client.get(
-            "/api/v1/cluster/resources/pods/api-1?cluster=primary&namespace=default"
+            "/api/v1/cluster/resources/pods/api-1?cluster=test&namespace=default"
         )
     assert response.status_code == 403
     assert response.json() == {"code": "cluster_forbidden", "message": "Kubernetes access is forbidden"}
@@ -280,7 +280,7 @@ def test_detail_unauthenticated_is_rejected(monkeypatch: pytest.MonkeyPatch) -> 
     app.dependency_overrides[get_cluster_client] = lambda: ClusterClient("test-cluster", FakeDetailCore(), object())
     with TestClient(app) as client:
         response = client.get(
-            "/api/v1/cluster/resources/pods/api-1?cluster=primary&namespace=default"
+            "/api/v1/cluster/resources/pods/api-1?cluster=test-cluster&namespace=default"
         )
     assert response.status_code == 401
     assert response.json()["code"] == "authentication_required"

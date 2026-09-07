@@ -14,7 +14,7 @@ from sqlalchemy import select
 
 from app.core.config import Settings
 from app.db.session import get_database_session as open_database_session
-from app.models.entities import UserAccount
+from app.models.entities import UserAccount, ClusterConnection
 from app.kubernetes.client import ClusterClient, create_cluster_client
 
 
@@ -98,8 +98,17 @@ def _resolve_cookie_actor(
     except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError):
         return None
 def get_cluster_client(
+    request: Request,
     settings: Annotated[Settings, Depends(get_settings)],
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
 ) -> ClusterClient:
-    return create_cluster_client(settings)
+    cluster_name = request.query_params.get("cluster") or settings.cluster_name
+    row = database.scalar(select(ClusterConnection).where(ClusterConnection.name == cluster_name))
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "cluster_not_found", "message": "Cluster was not found"},
+        )
+    return create_cluster_client(settings, kubeconfig_content=row.kubeconfig_content, cluster_name=row.name)
 
 

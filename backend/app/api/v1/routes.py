@@ -291,8 +291,8 @@ def cluster_resources(
     )
 
 
-def _validate_detail_scope(resource_type: str, cluster: str, settings: Settings, namespace: str | None) -> None:
-    if cluster != settings.cluster_name:
+def _validate_detail_scope(resource_type: str, cluster: str, client_name: str, namespace: str | None) -> None:
+    if cluster != client_name:
         raise HTTPException(status_code=422, detail={"code": "invalid_resource_identity", "message": "Invalid cluster scope"})
     if resource_type == "nodes" and namespace is not None:
         raise HTTPException(status_code=422, detail={"code": "invalid_resource_identity", "message": "Nodes are cluster-scoped"})
@@ -307,10 +307,9 @@ def resource_detail(
     cluster: str,
     _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.RESOURCES_READ))],
     client: Annotated[ClusterClient, Depends(get_cluster_client)],
-    settings: Annotated[Settings, Depends(get_settings)],
     namespace: str | None = None,
 ) -> ResourceDetailResponse:
-    _validate_detail_scope(resource_type, cluster, settings, namespace)
+    _validate_detail_scope(resource_type, cluster, client.cluster_name, namespace)
     detail = client.detail(resource_type, name, namespace)
     return ResourceDetailResponse(**{key: detail[key] for key in ("cluster", "resource_type", "name", "namespace", "kind", "status", "metadata")}, source="kubernetes")
 
@@ -322,10 +321,9 @@ def resource_yaml(
     cluster: str,
     _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.RESOURCES_READ))],
     client: Annotated[ClusterClient, Depends(get_cluster_client)],
-    settings: Annotated[Settings, Depends(get_settings)],
     namespace: str | None = None,
 ) -> YamlResponse:
-    _validate_detail_scope(resource_type, cluster, settings, namespace)
+    _validate_detail_scope(resource_type, cluster, client.cluster_name, namespace)
     content, truncated = client.yaml(resource_type, name, namespace)
     return YamlResponse(content=content, truncated=truncated)
 
@@ -337,10 +335,9 @@ def resource_logs(
     cluster: str,
     _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.RESOURCES_READ))],
     client: Annotated[ClusterClient, Depends(get_cluster_client)],
-    settings: Annotated[Settings, Depends(get_settings)],
     namespace: str | None = None,
 ) -> LogResponse:
-    _validate_detail_scope(resource_type, cluster, settings, namespace)
+    _validate_detail_scope(resource_type, cluster, client.cluster_name, namespace)
     if resource_type != "pods":
         raise HTTPException(status_code=422, detail={"code": "invalid_resource_identity", "message": "Logs are only available for pods"})
     lines, truncated, container = client.logs(name, namespace)
@@ -354,10 +351,9 @@ def resource_events(
     cluster: str,
     _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.RESOURCES_READ))],
     client: Annotated[ClusterClient, Depends(get_cluster_client)],
-    settings: Annotated[Settings, Depends(get_settings)],
     namespace: str | None = None,
 ) -> EventResponse:
-    _validate_detail_scope(resource_type, cluster, settings, namespace)
+    _validate_detail_scope(resource_type, cluster, client.cluster_name, namespace)
     items, truncated = client.events(name, namespace)
     return EventResponse(items=items, truncated=truncated)
 

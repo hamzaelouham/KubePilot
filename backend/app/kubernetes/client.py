@@ -309,11 +309,19 @@ def _pvc_quantity(pvc: Any, field: str) -> float | None:
     return round(_parse_quantity(str(value)))
 
 
-def create_cluster_client(settings: Settings, loader: Callable[[], None] = config.load_incluster_config) -> ClusterClient:
+def create_cluster_client(
+    settings: Settings,
+    loader: Callable[[], None] = config.load_incluster_config,
+    kubeconfig_content: str | None = None,
+    cluster_name: str | None = None,
+) -> ClusterClient:
     try:
-        loader()
+        if kubeconfig_content is not None:
+            config.load_kube_config_from_dict(yaml.safe_load(kubeconfig_content))
+        else:
+            loader()
         return ClusterClient(
-            settings.cluster_name,
+            cluster_name or settings.cluster_name,
             client.CoreV1Api(),
             client.AppsV1Api(),
             client.BatchV1Api(),
@@ -321,7 +329,7 @@ def create_cluster_client(settings: Settings, loader: Callable[[], None] = confi
             client.StorageV1Api(),
             metrics_api=client.CustomObjectsApi(),
         )
-    except (config.ConfigException, HTTPError, OSError) as error:
+    except (config.ConfigException, yaml.YAMLError, HTTPError, OSError) as error:
         raise ClusterUnavailableError("Kubernetes ServiceAccount configuration is unavailable") from error
 
 

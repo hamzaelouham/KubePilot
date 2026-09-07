@@ -31,7 +31,7 @@
 
 * [ ] 13. **Multi-cluster support** - connect and compare multiple Kubernetes environments from one interface.
   * [x] 13a. **Backend cluster store and management API** - seed the default cluster on startup, add list and register cluster endpoints (admin-only create), store kubeconfig references, and lay the database foundation for cluster routing.
-  * [ ] 13b. **Backend cluster routing** - modify all `/api/v1/cluster/*` routes to accept a `cluster` query param, resolve to the correct `ClusterConnection`, load the appropriate kubeconfig, and return 404/422 for unknown or unreachable clusters.
+  * [x] 13b. **Backend cluster routing** - modify all `/api/v1/cluster/*` routes to accept a `cluster` query param, resolve to the correct `ClusterConnection`, load the appropriate kubeconfig, and return 404/422 for unknown or unreachable clusters.
   * [ ] 13c. **Frontend cluster selector** - add a cluster selector dropdown to the header, persist selection to localStorage, and pass the cluster ID on every backend API call.
   * [ ] 13d. **Admin cluster management page** - add `/settings/clusters` with a table of registered clusters, a form to register new clusters, and an activate/deactivate toggle (admin-only).
 
