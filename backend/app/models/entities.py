@@ -56,6 +56,7 @@ class ClusterConnection(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
     endpoint: Mapped[str] = mapped_column(String(2048), nullable=False)
     kubeconfig_ref: Mapped[str] = mapped_column(String(512), nullable=False)
+    kubeconfig_content: Mapped[str | None] = mapped_column(Text(), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="unknown", server_default="unknown")
     created_at: Mapped[CreatedAt]
 

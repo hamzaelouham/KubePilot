@@ -30,6 +30,10 @@
 * [x] 12. **Users, Authentication & RBAC** - database-backed multi-user authentication with exactly three roles (admin/operator/viewer), admin-managed user provisioning (create, role assignment, activate/deactivate, password reset/force change), 15-day password expiration, forced password change, self-service password change, centralized backend permission enforcement, audit logging, and a role-aware admin UI. The previous 12a/12b/12c attempts were rolled back 2026-09-06 and re-speced as this single item (`blueprint/context/current-feature.md`; rollback archives in `blueprint/history/rollbacks/`).
 
 * [ ] 13. **Multi-cluster support** - connect and compare multiple Kubernetes environments from one interface.
+  * [x] 13a. **Backend cluster store and management API** - seed the default cluster on startup, add list and register cluster endpoints (admin-only create), store kubeconfig references, and lay the database foundation for cluster routing.
+  * [ ] 13b. **Backend cluster routing** - modify all `/api/v1/cluster/*` routes to accept a `cluster` query param, resolve to the correct `ClusterConnection`, load the appropriate kubeconfig, and return 404/422 for unknown or unreachable clusters.
+  * [ ] 13c. **Frontend cluster selector** - add a cluster selector dropdown to the header, persist selection to localStorage, and pass the cluster ID on every backend API call.
+  * [ ] 13d. **Admin cluster management page** - add `/settings/clusters` with a table of registered clusters, a form to register new clusters, and an activate/deactivate toggle (admin-only).
 
 * [ ] 14. **AI Copilot for Kubernetes operations** - add natural-language investigation support to explain issues and help apply approved actions.
 

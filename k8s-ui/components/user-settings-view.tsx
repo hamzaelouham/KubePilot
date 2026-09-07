@@ -37,7 +37,7 @@ export function UserSettingsView({ user }: { user: BackendUser }) {
             href="/settings/password"
             className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition hover:bg-muted"
           >
-            Change my password
+            Change password
           </Link>
         </div>
         <UsersManagement currentUserEmail={user.email} />

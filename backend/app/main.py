@@ -5,12 +5,15 @@ from typing import AsyncIterator
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy import select
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.v1.routes import router as v1_router
 from app.api.v1.schemas import ErrorResponse
 from app.api.v1.users import router as users_router
 from app.core.config import ConfigurationError, Settings
+from app.db.session import create_session_factory
+from app.models.entities import ClusterConnection
 from app.kubernetes.client import (
     ClusterClientError,
     ClusterForbiddenError,
@@ -21,9 +24,34 @@ from app.kubernetes.client import (
 logger = logging.getLogger(__name__)
 
 
+def _seed_default_cluster(settings: Settings) -> None:
+    session_factory = create_session_factory(settings)
+    database = session_factory()
+    try:
+        existing = database.scalar(
+            select(ClusterConnection).where(ClusterConnection.name == settings.cluster_name)
+        )
+        if existing is not None:
+            return
+        database.add(
+            ClusterConnection(
+                name=settings.cluster_name,
+                endpoint="in-cluster",
+                kubeconfig_ref="in-cluster",
+                status="active",
+            )
+        )
+        database.commit()
+    except Exception as error:  # noqa: BLE001
+        logger.warning("Skipped default cluster seeding: %s", error)
+    finally:
+        database.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.settings = Settings.from_env()
+    _seed_default_cluster(app.state.settings)
     yield
 
 

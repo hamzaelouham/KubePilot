@@ -6,9 +6,11 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as SQLAlchemySession
+import yaml
 
 from app.core.dependencies import (
     AuthenticatedActor,
@@ -22,7 +24,7 @@ from app.core.config import Settings
 from app.core.audit import AuditEvent, record_audit
 from app.core.passwords import hash_password, password_matches, validate_password_policy
 from app.core.timeutils import is_expired, now
-from app.models.entities import Session, UserAccount
+from app.models.entities import Session, UserAccount, ClusterConnection
 
 from .schemas import ActorResponse, HealthResponse
 from .discovery_schemas import (
@@ -34,6 +36,11 @@ from .discovery_schemas import (
     ResourceType,
 )
 from .auth_schemas import ChangePasswordRequest, LoginRequest, LoginResponse, MeResponse
+from .cluster_schemas import (
+    ClusterCreateRequest,
+    ClusterListResponse,
+    ClusterSummary,
+)
 from .detail_schemas import DetailResourceType, EventResponse, LogResponse, ResourceDetailResponse, YamlResponse
 from .metrics_schemas import (
     MetricsSummaryResponse,
@@ -475,3 +482,149 @@ def cluster_metrics_storage(
             for item in items
         ],
     )
+
+
+def _parse_kubeconfig(content: str) -> str:
+    """Parse kubeconfig YAML and return the API server endpoint."""
+    try:
+        data = yaml.safe_load(content)
+    except yaml.YAMLError as error:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_kubeconfig", "message": "kubeconfig is not valid YAML"},
+        ) from error
+    if not isinstance(data, dict):
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_kubeconfig", "message": "kubeconfig must be an object"},
+        )
+    clusters = data.get("clusters")
+    if not isinstance(clusters, list) or not clusters:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_kubeconfig", "message": "kubeconfig has no clusters entry"},
+        )
+    first = clusters[0]
+    try:
+        server = first["cluster"]["server"]
+    except (KeyError, IndexError, TypeError) as error:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_kubeconfig", "message": "kubeconfig cluster has no server"},
+        ) from error
+    if not isinstance(server, str) or not server.strip():
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_kubeconfig", "message": "kubeconfig cluster has no server"},
+        )
+    return server
+
+
+@router.get("/clusters", response_model=ClusterListResponse)
+def cluster_list(
+    _database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+    _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.CLUSTERS_READ))],
+) -> ClusterListResponse:
+    rows = _database.scalars(select(ClusterConnection).order_by(ClusterConnection.name)).all()
+    return ClusterListResponse(
+        items=[
+            ClusterSummary(
+                id=row.id,
+                name=row.name,
+                endpoint=row.endpoint,
+                status=row.status,
+                created_at=row.created_at,
+            )
+            for row in rows
+        ]
+    )
+
+
+async def cluster_create(
+    request: Request,
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+    _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.CLUSTERS_CREATE))],
+) -> ClusterSummary:
+    content: str | None = None
+    name: str | None = None
+
+    content_type = request.headers.get("content-type", "")
+    if content_type.startswith("multipart/form-data"):
+        form = await request.form()
+        name = form.get("name")
+        file = form.get("kubeconfig_file")
+        if file is None:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "kubeconfig_required", "message": "kubeconfig_file is required"},
+            )
+        raw = await file.read()
+        content = raw.decode("utf-8")
+    else:
+        from pydantic import ValidationError
+
+        try:
+            payload = ClusterCreateRequest.model_validate_json(await request.body())
+        except ValidationError as error:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "validation_error", "message": "Request validation failed"},
+            ) from error
+        name = payload.name
+        content = payload.kubeconfig_content if payload.kubeconfig_content else None
+
+    if not name or not name.strip():
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "validation_error", "message": "name is required"},
+        )
+    if content is None or not content.strip():
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "kubeconfig_required", "message": "kubeconfig content is required"},
+        )
+
+    endpoint = _parse_kubeconfig(content)
+
+    cluster = ClusterConnection(
+        name=name.strip(),
+        endpoint=endpoint,
+        kubeconfig_ref="",
+        kubeconfig_content=content,
+        status="active",
+    )
+    database.add(cluster)
+    try:
+        database.commit()
+    except IntegrityError as error:
+        database.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "duplicate_cluster_name", "message": "A cluster with this name already exists"},
+        ) from error
+    database.refresh(cluster)
+    record_audit(
+        database,
+        AuditEvent.CLUSTER_CREATED,
+        actor_id=_authorized.user_id,
+        resource_type="cluster_connection",
+        resource_id=str(cluster.id),
+        result="success",
+    )
+    database.commit()
+    return ClusterSummary(
+        id=cluster.id,
+        name=cluster.name,
+        endpoint=cluster.endpoint,
+        status=cluster.status,
+        created_at=cluster.created_at,
+    )
+
+
+@router.post("/clusters", response_model=ClusterSummary, status_code=201)
+async def cluster_create_route(
+    request: Request,
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+    _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.CLUSTERS_CREATE))],
+) -> ClusterSummary:
+    return await cluster_create(request, database, _authorized)

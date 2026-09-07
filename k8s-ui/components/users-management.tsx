@@ -301,7 +301,7 @@ export function UsersManagement({ currentUserEmail }: { currentUserEmail: string
       {error ? <UserManagementCallout>{error}</UserManagementCallout> : null}
 
       <div className="flex items-center justify-end gap-2">
-        <Button onClick={() => setCreateOpen(true)}>New user</Button>
+        <Button onClick={() => setCreateOpen(true)}>create user</Button>
       </div>
 
       <div className="rounded-md border border-border bg-surface-elevated p-2 shadow-sm">
