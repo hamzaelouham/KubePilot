@@ -59,6 +59,7 @@ const resourceTitles: Record<string, string> = {
   overview: "Overview",
   workloads: "Workloads",
   users: "Users",
+  clusters: "Clusters",
   "cron-jobs": "Cron Jobs",
   "daemon-sets": "Daemon Sets",
   deployments: "Deployments",
@@ -214,6 +215,12 @@ export function DashboardShell({
                   Administration
                 </p>
                 <div className="space-y-1">
+                  <Link
+                    href="/settings/clusters"
+                    className="block w-full cursor-pointer rounded-md px-3 py-2 text-left text-base text-sidebar-foreground/70 transition hover:bg-sidebar-accent"
+                  >
+                    Clusters
+                  </Link>
                   {user.role === ADMIN_ROLE ? (
                     <Link
                       href="/settings/users"

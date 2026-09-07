@@ -109,6 +109,11 @@ def get_cluster_client(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "cluster_not_found", "message": "Cluster was not found"},
         )
+    if row.status == "inactive":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "cluster_not_found", "message": "Cluster was not found"},
+        )
     return create_cluster_client(settings, kubeconfig_content=row.kubeconfig_content, cluster_name=row.name)
 
 

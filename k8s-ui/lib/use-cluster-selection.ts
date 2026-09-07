@@ -31,8 +31,10 @@ export function useClusterSelection(initialCluster?: string) {
     fetch("/api/clusters", { signal: controller.signal, cache: "no-store" })
       .then(async (response) => {
         if (!response.ok) return;
-        const body = (await response.json()) as { items?: { name: string }[] };
-        const names = (body.items ?? []).map((item) => item.name);
+        const body = (await response.json()) as { items?: { name: string; status?: string }[] };
+        const names = (body.items ?? [])
+          .filter((item) => item.status === "active")
+          .map((item) => item.name);
         if (names.length === 0) return;
         setClusters(names);
         setCluster((current) => {

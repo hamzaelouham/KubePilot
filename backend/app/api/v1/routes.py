@@ -5,6 +5,7 @@ import json
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import delete, select
@@ -39,6 +40,7 @@ from .auth_schemas import ChangePasswordRequest, LoginRequest, LoginResponse, Me
 from .cluster_schemas import (
     ClusterCreateRequest,
     ClusterListResponse,
+    ClusterStatusUpdateRequest,
     ClusterSummary,
 )
 from .detail_schemas import DetailResourceType, EventResponse, LogResponse, ResourceDetailResponse, YamlResponse
@@ -624,3 +626,53 @@ async def cluster_create_route(
     _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.CLUSTERS_CREATE))],
 ) -> ClusterSummary:
     return await cluster_create(request, database, _authorized)
+
+
+@router.patch("/clusters/{cluster_id}", response_model=ClusterSummary)
+async def cluster_update_status(
+    cluster_id: UUID,
+    request: Request,
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+    _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.CLUSTERS_UPDATE))],
+) -> ClusterSummary:
+    from pydantic import ValidationError
+
+    try:
+        payload = ClusterStatusUpdateRequest.model_validate_json(await request.body())
+    except ValidationError as error:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "validation_error", "message": "Request validation failed"},
+        ) from error
+    if payload.status not in ("active", "inactive"):
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "validation_error", "message": "status must be 'active' or 'inactive'"},
+        )
+
+    row = database.get(ClusterConnection, cluster_id)
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "cluster_not_found", "message": "Cluster was not found"},
+        )
+
+    row.status = payload.status
+    database.commit()
+    database.refresh(row)
+    record_audit(
+        database,
+        AuditEvent.CLUSTER_STATUS_CHANGED,
+        actor_id=_authorized.user_id,
+        resource_type="cluster_connection",
+        resource_id=str(row.id),
+        result="success",
+    )
+    database.commit()
+    return ClusterSummary(
+        id=row.id,
+        name=row.name,
+        endpoint=row.endpoint,
+        status=row.status,
+        created_at=row.created_at,
+    )

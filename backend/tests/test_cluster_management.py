@@ -1,5 +1,6 @@
 from pathlib import Path
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,7 +10,7 @@ from sqlalchemy.orm import Session as DatabaseSession
 from app.core.config import Settings
 from app.db.session import create_session_factory
 from app.models.base import Base
-from app.models.entities import ClusterConnection
+from app.models.entities import AuditAction, ClusterConnection
 
 
 @pytest.fixture()
@@ -235,3 +236,127 @@ def test_create_cluster_non_admin_returns_403(api: SimpleNamespace) -> None:
             json={"name": "forbidden", "kubeconfig_content": VALID_KUBECONFIG},
         )
     assert response.status_code == 403, response.text
+
+
+def test_update_cluster_status_round_trip(api: SimpleNamespace) -> None:
+    admin = admin_login(api)
+    with api.client as client:
+        create = client.post(
+            "/api/v1/clusters",
+            headers=cookie_header(admin["cookie"]),
+            json={"name": "staging", "kubeconfig_content": VALID_KUBECONFIG},
+        )
+        assert create.status_code == 201, create.text
+        cluster_id = create.json()["id"]
+
+        deactivate = client.patch(
+            f"/api/v1/clusters/{cluster_id}",
+            headers=cookie_header(admin["cookie"]),
+            json={"status": "inactive"},
+        )
+        assert deactivate.status_code == 200, deactivate.text
+        assert deactivate.json()["status"] == "inactive"
+
+        reactivate = client.patch(
+            f"/api/v1/clusters/{cluster_id}",
+            headers=cookie_header(admin["cookie"]),
+            json={"status": "active"},
+        )
+        assert reactivate.status_code == 200, reactivate.text
+        assert reactivate.json()["status"] == "active"
+        assert reactivate.json()["name"] == "staging"
+        assert reactivate.json()["endpoint"] == "https://10.0.0.1:6443"
+
+    database = api.factory()
+    try:
+        row = database.scalar(select(ClusterConnection).where(ClusterConnection.name == "staging"))
+        assert row is not None
+        assert row.status == "active"
+    finally:
+        database.close()
+
+
+def test_update_cluster_status_unknown_id_returns_404(api: SimpleNamespace) -> None:
+    admin = admin_login(api)
+    with api.client as client:
+        response = client.patch(
+            f"/api/v1/clusters/{uuid4()}",
+            headers=cookie_header(admin["cookie"]),
+            json={"status": "inactive"},
+        )
+    assert response.status_code == 404, response.text
+    assert response.json()["code"] == "cluster_not_found"
+
+
+def test_update_cluster_status_invalid_value_returns_422(api: SimpleNamespace) -> None:
+    admin = admin_login(api)
+    with api.client as client:
+        create = client.post(
+            "/api/v1/clusters",
+            headers=cookie_header(admin["cookie"]),
+            json={"name": "staging", "kubeconfig_content": VALID_KUBECONFIG},
+        )
+        assert create.status_code == 201, create.text
+        response = client.patch(
+            f"/api/v1/clusters/{create.json()['id']}",
+            headers=cookie_header(admin["cookie"]),
+            json={"status": "paused"},
+        )
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "validation_error"
+
+
+def test_update_cluster_status_viewer_returns_403(api: SimpleNamespace) -> None:
+    create_viewer(api)
+    admin = admin_login(api)
+    with api.client as client:
+        create = client.post(
+            "/api/v1/clusters",
+            headers=cookie_header(admin["cookie"]),
+            json={"name": "staging", "kubeconfig_content": VALID_KUBECONFIG},
+        )
+        assert create.status_code == 201, create.text
+        cluster_id = create.json()["id"]
+    viewer = login(api, "viewer@example.com", "correct-horse-00")
+    with api.client as client:
+        response = client.patch(
+            f"/api/v1/clusters/{cluster_id}",
+            headers=cookie_header(viewer["cookie"]),
+            json={"status": "inactive"},
+        )
+    assert response.status_code == 403, response.text
+
+
+def test_update_cluster_status_records_audit(api: SimpleNamespace) -> None:
+    admin = admin_login(api)
+    with api.client as client:
+        create = client.post(
+            "/api/v1/clusters",
+            headers=cookie_header(admin["cookie"]),
+            json={"name": "staging", "kubeconfig_content": VALID_KUBECONFIG},
+        )
+        assert create.status_code == 201, create.text
+        cluster_id = create.json()["id"]
+        toggle = client.patch(
+            f"/api/v1/clusters/{cluster_id}",
+            headers=cookie_header(admin["cookie"]),
+            json={"status": "inactive"},
+        )
+        assert toggle.status_code == 200, toggle.text
+
+    database = api.factory()
+    try:
+        admin_row = database.scalar(select(ClusterConnection).where(ClusterConnection.name == "primary"))
+        assert admin_row is not None
+        audit = database.scalar(
+            select(AuditAction)
+            .where(AuditAction.action == "cluster.status_change")
+            .order_by(AuditAction.created_at.desc())
+        )
+        assert audit is not None
+        assert audit.actor_id is not None
+        assert audit.resource_type == "cluster_connection"
+        assert audit.resource_id == cluster_id
+        assert audit.result == "success"
+    finally:
+        database.close()

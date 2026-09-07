@@ -137,3 +137,41 @@ def test_unloadable_kubeconfig_returns_503(authed_api: SimpleNamespace, monkeypa
         response = client.get("/api/v1/cluster/namespaces?cluster=broken")
     assert response.status_code == 503, response.text
     assert response.json()["code"] == "cluster_unavailable"
+
+
+def set_cluster_status(api: SimpleNamespace, name: str, status: str) -> None:
+    database = api.factory()
+    try:
+        row = database.scalar(select(ClusterConnection).where(ClusterConnection.name == name))
+        assert row is not None
+        row.status = status
+        database.commit()
+    finally:
+        database.close()
+
+
+def test_inactive_cluster_returns_404(authed_api: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
+    seed_registered_cluster(authed_api, "staging", VALID_KUBECONFIG)
+    set_cluster_status(authed_api, "staging", "inactive")
+    monkeypatch.setattr("app.core.dependencies.create_cluster_client", raise_if_called)
+    with authed_api.client as client:
+        response = client.get("/api/v1/cluster/namespaces?cluster=staging")
+    assert response.status_code == 404, response.text
+    assert response.json() == {"code": "cluster_not_found", "message": "Cluster was not found"}
+
+
+def test_reactivated_cluster_loads_kubeconfig_again(authed_api: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
+    seed_registered_cluster(authed_api, "staging", VALID_KUBECONFIG)
+    set_cluster_status(authed_api, "staging", "inactive")
+    set_cluster_status(authed_api, "staging", "active")
+    captured: list[dict] = []
+
+    def fake_create_cluster_client(settings, loader=None, kubeconfig_content=None, cluster_name=None):
+        captured.append({"kubeconfig_content": kubeconfig_content, "cluster_name": cluster_name or settings.cluster_name})
+        return StubClusterClient(cluster_name or settings.cluster_name, object(), object())
+
+    monkeypatch.setattr("app.core.dependencies.create_cluster_client", fake_create_cluster_client)
+    with authed_api.client as client:
+        response = client.get("/api/v1/cluster/namespaces?cluster=staging")
+    assert response.status_code == 200, response.text
+    assert captured == [{"kubeconfig_content": VALID_KUBECONFIG, "cluster_name": "staging"}]
