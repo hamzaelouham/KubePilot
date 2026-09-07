@@ -66,13 +66,21 @@ def test_missing_service_account_configuration_is_unavailable() -> None:
     def loader() -> None:
         raise config.ConfigException("not running in a pod")
 
-    with pytest.raises(ClusterUnavailableError):
+    with pytest.raises(ClusterUnavailableError) as excinfo:
         create_cluster_client(settings(), loader=loader)
+    assert "not running in a pod" in str(excinfo.value)
 
 
 def test_forbidden_kubernetes_response_is_classified() -> None:
     error = ApiException(status=403)
     assert isinstance(classify_kubernetes_error(error), ClusterForbiddenError)
+
+
+def test_unavailable_response_reason_is_surfaced() -> None:
+    error = ApiException(status=401, reason="Unauthorized")
+    classified = classify_kubernetes_error(error)
+    assert isinstance(classified, ClusterUnavailableError)
+    assert "HTTP 401" in str(classified)
 
 
 def test_namespaced_replica_set_listing_uses_namespaced_method() -> None:

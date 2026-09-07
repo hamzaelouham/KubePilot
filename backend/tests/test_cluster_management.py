@@ -9,6 +9,11 @@ from sqlalchemy.orm import Session as DatabaseSession
 
 from app.core.config import Settings
 from app.db.session import create_session_factory
+from app.kubernetes.client import (
+    ClusterClient,
+    ClusterForbiddenError,
+    ClusterUnavailableError,
+)
 from app.models.base import Base
 from app.models.entities import AuditAction, ClusterConnection
 
@@ -59,6 +64,19 @@ def create_viewer(api: SimpleNamespace) -> dict:
     return response.json()
 
 
+class _ProbeOkClient(ClusterClient):
+    def namespaces(self) -> list[tuple[str, str]]:
+        return [("default", "Active")]
+
+
+@pytest.fixture(autouse=True)
+def _connected_create_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "app.api.v1.routes.create_cluster_client",
+        lambda settings, **kwargs: _ProbeOkClient("probe", object(), object()),
+    )
+
+
 VALID_KUBECONFIG = """apiVersion: v1
 kind: Config
 clusters:
@@ -66,6 +84,27 @@ clusters:
     cluster:
       server: https://10.0.0.1:6443
 contexts:
+  - name: staging
+    context:
+      cluster: staging
+      user: staging
+current-context: staging
+"""
+
+MULTI_CLUSTER_KUBECONFIG = """apiVersion: v1
+kind: Config
+clusters:
+  - name: prod
+    cluster:
+      server: https://prod.example.com:6443
+  - name: staging
+    cluster:
+      server: https://10.0.0.1:6443
+contexts:
+  - name: prod
+    context:
+      cluster: prod
+      user: prod
   - name: staging
     context:
       cluster: staging
@@ -224,6 +263,158 @@ clusters:
         )
     assert response.status_code == 422, response.text
     assert response.json()["code"] == "invalid_kubeconfig"
+
+
+def test_create_cluster_resolves_endpoint_from_current_context(api: SimpleNamespace) -> None:
+    admin = admin_login(api)
+    with api.client as client:
+        response = client.post(
+            "/api/v1/clusters",
+            headers=cookie_header(admin["cookie"]),
+            json={"name": "staging", "kubeconfig_content": MULTI_CLUSTER_KUBECONFIG},
+        )
+    assert response.status_code == 201, response.text
+    assert response.json()["endpoint"] == "https://10.0.0.1:6443"
+
+
+def test_create_cluster_missing_current_context_returns_422(api: SimpleNamespace) -> None:
+    admin = admin_login(api)
+    kubeconfig = """apiVersion: v1
+kind: Config
+clusters:
+  - name: prod
+    cluster:
+      server: https://prod.example.com:6443
+contexts:
+  - name: prod
+    context:
+      cluster: prod
+      user: prod
+"""
+    with api.client as client:
+        response = client.post(
+            "/api/v1/clusters",
+            headers=cookie_header(admin["cookie"]),
+            json={"name": "bad", "kubeconfig_content": kubeconfig},
+        )
+    assert response.status_code == 422, response.text
+    assert "current-context" in response.json()["message"]
+
+
+def test_create_cluster_unknown_current_context_returns_422(api: SimpleNamespace) -> None:
+    admin = admin_login(api)
+    kubeconfig = """apiVersion: v1
+kind: Config
+clusters:
+  - name: prod
+    cluster:
+      server: https://prod.example.com:6443
+contexts:
+  - name: prod
+    context:
+      cluster: prod
+      user: prod
+current-context: ghost
+"""
+    with api.client as client:
+        response = client.post(
+            "/api/v1/clusters",
+            headers=cookie_header(admin["cookie"]),
+            json={"name": "bad", "kubeconfig_content": kubeconfig},
+        )
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "invalid_kubeconfig"
+
+
+def test_create_cluster_context_reference_unknown_cluster_returns_422(api: SimpleNamespace) -> None:
+    admin = admin_login(api)
+    kubeconfig = """apiVersion: v1
+kind: Config
+clusters:
+  - name: prod
+    cluster:
+      server: https://prod.example.com:6443
+contexts:
+  - name: staging
+    context:
+      cluster: ghost
+      user: staging
+current-context: staging
+"""
+    with api.client as client:
+        response = client.post(
+            "/api/v1/clusters",
+            headers=cookie_header(admin["cookie"]),
+            json={"name": "bad", "kubeconfig_content": kubeconfig},
+        )
+    assert response.status_code == 422, response.text
+    assert "ghost" in response.json()["message"]
+
+
+def test_create_cluster_unreachable_probe_returns_502_and_does_not_persist(api: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_probe(settings, **kwargs):
+        raise ClusterUnavailableError("Kubernetes cluster is unavailable: [Errno 111] Connection refused")
+
+    monkeypatch.setattr("app.api.v1.routes.create_cluster_client", fail_probe)
+    admin = admin_login(api)
+    with api.client as client:
+        response = client.post(
+            "/api/v1/clusters",
+            headers=cookie_header(admin["cookie"]),
+            json={"name": "staging", "kubeconfig_content": VALID_KUBECONFIG},
+        )
+        listing = client.get("/api/v1/clusters", headers=cookie_header(admin["cookie"]))
+    assert response.status_code == 502, response.text
+    assert response.json()["code"] == "kubeconfig_unreachable"
+    assert "https://10.0.0.1:6443" in response.json()["message"]
+    assert "Connection refused" in response.json()["message"]
+    assert all(item["name"] != "staging" for item in listing.json()["items"])
+
+
+def test_create_cluster_loopback_server_includes_hint(api: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_probe(settings, **kwargs):
+        raise ClusterUnavailableError("Kubernetes cluster is unavailable: [Errno 111] Connection refused")
+
+    monkeypatch.setattr("app.api.v1.routes.create_cluster_client", fail_probe)
+    admin = admin_login(api)
+    kubeconfig = """apiVersion: v1
+kind: Config
+clusters:
+  - name: kind
+    cluster:
+      server: https://127.0.0.1:40393
+contexts:
+  - name: kind
+    context:
+      cluster: kind
+      user: kind
+current-context: kind
+"""
+    with api.client as client:
+        response = client.post(
+            "/api/v1/clusters",
+            headers=cookie_header(admin["cookie"]),
+            json={"name": "kind", "kubeconfig_content": kubeconfig},
+        )
+    assert response.status_code == 502, response.text
+    assert "127.0.0.1" in response.json()["message"]
+    assert "localhost" in response.json()["message"]
+
+
+def test_create_cluster_rejected_credentials_returns_422(api: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
+    def forbidden_probe(settings, **kwargs):
+        raise ClusterForbiddenError("Kubernetes RBAC denied the requested operation")
+
+    monkeypatch.setattr("app.api.v1.routes.create_cluster_client", forbidden_probe)
+    admin = admin_login(api)
+    with api.client as client:
+        response = client.post(
+            "/api/v1/clusters",
+            headers=cookie_header(admin["cookie"]),
+            json={"name": "staging", "kubeconfig_content": VALID_KUBECONFIG},
+        )
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "kubeconfig_unreachable"
 
 
 def test_create_cluster_non_admin_returns_403(api: SimpleNamespace) -> None:

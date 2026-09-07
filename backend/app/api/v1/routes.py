@@ -5,6 +5,7 @@ import json
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -54,7 +55,14 @@ from .metrics_schemas import (
     StorageMetricsResponse,
     WorkloadMetricItem,
 )
-from app.kubernetes.client import ClusterClient, ClusterMetricsError
+from app.kubernetes.client import (
+    ClusterClient,
+    ClusterClientError,
+    ClusterForbiddenError,
+    ClusterMetricsError,
+    ClusterUnavailableError,
+    create_cluster_client,
+)
 
 router = APIRouter()
 
@@ -483,7 +491,7 @@ def cluster_metrics_storage(
 
 
 def _parse_kubeconfig(content: str) -> str:
-    """Parse kubeconfig YAML and return the API server endpoint."""
+    """Parse kubeconfig YAML and return the active context's API server endpoint."""
     try:
         data = yaml.safe_load(content)
     except yaml.YAMLError as error:
@@ -496,26 +504,115 @@ def _parse_kubeconfig(content: str) -> str:
             status_code=422,
             detail={"code": "invalid_kubeconfig", "message": "kubeconfig must be an object"},
         )
+    current_context = data.get("current-context")
+    if not isinstance(current_context, str) or not current_context.strip():
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_kubeconfig", "message": "kubeconfig has no current-context"},
+        )
+    contexts = data.get("contexts")
+    if not isinstance(contexts, list) or not contexts:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_kubeconfig", "message": "kubeconfig has no contexts entry"},
+        )
+    context_entry = next(
+        (entry for entry in contexts if isinstance(entry, dict) and entry.get("name") == current_context),
+        None,
+    )
+    if context_entry is None:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "invalid_kubeconfig",
+                "message": f"current-context {current_context!r} is not defined under contexts",
+            },
+        )
+    cluster_name = (context_entry.get("context") or {}).get("cluster")
+    if not isinstance(cluster_name, str) or not cluster_name.strip():
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "invalid_kubeconfig",
+                "message": f"context {current_context!r} has no cluster",
+            },
+        )
     clusters = data.get("clusters")
     if not isinstance(clusters, list) or not clusters:
         raise HTTPException(
             status_code=422,
             detail={"code": "invalid_kubeconfig", "message": "kubeconfig has no clusters entry"},
         )
-    first = clusters[0]
-    try:
-        server = first["cluster"]["server"]
-    except (KeyError, IndexError, TypeError) as error:
+    cluster_entry = next(
+        (entry for entry in clusters if isinstance(entry, dict) and entry.get("name") == cluster_name),
+        None,
+    )
+    if cluster_entry is None:
         raise HTTPException(
             status_code=422,
-            detail={"code": "invalid_kubeconfig", "message": "kubeconfig cluster has no server"},
-        ) from error
+            detail={
+                "code": "invalid_kubeconfig",
+                "message": f"context {current_context!r} references unknown cluster {cluster_name!r}",
+            },
+        )
+    server = (cluster_entry.get("cluster") or {}).get("server")
     if not isinstance(server, str) or not server.strip():
         raise HTTPException(
             status_code=422,
-            detail={"code": "invalid_kubeconfig", "message": "kubeconfig cluster has no server"},
+            detail={
+                "code": "invalid_kubeconfig",
+                "message": f"cluster {cluster_name!r} has no server",
+            },
         )
     return server
+
+
+def _is_loopback_server(endpoint: str) -> bool:
+    try:
+        host = urlsplit(endpoint).hostname
+    except ValueError:
+        return False
+    return host in ("localhost", "127.0.0.1", "::1")
+
+
+def _probe_kubeconfig(settings: Settings, content: str, endpoint: str) -> None:
+    """Try connecting with the kubeconfig before registering the cluster."""
+    try:
+        probe_client = create_cluster_client(settings, kubeconfig_content=content)
+        probe_client.namespaces()
+    except ClusterForbiddenError as error:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "kubeconfig_unreachable",
+                "message": f"Kubernetes rejected the kubeconfig's credentials: {error}",
+            },
+        ) from error
+    except ClusterUnavailableError as error:
+        hint = (
+            " A server bound to localhost is only reachable when the backend runs on the same host "
+            "(for example a KubePilot pod on Minikube cannot reach a kind cluster on the host loopback)."
+            if _is_loopback_server(endpoint)
+            else ""
+        )
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "kubeconfig_unreachable",
+                "message": (
+                    f"Cannot reach the Kubernetes API server at {endpoint} from where the backend runs: "
+                    f"{error}{hint}"
+                ),
+            },
+        ) from error
+    except ClusterClientError as error:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "kubeconfig_unreachable",
+                "message": f"The kubeconfig could not be used: {error}",
+            },
+        ) from error
 
 
 @router.get("/clusters", response_model=ClusterListResponse)
@@ -541,6 +638,7 @@ def cluster_list(
 async def cluster_create(
     request: Request,
     database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
     _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.CLUSTERS_CREATE))],
 ) -> ClusterSummary:
     content: str | None = None
@@ -583,6 +681,7 @@ async def cluster_create(
         )
 
     endpoint = _parse_kubeconfig(content)
+    _probe_kubeconfig(settings, content, endpoint)
 
     cluster = ClusterConnection(
         name=name.strip(),
@@ -623,9 +722,10 @@ async def cluster_create(
 async def cluster_create_route(
     request: Request,
     database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
     _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.CLUSTERS_CREATE))],
 ) -> ClusterSummary:
-    return await cluster_create(request, database, _authorized)
+    return await cluster_create(request, database, settings, _authorized)
 
 
 @router.patch("/clusters/{cluster_id}", response_model=ClusterSummary)

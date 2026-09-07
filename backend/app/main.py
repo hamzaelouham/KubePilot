@@ -112,12 +112,12 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(ClusterUnavailableError)
     async def cluster_unavailable_handler(
-        _request: Request, _exception: ClusterUnavailableError
+        _request: Request, exception: ClusterUnavailableError
     ) -> JSONResponse:
         return JSONResponse(
             status_code=503,
             content=ErrorResponse(
-                code="cluster_unavailable", message="Kubernetes cluster is unavailable"
+                code="cluster_unavailable", message=str(exception)
             ).model_dump(),
         )
 

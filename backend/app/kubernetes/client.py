@@ -330,14 +330,31 @@ def create_cluster_client(
             metrics_api=client.CustomObjectsApi(),
         )
     except (config.ConfigException, yaml.YAMLError, HTTPError, OSError) as error:
-        raise ClusterUnavailableError("Kubernetes ServiceAccount configuration is unavailable") from error
+        raise ClusterUnavailableError(
+            f"Kubernetes ServiceAccount configuration is unavailable: {error}"
+        ) from error
+
+
+def _kubernetes_error_reason(error: Exception) -> str:
+    if isinstance(error, ApiException):
+        detail = error.reason or error.body or ""
+        if isinstance(detail, bytes):
+            detail = detail.decode("utf-8", errors="replace")
+        detail = str(detail).strip()
+        return f"HTTP {error.status}{': ' + detail if detail else ''}"
+    reason = getattr(error, "reason", None)
+    if reason:
+        return str(reason)
+    return str(error) or type(error).__name__
 
 
 def classify_kubernetes_error(error: Exception) -> ClusterClientError:
     if isinstance(error, ApiException) and error.status == 403:
         return ClusterForbiddenError("Kubernetes RBAC denied the requested operation")
     if isinstance(error, (ApiException, HTTPError, TimeoutError, OSError)):
-        return ClusterUnavailableError("Kubernetes cluster is unavailable")
+        return ClusterUnavailableError(
+            f"Kubernetes cluster is unavailable: {_kubernetes_error_reason(error)}"
+        )
     return ClusterClientError("Kubernetes request failed")
 
 
