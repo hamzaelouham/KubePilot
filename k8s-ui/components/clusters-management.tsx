@@ -11,6 +11,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -55,7 +65,7 @@ async function fetchClusters(): Promise<{ items: ManagedCluster[] } | "unauthori
   return (await response.json()) as { items: ManagedCluster[] };
 }
 
-export function ClustersManagement({ canManage }: { canManage: boolean }) {
+export function ClustersManagement({ canManage, canDelete }: { canManage: boolean; canDelete?: boolean }) {
   const [clusters, setClusters] = useState<ManagedCluster[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +75,11 @@ export function ClustersManagement({ canManage }: { canManage: boolean }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [createName, setCreateName] = useState("");
   const [createKubeconfig, setCreateKubeconfig] = useState("");
+
+  const [editTarget, setEditTarget] = useState<ManagedCluster | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editKubeconfig, setEditKubeconfig] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<ManagedCluster | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -194,6 +209,78 @@ export function ClustersManagement({ canManage }: { canManage: boolean }) {
     }
   };
 
+  const openEdit = (cluster: ManagedCluster) => {
+    setEditTarget(cluster);
+    setEditName(cluster.name);
+    setEditKubeconfig("");
+    setError(null);
+  };
+
+  const doEdit = async () => {
+    if (!editTarget) return;
+    setPending("edit");
+    setError(null);
+    try {
+      const payload: { name: string; kubeconfig_content?: string } = { name: editName };
+      if (editKubeconfig.trim()) payload.kubeconfig_content = editKubeconfig;
+      const response = await fetch(`/api/clusters/${editTarget.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+        cache: "no-store",
+      });
+      if (response.status === 401) {
+        window.location.href = "/login";
+        return;
+      }
+      if (response.status === 503) {
+        setError("The cluster management service is currently unavailable.");
+        return;
+      }
+      if (!response.ok) {
+        const failure = await extractError(response);
+        if (failure) setError(failure);
+        return;
+      }
+      setEditTarget(null);
+      setEditName("");
+      setEditKubeconfig("");
+      await refresh();
+    } catch {
+      setError("An unexpected error occurred.");
+    } finally {
+      setPending(null);
+    }
+  };
+
+  const doDelete = async () => {
+    if (!deleteTarget) return;
+    setPending("delete");
+    setError(null);
+    try {
+      const response = await fetch(`/api/clusters/${deleteTarget.id}`, { method: "DELETE", cache: "no-store" });
+      if (response.status === 401) {
+        window.location.href = "/login";
+        return;
+      }
+      if (response.status === 503) {
+        setError("The cluster management service is currently unavailable.");
+        return;
+      }
+      if (!response.ok) {
+        const failure = await extractError(response);
+        if (failure) setError(failure);
+        return;
+      }
+      setDeleteTarget(null);
+      await refresh();
+    } catch {
+      setError("An unexpected error occurred.");
+    } finally {
+      setPending(null);
+    }
+  };
+
   if (loading && clusters.length === 0) {
     return <p className="py-10 text-center text-sm text-muted-foreground">Loading clusters…</p>;
   }
@@ -232,14 +319,34 @@ export function ClustersManagement({ canManage }: { canManage: boolean }) {
                 <TableCell className="text-sm text-muted-foreground">{formatDateTime(cluster.created_at)}</TableCell>
                 {canManage ? (
                   <TableCell className="text-right">
-                    <Button
-                      size="sm"
-                      variant={cluster.status === "active" ? "destructive" : "secondary"}
-                      onClick={() => void doToggle(cluster)}
-                      disabled={toggleId === cluster.id || pending !== null}
-                    >
-                      {cluster.status === "active" ? "Deactivate" : "Reactivate"}
-                    </Button>
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openEdit(cluster)}
+                        disabled={toggleId === cluster.id || pending !== null}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={cluster.status === "active" ? "destructive" : "secondary"}
+                        onClick={() => void doToggle(cluster)}
+                        disabled={toggleId === cluster.id || pending !== null}
+                      >
+                        {cluster.status === "active" ? "Deactivate" : "Reactivate"}
+                      </Button>
+                      {canDelete ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setDeleteTarget(cluster)}
+                          disabled={toggleId === cluster.id || pending !== null}
+                        >
+                          Delete
+                        </Button>
+                      ) : null}
+                    </div>
                   </TableCell>
                 ) : null}
               </TableRow>
@@ -300,6 +407,68 @@ export function ClustersManagement({ canManage }: { canManage: boolean }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={editTarget !== null} onOpenChange={(open) => { if (!open) setEditTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit cluster</DialogTitle>
+            <DialogDescription>
+              Rename the cluster or replace its kubeconfig to change the endpoint.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium" htmlFor="edit-cluster-name">Name</label>
+              <Input
+                id="edit-cluster-name"
+                type="text"
+                value={editName}
+                onChange={(event) => setEditName(event.target.value)}
+                placeholder="staging"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium" htmlFor="edit-cluster-kubeconfig">kubeconfig (optional)</label>
+              <textarea
+                id="edit-cluster-kubeconfig"
+                value={editKubeconfig}
+                onChange={(event) => setEditKubeconfig(event.target.value)}
+                rows={10}
+                spellCheck={false}
+                placeholder="Paste a new kubeconfig to change the endpoint; leave empty to keep it"
+                className="w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 font-mono text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">Current endpoint: {editTarget?.endpoint ?? "—"}</p>
+          </div>
+          <DialogFooter>
+            <div className="flex w-full justify-end gap-2">
+              <Button variant="outline" onClick={() => setEditTarget(null)} disabled={pending === "edit"}>
+                Cancel
+              </Button>
+              <Button onClick={() => void doEdit()} disabled={!editName.trim() || pending === "edit"}>
+                Save changes
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete cluster</AlertDialogTitle>
+            <AlertDialogDescription>
+              Delete {deleteTarget?.name ?? "this cluster"} and all namespaces, workloads, and other data
+              registered under it. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending === "delete"}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void doDelete()}>Delete cluster</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {pending ? <p className="text-sm text-muted-foreground">Working…</p> : null}
     </div>

@@ -1,6 +1,6 @@
 from pathlib import Path
 from types import SimpleNamespace
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -15,7 +15,7 @@ from app.kubernetes.client import (
     ClusterUnavailableError,
 )
 from app.models.base import Base
-from app.models.entities import AuditAction, ClusterConnection
+from app.models.entities import AuditAction, ClusterConnection, Namespace, Workload
 
 
 @pytest.fixture()
@@ -59,6 +59,18 @@ def create_viewer(api: SimpleNamespace) -> dict:
             "/api/v1/users",
             headers=cookie_header(admin["cookie"]),
             json={"email": "viewer@example.com", "password": "correct-horse-00", "role": "viewer"},
+        )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def create_operator(api: SimpleNamespace) -> dict:
+    admin = admin_login(api)
+    with api.client as client:
+        response = client.post(
+            "/api/v1/users",
+            headers=cookie_header(admin["cookie"]),
+            json={"email": "operator@example.com", "password": "correct-horse-00", "role": "operator"},
         )
     assert response.status_code == 201, response.text
     return response.json()
@@ -110,6 +122,20 @@ contexts:
       cluster: staging
       user: staging
 current-context: staging
+"""
+
+REPLACED_KUBECONFIG = """apiVersion: v1
+kind: Config
+clusters:
+  - name: fallback
+    cluster:
+      server: https://fallback.example.com:6443
+contexts:
+  - name: fallback
+    context:
+      cluster: fallback
+      user: fallback
+current-context: fallback
 """
 
 
@@ -551,3 +577,270 @@ def test_update_cluster_status_records_audit(api: SimpleNamespace) -> None:
         assert audit.result == "success"
     finally:
         database.close()
+
+
+def create_managed_cluster(api: SimpleNamespace, admin: dict, name: str, kubeconfig: str = VALID_KUBECONFIG) -> str:
+    with api.client as client:
+        response = client.post(
+            "/api/v1/clusters",
+            headers=cookie_header(admin["cookie"]),
+            json={"name": name, "kubeconfig_content": kubeconfig},
+        )
+    assert response.status_code == 201, response.text
+    return response.json()["id"]
+
+
+def test_update_cluster_renames_and_records_audit(api: SimpleNamespace) -> None:
+    admin = admin_login(api)
+    cluster_id = create_managed_cluster(api, admin, "staging")
+    with api.client as client:
+        response = client.patch(
+            f"/api/v1/clusters/{cluster_id}",
+            headers=cookie_header(admin["cookie"]),
+            json={"name": "renamed"},
+        )
+    assert response.status_code == 200, response.text
+    assert response.json()["name"] == "renamed"
+    assert response.json()["endpoint"] == "https://10.0.0.1:6443"
+
+    database = api.factory()
+    try:
+        row = database.get(ClusterConnection, UUID(cluster_id))
+        assert row is not None
+        assert row.name == "renamed"
+        audit = database.scalar(
+            select(AuditAction)
+            .where(AuditAction.action == "cluster.update")
+            .order_by(AuditAction.created_at.desc())
+        )
+        assert audit is not None
+        assert audit.resource_id == cluster_id
+        assert audit.result == "success"
+    finally:
+        database.close()
+
+
+def test_update_cluster_operator_can_rename(api: SimpleNamespace) -> None:
+    create_operator(api)
+    admin = admin_login(api)
+    cluster_id = create_managed_cluster(api, admin, "staging")
+    operator = login(api, "operator@example.com", "correct-horse-00")
+    with api.client as client:
+        response = client.patch(
+            f"/api/v1/clusters/{cluster_id}",
+            headers=cookie_header(operator["cookie"]),
+            json={"name": "renamed"},
+        )
+    assert response.status_code == 200, response.text
+    assert response.json()["name"] == "renamed"
+
+
+def test_update_cluster_viewer_returns_403(api: SimpleNamespace) -> None:
+    create_viewer(api)
+    admin = admin_login(api)
+    cluster_id = create_managed_cluster(api, admin, "staging")
+    viewer = login(api, "viewer@example.com", "correct-horse-00")
+    with api.client as client:
+        response = client.patch(
+            f"/api/v1/clusters/{cluster_id}",
+            headers=cookie_header(viewer["cookie"]),
+            json={"name": "renamed"},
+        )
+    assert response.status_code == 403, response.text
+
+
+def test_update_cluster_duplicate_name_returns_409(api: SimpleNamespace) -> None:
+    admin = admin_login(api)
+    create_managed_cluster(api, admin, "staging")
+    other = create_managed_cluster(api, admin, "selected")
+    with api.client as client:
+        response = client.patch(
+            f"/api/v1/clusters/{other}",
+            headers=cookie_header(admin["cookie"]),
+            json={"name": "staging"},
+        )
+    assert response.status_code == 409, response.text
+    assert response.json()["code"] == "duplicate_cluster_name"
+
+
+def test_update_cluster_rename_to_self_ok(api: SimpleNamespace) -> None:
+    admin = admin_login(api)
+    cluster_id = create_managed_cluster(api, admin, "staging")
+    with api.client as client:
+        response = client.patch(
+            f"/api/v1/clusters/{cluster_id}",
+            headers=cookie_header(admin["cookie"]),
+            json={"name": " staging "},
+        )
+    assert response.status_code == 200, response.text
+    assert response.json()["name"] == "staging"
+
+
+def test_update_cluster_empty_name_returns_422(api: SimpleNamespace) -> None:
+    admin = admin_login(api)
+    cluster_id = create_managed_cluster(api, admin, "staging")
+    with api.client as client:
+        response = client.patch(
+            f"/api/v1/clusters/{cluster_id}",
+            headers=cookie_header(admin["cookie"]),
+            json={"name": "   "},
+        )
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "validation_error"
+
+
+def test_update_cluster_empty_body_returns_422(api: SimpleNamespace) -> None:
+    admin = admin_login(api)
+    cluster_id = create_managed_cluster(api, admin, "staging")
+    with api.client as client:
+        response = client.patch(
+            f"/api/v1/clusters/{cluster_id}",
+            headers=cookie_header(admin["cookie"]),
+            json={},
+        )
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "validation_error"
+
+
+def test_update_cluster_replaces_kubeconfig_and_endpoint(api: SimpleNamespace) -> None:
+    admin = admin_login(api)
+    cluster_id = create_managed_cluster(api, admin, "staging")
+    with api.client as client:
+        response = client.patch(
+            f"/api/v1/clusters/{cluster_id}",
+            headers=cookie_header(admin["cookie"]),
+            json={"kubeconfig_content": REPLACED_KUBECONFIG},
+        )
+    assert response.status_code == 200, response.text
+    assert response.json()["endpoint"] == "https://fallback.example.com:6443"
+
+    database = api.factory()
+    try:
+        row = database.get(ClusterConnection, UUID(cluster_id))
+        assert row is not None
+        assert row.endpoint == "https://fallback.example.com:6443"
+        assert row.kubeconfig_ref == ""
+        assert row.kubeconfig_content == REPLACED_KUBECONFIG.strip()
+        audit = database.scalar(
+            select(AuditAction)
+            .where(AuditAction.action == "cluster.update")
+            .order_by(AuditAction.created_at.desc())
+        )
+        assert audit is not None
+        assert audit.resource_id == cluster_id
+    finally:
+        database.close()
+
+
+def test_update_cluster_unreachable_replace_returns_502_row_unchanged(
+    api: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    admin = admin_login(api)
+    cluster_id = create_managed_cluster(api, admin, "staging")
+
+    def unavailable_probe(settings, **kwargs):
+        raise ClusterUnavailableError("connection refused")
+
+    monkeypatch.setattr("app.api.v1.routes.create_cluster_client", unavailable_probe)
+    with api.client as client:
+        response = client.patch(
+            f"/api/v1/clusters/{cluster_id}",
+            headers=cookie_header(admin["cookie"]),
+            json={"kubeconfig_content": REPLACED_KUBECONFIG},
+        )
+    assert response.status_code == 502, response.text
+    assert response.json()["code"] == "kubeconfig_unreachable"
+
+    database = api.factory()
+    try:
+        row = database.get(ClusterConnection, UUID(cluster_id))
+        assert row is not None
+        assert row.name == "staging"
+        assert row.endpoint == "https://10.0.0.1:6443"
+        assert row.kubeconfig_content == VALID_KUBECONFIG
+    finally:
+        database.close()
+
+
+def test_update_cluster_rejected_kubeconfig_returns_422(api: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
+    admin = admin_login(api)
+    cluster_id = create_managed_cluster(api, admin, "staging")
+
+    def forbidden_probe(settings, **kwargs):
+        raise ClusterForbiddenError("Kubernetes RBAC denied the requested operation")
+
+    monkeypatch.setattr("app.api.v1.routes.create_cluster_client", forbidden_probe)
+    with api.client as client:
+        response = client.patch(
+            f"/api/v1/clusters/{cluster_id}",
+            headers=cookie_header(admin["cookie"]),
+            json={"kubeconfig_content": REPLACED_KUBECONFIG},
+        )
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "kubeconfig_unreachable"
+
+
+def test_delete_cluster_removes_row_cascades_and_audits(api: SimpleNamespace) -> None:
+    admin = admin_login(api)
+    cluster_id = create_managed_cluster(api, admin, "staging")
+
+    database = api.factory()
+    try:
+        namespace = Namespace(cluster_id=UUID(cluster_id), name="default", status="Active")
+        workload = Workload(cluster_id=UUID(cluster_id), namespace="default", kind="Deployment", name="api", status="Running")
+        database.add_all([namespace, workload])
+        database.commit()
+        namespace_id = namespace.id
+        workload_id = workload.id
+    finally:
+        database.close()
+
+    with api.client as client:
+        response = client.delete(f"/api/v1/clusters/{cluster_id}", headers=cookie_header(admin["cookie"]))
+    assert response.status_code == 204, response.text
+
+    database = api.factory()
+    try:
+        assert database.get(ClusterConnection, UUID(cluster_id)) is None
+        assert database.get(Namespace, namespace_id) is None
+        assert database.get(Workload, workload_id) is None
+        audit = database.scalar(
+            select(AuditAction)
+            .where(AuditAction.action == "cluster.delete")
+            .order_by(AuditAction.created_at.desc())
+        )
+        assert audit is not None
+        assert audit.resource_id == cluster_id
+        assert audit.result == "success"
+        assert audit.context is not None
+        assert '"staging"' in audit.context
+    finally:
+        database.close()
+
+
+def test_delete_cluster_unknown_id_returns_404(api: SimpleNamespace) -> None:
+    admin = admin_login(api)
+    with api.client as client:
+        response = client.delete(f"/api/v1/clusters/{uuid4()}", headers=cookie_header(admin["cookie"]))
+    assert response.status_code == 404, response.text
+    assert response.json()["code"] == "cluster_not_found"
+
+
+def test_delete_cluster_viewer_returns_403(api: SimpleNamespace) -> None:
+    create_viewer(api)
+    admin = admin_login(api)
+    cluster_id = create_managed_cluster(api, admin, "staging")
+    viewer = login(api, "viewer@example.com", "correct-horse-00")
+    with api.client as client:
+        response = client.delete(f"/api/v1/clusters/{cluster_id}", headers=cookie_header(viewer["cookie"]))
+    assert response.status_code == 403, response.text
+
+
+def test_delete_cluster_operator_returns_403(api: SimpleNamespace) -> None:
+    create_operator(api)
+    admin = admin_login(api)
+    cluster_id = create_managed_cluster(api, admin, "staging")
+    operator = login(api, "operator@example.com", "correct-horse-00")
+    with api.client as client:
+        response = client.delete(f"/api/v1/clusters/{cluster_id}", headers=cookie_header(operator["cookie"]))
+    assert response.status_code == 403, response.text

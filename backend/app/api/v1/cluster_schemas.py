@@ -27,7 +27,9 @@ class ClusterCreateRequest(BaseModel):
     kubeconfig_content: str | None = None
 
 
-class ClusterStatusUpdateRequest(BaseModel):
+class ClusterUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    status: str
+    name: str | None = None
+    kubeconfig_content: str | None = None
+    status: str | None = None

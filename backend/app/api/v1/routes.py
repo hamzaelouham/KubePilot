@@ -8,7 +8,7 @@ from typing import Annotated
 from urllib.parse import urlsplit
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as SQLAlchemySession
@@ -26,7 +26,18 @@ from app.core.config import Settings
 from app.core.audit import AuditEvent, record_audit
 from app.core.passwords import hash_password, password_matches, validate_password_policy
 from app.core.timeutils import is_expired, now
-from app.models.entities import Session, UserAccount, ClusterConnection
+from app.models.entities import (
+    ClusterConnection,
+    Deployment,
+    Event,
+    Namespace,
+    Node,
+    Pod,
+    Service,
+    Session,
+    UserAccount,
+    Workload,
+)
 
 from .schemas import ActorResponse, HealthResponse
 from .discovery_schemas import (
@@ -41,8 +52,8 @@ from .auth_schemas import ChangePasswordRequest, LoginRequest, LoginResponse, Me
 from .cluster_schemas import (
     ClusterCreateRequest,
     ClusterListResponse,
-    ClusterStatusUpdateRequest,
     ClusterSummary,
+    ClusterUpdateRequest,
 )
 from .detail_schemas import DetailResourceType, EventResponse, LogResponse, ResourceDetailResponse, YamlResponse
 from .metrics_schemas import (
@@ -729,25 +740,41 @@ async def cluster_create_route(
 
 
 @router.patch("/clusters/{cluster_id}", response_model=ClusterSummary)
-async def cluster_update_status(
+async def cluster_update(
     cluster_id: UUID,
     request: Request,
     database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
     _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.CLUSTERS_UPDATE))],
 ) -> ClusterSummary:
     from pydantic import ValidationError
 
     try:
-        payload = ClusterStatusUpdateRequest.model_validate_json(await request.body())
+        payload = ClusterUpdateRequest.model_validate_json(await request.body())
     except ValidationError as error:
         raise HTTPException(
             status_code=422,
             detail={"code": "validation_error", "message": "Request validation failed"},
         ) from error
-    if payload.status not in ("active", "inactive"):
+
+    status_present = payload.status is not None
+    name_present = payload.name is not None
+    content_present = bool(payload.kubeconfig_content and payload.kubeconfig_content.strip())
+    if not (status_present or name_present or content_present):
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "validation_error", "message": "No fields to update"},
+        )
+    if status_present and payload.status not in ("active", "inactive"):
         raise HTTPException(
             status_code=422,
             detail={"code": "validation_error", "message": "status must be 'active' or 'inactive'"},
+        )
+    new_name = payload.name.strip() if name_present else None
+    if name_present and not new_name:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "validation_error", "message": "name must not be empty"},
         )
 
     row = database.get(ClusterConnection, cluster_id)
@@ -757,17 +784,53 @@ async def cluster_update_status(
             detail={"code": "cluster_not_found", "message": "Cluster was not found"},
         )
 
-    row.status = payload.status
+    new_content = payload.kubeconfig_content.strip() if content_present else None
+    if new_content is not None:
+        new_endpoint = _parse_kubeconfig(new_content)
+        _probe_kubeconfig(settings, new_content, new_endpoint)
+
+    if name_present:
+        duplicate = database.scalar(
+            select(ClusterConnection).where(
+                ClusterConnection.name == new_name,
+                ClusterConnection.id != cluster_id,
+            )
+        )
+        if duplicate is not None:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "duplicate_cluster_name", "message": "A cluster with this name already exists"},
+            )
+
+    if content_present:
+        row.endpoint = new_endpoint
+        row.kubeconfig_ref = ""
+        row.kubeconfig_content = new_content
+    if name_present:
+        row.name = new_name
+    if status_present:
+        row.status = payload.status
+
     database.commit()
     database.refresh(row)
-    record_audit(
-        database,
-        AuditEvent.CLUSTER_STATUS_CHANGED,
-        actor_id=_authorized.user_id,
-        resource_type="cluster_connection",
-        resource_id=str(row.id),
-        result="success",
-    )
+    if status_present:
+        record_audit(
+            database,
+            AuditEvent.CLUSTER_STATUS_CHANGED,
+            actor_id=_authorized.user_id,
+            resource_type="cluster_connection",
+            resource_id=str(row.id),
+            result="success",
+        )
+    if name_present or content_present:
+        record_audit(
+            database,
+            AuditEvent.CLUSTER_UPDATED,
+            actor_id=_authorized.user_id,
+            resource_type="cluster_connection",
+            resource_id=str(row.id),
+            result="success",
+        )
     database.commit()
     return ClusterSummary(
         id=row.id,
@@ -776,3 +839,32 @@ async def cluster_update_status(
         status=row.status,
         created_at=row.created_at,
     )
+
+
+@router.delete("/clusters/{cluster_id}", status_code=204)
+def cluster_delete(
+    cluster_id: UUID,
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+    _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.CLUSTERS_DELETE))],
+) -> Response:
+    row = database.get(ClusterConnection, cluster_id)
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "cluster_not_found", "message": "Cluster was not found"},
+        )
+    deleted_name = row.name
+    for model in (Namespace, Workload, Pod, Deployment, Service, Node, Event):
+        database.execute(delete(model).where(model.cluster_id == cluster_id))
+    database.delete(row)
+    record_audit(
+        database,
+        AuditEvent.CLUSTER_DELETED,
+        actor_id=_authorized.user_id,
+        resource_type="cluster_connection",
+        resource_id=str(cluster_id),
+        result="success",
+        context={"deleted_cluster": deleted_name},
+    )
+    database.commit()
+    return Response(status_code=204)

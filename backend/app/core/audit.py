@@ -20,7 +20,9 @@ class AuditEvent:
     USER_LOGIN_SUCCESS = "USER_LOGIN_SUCCESS"
     USER_LOGIN_FAILURE = "USER_LOGIN_FAILURE"
     CLUSTER_CREATED = "cluster.create"
+    CLUSTER_UPDATED = "cluster.update"
     CLUSTER_STATUS_CHANGED = "cluster.status_change"
+    CLUSTER_DELETED = "cluster.delete"
 
 
 def record_audit(

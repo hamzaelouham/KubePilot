@@ -6,7 +6,15 @@ import { ClustersManagement } from "@/components/clusters-management";
 import { useClusterSelection } from "@/lib/use-cluster-selection";
 import type { BackendUser } from "@/lib/auth";
 
-export function ClusterSettingsView({ user, canManage }: { user: BackendUser; canManage: boolean }) {
+export function ClusterSettingsView({
+  user,
+  canManage,
+  canDelete,
+}: {
+  user: BackendUser;
+  canManage: boolean;
+  canDelete?: boolean;
+}) {
   const router = useRouter();
   const { cluster, clusters, selectCluster } = useClusterSelection();
 
@@ -33,7 +41,7 @@ export function ClusterSettingsView({ user, canManage }: { user: BackendUser; ca
             Register clusters and control which ones are available. Permissions are enforced by the backend.
           </p>
         </div>
-        <ClustersManagement canManage={canManage} />
+        <ClustersManagement canManage={canManage} canDelete={canDelete} />
       </div>
     </DashboardShell>
   );
