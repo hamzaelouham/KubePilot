@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { healthTone, type Health } from "@/lib/status-tone";
 import { formatLastUpdated, usePolling } from "@/lib/use-polling";
+import { useCluster } from "@/lib/cluster-context";
+import { withCluster } from "@/lib/cluster-query";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 
 type Resource = { cluster: string; namespace: string | null; kind: string; name: string; status: string; health: Health };
@@ -71,6 +73,7 @@ const tableColumns: DataTableColumn<WorkloadRow>[] = [
 export function WorkloadsView() {
   const [state, setState] = useState<WorkloadsState>({ status: "loading" });
   const abortRef = useRef<AbortController | null>(null);
+  const cluster = useCluster();
 
   const load = useCallback(async () => {
     const controller = new AbortController();
@@ -79,7 +82,7 @@ export function WorkloadsView() {
     try {
       const responses = await Promise.all(
         workloadKinds.map(({ resource }) =>
-          fetch(`/api/cluster/resources?resource=${resource}`, { signal: controller.signal, cache: "no-store" }).then(async (r) => {
+          fetch(withCluster(`/api/cluster/resources?resource=${resource}`, cluster), { signal: controller.signal, cache: "no-store" }).then(async (r) => {
             const body = (await r.json()) as ResourceResponse;
             if (!r.ok) throw new Error(body.message ?? `Unable to load ${resource}`);
             return body.items;
@@ -92,7 +95,7 @@ export function WorkloadsView() {
       if (error instanceof DOMException && error.name === "AbortError") return;
       setState({ status: "error", message: error instanceof Error ? error.message : "Unable to load workloads" });
     }
-  }, []);
+  }, [cluster]);
 
   useEffect(() => {
     abortRef.current?.abort();

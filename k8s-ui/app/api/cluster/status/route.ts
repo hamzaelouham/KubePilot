@@ -3,7 +3,10 @@ import { backendUrl, backendUnavailable, forwardedCookie } from "@/lib/backend";
 
 export async function GET(request: NextRequest) {
   try {
-    const response = await fetch(`${backendUrl()}/api/v1/cluster/status`, {
+    const target = new URL(`${backendUrl()}/api/v1/cluster/status`);
+    const cluster = request.nextUrl.searchParams.get("cluster");
+    if (cluster) target.searchParams.set("cluster", cluster);
+    const response = await fetch(target, {
       headers: { cookie: forwardedCookie(request) },
       cache: "no-store",
     });

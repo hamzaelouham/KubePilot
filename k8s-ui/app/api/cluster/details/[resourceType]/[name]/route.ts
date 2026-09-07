@@ -42,7 +42,7 @@ export async function GET(
   if (namespace && resourceType !== "nodes") {
     target.searchParams.set("namespace", namespace);
   }
-  target.searchParams.set("cluster", process.env.KUBEPILOT_CLUSTER_NAME ?? "primary");
+  target.searchParams.set("cluster", request.nextUrl.searchParams.get("cluster") ?? process.env.KUBEPILOT_CLUSTER_NAME ?? "primary");
 
   try {
     const response = await fetch(target, {

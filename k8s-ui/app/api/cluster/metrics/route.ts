@@ -28,6 +28,8 @@ export async function GET(request: NextRequest) {
   } else {
     target = new URL(`/api/v1/cluster/metrics/${metricType}`, backendUrl);
   }
+  const clusterParam = request.nextUrl.searchParams.get("cluster");
+  if (clusterParam) target.searchParams.set("cluster", clusterParam);
 
   try {
     const response = await fetch(target, {

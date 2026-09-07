@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { NotificationPopover } from "@/components/notification-popover";
 import { UserMenu } from "@/components/user-menu";
+import { ClusterContext } from "@/lib/cluster-context";
+import { withCluster } from "@/lib/cluster-query";
 import { ADMIN_ROLE, type BackendUser } from "@/lib/auth-client";
 
 type NavGroup = {
@@ -79,6 +81,8 @@ type DashboardShellProps = {
   activeResource: string;
   activeNamespace: string;
   activeCluster: string;
+  clusters?: string[];
+  onSelectCluster?: (cluster: string) => void;
   onNavigate: (resource: string, namespace: string) => void;
   children: React.ReactNode;
 };
@@ -88,6 +92,8 @@ export function DashboardShell({
   activeResource,
   activeNamespace,
   activeCluster,
+  clusters,
+  onSelectCluster,
   onNavigate,
   children,
 }: DashboardShellProps) {
@@ -97,7 +103,7 @@ export function DashboardShell({
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/cluster/namespaces", { signal: controller.signal, cache: "no-store" })
+    fetch(withCluster("/api/cluster/namespaces", activeCluster), { signal: controller.signal, cache: "no-store" })
       .then(async (response) => {
         if (!response.ok) return;
         const body = (await response.json()) as { items: { name: string }[] };
@@ -106,36 +112,42 @@ export function DashboardShell({
       })
       .catch(() => {});
     return () => controller.abort();
-  }, []);
+  }, [activeCluster]);
 
   const isActive = (id: string) => id === activeResource;
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-background text-foreground">
-      <div className="border-b border-border bg-card">
-        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-          <Link href="/" className="flex min-w-0 items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-lg text-primary">
-              ☸
-            </span>
-            <span className="text-xl font-semibold tracking-tight text-foreground">KubePilot</span>
-          </Link>
+    <ClusterContext.Provider value={activeCluster}>
+      <div className="min-h-screen overflow-x-clip bg-background text-foreground">
+        <div className="border-b border-border bg-card">
+          <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+            <Link href="/" className="flex min-w-0 items-center gap-2.5">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-lg text-primary">
+                ☸
+              </span>
+              <span className="text-xl font-semibold tracking-tight text-foreground">KubePilot</span>
+            </Link>
 
-          <div className="ml-auto flex items-center gap-2">
-            <div className="flex min-w-0 items-center gap-2 rounded-xl border border-border bg-header-control px-3 py-2">
-              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Cluster</span>
-              {activeCluster ? (
-                <select
-                  value={activeCluster}
-                  aria-label="Active cluster"
-                  className="bg-transparent text-sm font-medium text-foreground outline-none"
-                >
-                  <option value={activeCluster}>{activeCluster}</option>
-                </select>
-              ) : (
-                <span className="text-sm text-muted-foreground">Cluster unavailable</span>
-              )}
-            </div>
+            <div className="ml-auto flex items-center gap-2">
+              <div className="flex min-w-0 items-center gap-2 rounded-xl border border-border bg-header-control px-3 py-2">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Cluster</span>
+                {activeCluster ? (
+                  <select
+                    value={activeCluster}
+                    aria-label="Active cluster"
+                    onChange={onSelectCluster ? (event) => onSelectCluster(event.target.value) : undefined}
+                    className="bg-transparent text-sm font-medium text-foreground outline-none"
+                  >
+                    {(clusters && clusters.length > 0 ? clusters : [activeCluster]).map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="text-sm text-muted-foreground">Cluster unavailable</span>
+                )}
+              </div>
             <button className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border border-border bg-header-control text-xl text-muted-foreground">
               +
             </button>
@@ -227,5 +239,6 @@ export function DashboardShell({
         </div>
       </div>
     </div>
+    </ClusterContext.Provider>
   );
 }

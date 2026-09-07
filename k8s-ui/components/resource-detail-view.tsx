@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard-shell";
-import { useClusterStatus } from "@/lib/use-cluster-status";
+import { useClusterSelection } from "@/lib/use-cluster-selection";
+import { useCluster } from "@/lib/cluster-context";
+import { withCluster } from "@/lib/cluster-query";
 import { MetricBar } from "@/components/metric-bar";
 import { usePolling } from "@/lib/use-polling";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
@@ -133,6 +135,7 @@ function StatusPanel({
   const metricsEnabled = nodeMetricTypes.has(resourceType) || workloadMetricTypes.has(resourceType) || storageMetricTypes.has(resourceType);
   const [metricsState, setMetricsState] = useState<MetricsState>({ status: "idle" });
   const metricsAbortRef = useRef<AbortController | null>(null);
+  const cluster = useCluster();
 
   const loadMetrics = useCallback(async () => {
     if (!metricsEnabled) return;
@@ -142,20 +145,20 @@ function StatusPanel({
     setMetricsState({ status: "loading" });
     try {
       if (nodeMetricTypes.has(resourceType)) {
-        const response = await fetch("/api/cluster/metrics?type=nodes", { signal: controller.signal, cache: "no-store" });
+        const response = await fetch(withCluster("/api/cluster/metrics?type=nodes", cluster), { signal: controller.signal, cache: "no-store" });
         const body = (await response.json()) as { available: boolean; items: NodeMetricItem[]; message?: string };
         if (!response.ok) throw new Error(body.message ?? "Unable to load metrics");
         const item = body.items.find((i) => i.name === name) ?? null;
         setMetricsState({ status: "ready", available: body.available, nodeItem: item, workloadItem: null, storageItem: null });
       } else if (workloadMetricTypes.has(resourceType)) {
         const targetNs = namespace ?? "default";
-        const response = await fetch(`/api/cluster/metrics?type=namespaces&namespace=${encodeURIComponent(targetNs)}`, { signal: controller.signal, cache: "no-store" });
+        const response = await fetch(withCluster(`/api/cluster/metrics?type=namespaces&namespace=${encodeURIComponent(targetNs)}`, cluster), { signal: controller.signal, cache: "no-store" });
         const body = (await response.json()) as { available: boolean; workloads: WorkloadMetricItem[]; message?: string };
         if (!response.ok) throw new Error(body.message ?? "Unable to load metrics");
         const item = body.workloads.find((w) => w.name === name) ?? null;
         setMetricsState({ status: "ready", available: body.available, nodeItem: null, workloadItem: item, storageItem: null });
       } else if (storageMetricTypes.has(resourceType)) {
-        const response = await fetch("/api/cluster/metrics?type=storage", { signal: controller.signal, cache: "no-store" });
+        const response = await fetch(withCluster("/api/cluster/metrics?type=storage", cluster), { signal: controller.signal, cache: "no-store" });
         const body = (await response.json()) as { available: boolean; items: StorageMetricsItem[]; message?: string };
         if (!response.ok) throw new Error(body.message ?? "Unable to load metrics");
         const item = body.items.find((i) => i.name === name) ?? null;
@@ -165,7 +168,7 @@ function StatusPanel({
       if (error instanceof DOMException && error.name === "AbortError") return;
       setMetricsState({ status: "error", message: error instanceof Error ? error.message : "Unable to load metrics" });
     }
-  }, [resourceType, name, namespace, metricsEnabled]);
+  }, [cluster, resourceType, name, namespace, metricsEnabled]);
 
   usePolling(loadMetrics, metricsEnabled);
 
@@ -355,7 +358,7 @@ export default function ResourceDetailView({
   namespace: string | null;
   cluster?: string;
 }) {
-  const activeCluster = useClusterStatus(initialCluster);
+  const { cluster: activeCluster, clusters, selectCluster } = useClusterSelection(initialCluster);
   const [activeTab, setActiveTab] = useState<Tab>("status");
   const [detailState, setDetailState] = useState<DetailState>({ status: "loading" });
   const [yamlState, setYamlState] = useState<YamlState>({ status: "loading" });
@@ -382,6 +385,7 @@ export default function ResourceDetailView({
 
   const handleNav = (resource: string, ns: string) => {
     const params = new URLSearchParams({ resource, namespace: ns });
+    if (activeCluster) params.set("cluster", activeCluster);
     router.push(`/dashboard?${params.toString()}`);
   };
 
@@ -393,7 +397,7 @@ export default function ResourceDetailView({
     const params = new URLSearchParams({ tab: "detail" });
     if (namespace) params.set("namespace", namespace);
 
-    fetch(`/api/cluster/details/${resourceType}/${encodeURIComponent(name)}?${params}`, {
+    fetch(withCluster(`/api/cluster/details/${resourceType}/${encodeURIComponent(name)}?${params}`, activeCluster), {
       signal: controller.signal,
       cache: "no-store",
     })
@@ -408,7 +412,7 @@ export default function ResourceDetailView({
       });
 
     return () => controller.abort();
-  }, [resourceType, name, namespace]);
+  }, [resourceType, name, namespace, activeCluster]);
 
   useEffect(() => {
     if (!name || activeTab !== "yaml") return;
@@ -418,7 +422,7 @@ export default function ResourceDetailView({
     const params = new URLSearchParams({ tab: "yaml" });
     if (namespace) params.set("namespace", namespace);
 
-    fetch(`/api/cluster/details/${resourceType}/${encodeURIComponent(name)}?${params}`, {
+    fetch(withCluster(`/api/cluster/details/${resourceType}/${encodeURIComponent(name)}?${params}`, activeCluster), {
       signal: controller.signal,
       cache: "no-store",
     })
@@ -433,7 +437,7 @@ export default function ResourceDetailView({
       });
 
     return () => controller.abort();
-  }, [activeTab, resourceType, name, namespace]);
+  }, [activeTab, resourceType, name, namespace, activeCluster]);
 
   useEffect(() => {
     if (!name || activeTab !== "logs") return;
@@ -443,7 +447,7 @@ export default function ResourceDetailView({
     const params = new URLSearchParams({ tab: "logs" });
     if (namespace) params.set("namespace", namespace);
 
-    fetch(`/api/cluster/details/${resourceType}/${encodeURIComponent(name)}?${params}`, {
+    fetch(withCluster(`/api/cluster/details/${resourceType}/${encodeURIComponent(name)}?${params}`, activeCluster), {
       signal: controller.signal,
       cache: "no-store",
     })
@@ -458,7 +462,7 @@ export default function ResourceDetailView({
       });
 
     return () => controller.abort();
-  }, [activeTab, resourceType, name, namespace]);
+  }, [activeTab, resourceType, name, namespace, activeCluster]);
 
   useEffect(() => {
     if (!name || activeTab !== "events") return;
@@ -468,7 +472,7 @@ export default function ResourceDetailView({
     const params = new URLSearchParams({ tab: "events" });
     if (namespace) params.set("namespace", namespace);
 
-    fetch(`/api/cluster/details/${resourceType}/${encodeURIComponent(name)}?${params}`, {
+    fetch(withCluster(`/api/cluster/details/${resourceType}/${encodeURIComponent(name)}?${params}`, activeCluster), {
       signal: controller.signal,
       cache: "no-store",
     })
@@ -483,7 +487,7 @@ export default function ResourceDetailView({
       });
 
     return () => controller.abort();
-  }, [activeTab, resourceType, name, namespace]);
+  }, [activeTab, resourceType, name, namespace, activeCluster]);
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "status", label: "Status" },
@@ -498,6 +502,8 @@ export default function ResourceDetailView({
         activeResource={resourceType}
         activeNamespace={namespace ?? ""}
         activeCluster={activeCluster}
+        clusters={clusters}
+        onSelectCluster={selectCluster}
         onNavigate={handleNav}
       >
         <div className="space-y-6">
@@ -517,6 +523,8 @@ export default function ResourceDetailView({
       activeResource={resourceType}
       activeNamespace={namespace ?? ""}
       activeCluster={activeCluster}
+      clusters={clusters}
+      onSelectCluster={selectCluster}
       onNavigate={handleNav}
     >
     <div className="space-y-6">

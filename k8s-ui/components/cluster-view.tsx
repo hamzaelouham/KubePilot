@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { healthTone, type Health } from "@/lib/status-tone";
 import { formatLastUpdated, usePolling } from "@/lib/use-polling";
+import { useCluster } from "@/lib/cluster-context";
+import { withCluster } from "@/lib/cluster-query";
 import { MetricBar } from "@/components/metric-bar";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import {
@@ -120,6 +122,7 @@ const storageClassNameColumn: DataTableColumn<ClusterResourceRow> = {
 export function ClusterView() {
   const [state, setState] = useState<ClusterState>({ status: "loading" });
   const abortRef = useRef<AbortController | null>(null);
+  const cluster = useCluster();
 
   const load = useCallback(async () => {
     const controller = new AbortController();
@@ -127,31 +130,31 @@ export function ClusterView() {
     abortRef.current = controller;
     try {
       const [namespaces, nodes, storageClasses, persistentVolumes, nodesMetrics, storageMetrics] = await Promise.all([
-        fetch("/api/cluster/namespaces", { signal: controller.signal, cache: "no-store" }).then(async (r) => {
+        fetch(withCluster("/api/cluster/namespaces", cluster), { signal: controller.signal, cache: "no-store" }).then(async (r) => {
           const body = (await r.json()) as NamespaceResponse;
           if (!r.ok) throw new Error("Unable to load namespaces");
           return body.items;
         }),
-        fetch("/api/cluster/resources?resource=nodes", { signal: controller.signal, cache: "no-store" }).then(async (r) => {
+        fetch(withCluster("/api/cluster/resources?resource=nodes", cluster), { signal: controller.signal, cache: "no-store" }).then(async (r) => {
           const body = (await r.json()) as ResourceResponse;
           if (!r.ok) throw new Error(body.message ?? "Unable to load nodes");
           return body.items;
         }),
-        fetch("/api/cluster/resources?resource=storage-classes", { signal: controller.signal, cache: "no-store" }).then(async (r) => {
+        fetch(withCluster("/api/cluster/resources?resource=storage-classes", cluster), { signal: controller.signal, cache: "no-store" }).then(async (r) => {
           const body = (await r.json()) as ResourceResponse;
           if (!r.ok) throw new Error(body.message ?? "Unable to load storage classes");
           return body.items;
         }),
-        fetch("/api/cluster/resources?resource=persistent-volumes", { signal: controller.signal, cache: "no-store" }).then(async (r) => {
+        fetch(withCluster("/api/cluster/resources?resource=persistent-volumes", cluster), { signal: controller.signal, cache: "no-store" }).then(async (r) => {
           const body = (await r.json()) as ResourceResponse;
           if (!r.ok) throw new Error(body.message ?? "Unable to load persistent volumes");
           return body.items;
         }),
-        fetch("/api/cluster/metrics?type=nodes", { signal: controller.signal, cache: "no-store" }).then(async (r) => {
+        fetch(withCluster("/api/cluster/metrics?type=nodes", cluster), { signal: controller.signal, cache: "no-store" }).then(async (r) => {
           const body = (await r.json()) as NodesMetricsResponse;
           return body;
         }),
-        fetch("/api/cluster/metrics?type=storage", { signal: controller.signal, cache: "no-store" }).then(async (r) => {
+        fetch(withCluster("/api/cluster/metrics?type=storage", cluster), { signal: controller.signal, cache: "no-store" }).then(async (r) => {
           const body = (await r.json()) as StorageMetricsResponse;
           return body;
         }),
@@ -170,7 +173,7 @@ export function ClusterView() {
       if (error instanceof DOMException && error.name === "AbortError") return;
       setState({ status: "error", message: error instanceof Error ? error.message : "Unable to load cluster data" });
     }
-  }, []);
+  }, [cluster]);
 
   useEffect(() => {
     abortRef.current?.abort();

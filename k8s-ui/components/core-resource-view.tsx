@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { healthTone, type Health } from "@/lib/status-tone";
 import { formatLastUpdated, usePolling } from "@/lib/use-polling";
+import { useCluster } from "@/lib/cluster-context";
+import { withCluster } from "@/lib/cluster-query";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import {
   formatMillicores,
@@ -177,6 +179,7 @@ export function CoreResourceView({ resource, namespace }: { resource: string; na
   const [metricsState, setMetricsState] = useState<MetricsState>({ status: "idle" });
   const abortRef = useRef<AbortController | null>(null);
   const metricsAbortRef = useRef<AbortController | null>(null);
+  const cluster = useCluster();
 
   const load = useCallback(async () => {
     const controller = new AbortController();
@@ -184,7 +187,7 @@ export function CoreResourceView({ resource, namespace }: { resource: string; na
     abortRef.current = controller;
     try {
       const response = await fetch(
-        `/api/cluster/resources?resource=${encodeURIComponent(resource)}&namespace=${encodeURIComponent(namespace)}`,
+        withCluster(`/api/cluster/resources?resource=${encodeURIComponent(resource)}&namespace=${encodeURIComponent(namespace)}`, cluster),
         { signal: controller.signal, cache: "no-store" },
       );
       const body = (await response.json()) as ResourceResponse & { message?: string };
@@ -194,7 +197,7 @@ export function CoreResourceView({ resource, namespace }: { resource: string; na
       if (error instanceof DOMException && error.name === "AbortError") return;
       setState({ status: "error", message: error instanceof Error ? error.message : "Unable to load resources" });
     }
-  }, [namespace, resource]);
+  }, [cluster, namespace, resource]);
 
   const loadMetrics = useCallback(async () => {
     if (!metricsEnabledResources.has(resource)) return;
@@ -204,7 +207,7 @@ export function CoreResourceView({ resource, namespace }: { resource: string; na
     setMetricsState({ status: "loading" });
     try {
       if (nodeMetricsResources.has(resource)) {
-        const response = await fetch("/api/cluster/metrics?type=nodes", {
+        const response = await fetch(withCluster("/api/cluster/metrics?type=nodes", cluster), {
           signal: controller.signal,
           cache: "no-store",
         });
@@ -213,7 +216,7 @@ export function CoreResourceView({ resource, namespace }: { resource: string; na
         setMetricsState({ status: "ready", available: body.available, nodeItems: body.items, workloadItems: [], storageItems: [] });
       } else if (workloadMetricsResources.has(resource)) {
         const targetNs = namespace && namespace !== "All namespaces" ? namespace : "default";
-        const response = await fetch(`/api/cluster/metrics?type=namespaces&namespace=${encodeURIComponent(targetNs)}`, {
+        const response = await fetch(withCluster(`/api/cluster/metrics?type=namespaces&namespace=${encodeURIComponent(targetNs)}`, cluster), {
           signal: controller.signal,
           cache: "no-store",
         });
@@ -221,7 +224,7 @@ export function CoreResourceView({ resource, namespace }: { resource: string; na
         if (!response.ok) throw new Error(body.message ?? "Unable to load metrics");
         setMetricsState({ status: "ready", available: body.available, nodeItems: [], workloadItems: body.workloads, storageItems: [] });
       } else if (storageMetricsResources.has(resource)) {
-        const response = await fetch("/api/cluster/metrics?type=storage", {
+        const response = await fetch(withCluster("/api/cluster/metrics?type=storage", cluster), {
           signal: controller.signal,
           cache: "no-store",
         });
@@ -233,7 +236,7 @@ export function CoreResourceView({ resource, namespace }: { resource: string; na
       if (error instanceof DOMException && error.name === "AbortError") return;
       setMetricsState({ status: "error", message: error instanceof Error ? error.message : "Unable to load metrics" });
     }
-  }, [resource, namespace]);
+  }, [cluster, resource, namespace]);
 
   const requestKey = `${resource}\0${namespace}`;
   const [prevRequestKey, setPrevRequestKey] = useState(requestKey);

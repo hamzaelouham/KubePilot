@@ -36,6 +36,8 @@ export async function GET(request: NextRequest) {
   if (namespace && !clusterScoped.has(resource)) {
     target.searchParams.set("namespace", namespace);
   }
+  const clusterParam = request.nextUrl.searchParams.get("cluster");
+  if (clusterParam) target.searchParams.set("cluster", clusterParam);
 
   try {
     const response = await fetch(target, {

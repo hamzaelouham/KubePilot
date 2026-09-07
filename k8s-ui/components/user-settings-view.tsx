@@ -4,12 +4,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { UsersManagement } from "@/components/users-management";
-import { useClusterStatus } from "@/lib/use-cluster-status";
+import { useClusterSelection } from "@/lib/use-cluster-selection";
 import type { BackendUser } from "@/lib/auth";
 
 export function UserSettingsView({ user }: { user: BackendUser }) {
   const router = useRouter();
-  const cluster = useClusterStatus();
+  const { cluster, clusters, selectCluster } = useClusterSelection();
 
   const handleNav = (resource: string, namespace: string) => {
     const params = new URLSearchParams({ resource, namespace });
@@ -23,6 +23,8 @@ export function UserSettingsView({ user }: { user: BackendUser }) {
       activeResource="users"
       activeNamespace="default"
       activeCluster={cluster}
+      clusters={clusters}
+      onSelectCluster={selectCluster}
       onNavigate={handleNav}
     >
       <div>

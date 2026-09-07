@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatLastUpdated, usePolling } from "@/lib/use-polling";
+import { useCluster } from "@/lib/cluster-context";
+import { withCluster } from "@/lib/cluster-query";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 
 type Namespace = { name: string; status: string };
@@ -27,13 +29,14 @@ const tableColumns: DataTableColumn<Namespace>[] = [
 export function NamespacesView() {
   const [state, setState] = useState<NamespaceState>({ status: "loading" });
   const abortRef = useRef<AbortController | null>(null);
+  const cluster = useCluster();
 
   const load = useCallback(async () => {
     const controller = new AbortController();
     abortRef.current?.abort();
     abortRef.current = controller;
     try {
-      const response = await fetch("/api/cluster/namespaces", { signal: controller.signal, cache: "no-store" });
+      const response = await fetch(withCluster("/api/cluster/namespaces", cluster), { signal: controller.signal, cache: "no-store" });
       const body = (await response.json()) as NamespaceResponse & { message?: string };
       if (!response.ok) throw new Error(body.message ?? "Unable to load namespaces");
       setState({ status: "ready", items: body.items });
@@ -41,7 +44,7 @@ export function NamespacesView() {
       if (error instanceof DOMException && error.name === "AbortError") return;
       setState({ status: "error", message: error instanceof Error ? error.message : "Unable to load namespaces" });
     }
-  }, []);
+  }, [cluster]);
 
   useEffect(() => {
     abortRef.current?.abort();

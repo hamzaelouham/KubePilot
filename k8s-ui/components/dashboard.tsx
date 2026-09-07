@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { BackendUser } from "@/lib/auth";
 import { DashboardShell } from "@/components/dashboard-shell";
-import { useClusterStatus } from "@/lib/use-cluster-status";
+import { useClusterSelection } from "@/lib/use-cluster-selection";
 import { CoreResourceView } from "@/components/core-resource-view";
 import { OverviewView } from "@/components/overview-view";
 import { ClusterView } from "@/components/cluster-view";
@@ -39,7 +39,7 @@ export function Dashboard({
 }) {
   const [resource, setResource] = useState(initResource);
   const [namespace, setNamespace] = useState(initNamespace);
-  const cluster = useClusterStatus(initCluster);
+  const { cluster, clusters, selectCluster } = useClusterSelection(initCluster);
 
   useEffect(() => {
     if (!cluster || cluster === initCluster) return;
@@ -87,6 +87,8 @@ export function Dashboard({
       activeResource={resource}
       activeNamespace={namespace}
       activeCluster={cluster}
+      clusters={clusters}
+      onSelectCluster={selectCluster}
       onNavigate={navigate}
     >
       {renderView}

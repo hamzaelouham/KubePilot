@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { healthTone, type Health } from "@/lib/status-tone";
 import { formatLastUpdated, usePolling } from "@/lib/use-polling";
+import { useCluster } from "@/lib/cluster-context";
+import { withCluster } from "@/lib/cluster-query";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { formatMillicores, formatBytes, type NamespaceMetricSummary, type MetricsSummaryResponse } from "@/lib/metrics";
 
@@ -94,6 +96,7 @@ function DonutChart({ values, colors }: { values: number[]; colors: string[] }) 
 export function OverviewView() {
   const [state, setState] = useState<OverviewState>({ status: "loading" });
   const abortRef = useRef<AbortController | null>(null);
+  const cluster = useCluster();
 
   const load = useCallback(async () => {
     const controller = new AbortController();
@@ -101,17 +104,17 @@ export function OverviewView() {
     abortRef.current = controller;
     try {
       const [deployments, pods, summaryResponse] = await Promise.all([
-        fetch("/api/cluster/resources?resource=deployments", { signal: controller.signal, cache: "no-store" }).then(async (r) => {
+        fetch(withCluster("/api/cluster/resources?resource=deployments", cluster), { signal: controller.signal, cache: "no-store" }).then(async (r) => {
           const body = (await r.json()) as ResourceResponse;
           if (!r.ok) throw new Error(body.message ?? "Unable to load deployments");
           return body.items;
         }),
-        fetch("/api/cluster/resources?resource=pods", { signal: controller.signal, cache: "no-store" }).then(async (r) => {
+        fetch(withCluster("/api/cluster/resources?resource=pods", cluster), { signal: controller.signal, cache: "no-store" }).then(async (r) => {
           const body = (await r.json()) as ResourceResponse;
           if (!r.ok) throw new Error(body.message ?? "Unable to load pods");
           return body.items;
         }),
-        fetch("/api/cluster/metrics?type=summary", { signal: controller.signal, cache: "no-store" }).then(async (r) => {
+        fetch(withCluster("/api/cluster/metrics?type=summary", cluster), { signal: controller.signal, cache: "no-store" }).then(async (r) => {
           const body = (await r.json()) as MetricsSummaryResponse;
           return body;
         }),
@@ -127,7 +130,7 @@ export function OverviewView() {
       if (error instanceof DOMException && error.name === "AbortError") return;
       setState({ status: "error", message: error instanceof Error ? error.message : "Unable to load cluster data" });
     }
-  }, []);
+  }, [cluster]);
 
   useEffect(() => {
     abortRef.current?.abort();
