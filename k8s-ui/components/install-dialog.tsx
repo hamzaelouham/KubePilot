@@ -61,6 +61,9 @@ function InstallDialogBody({ pkg }: { pkg: MarketplacePackage }) {
   const [namespaces, setNamespaces] = useState<NamespacesState>({ status: "loading" });
   const [namespaceRetry, setNamespaceRetry] = useState(0);
   const [release, setRelease] = useState("");
+  const [posting, setPosting] = useState(false);
+  const [installError, setInstallError] = useState<string | null>(null);
+  const [queuedJobId, setQueuedJobId] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -155,6 +158,37 @@ function InstallDialogBody({ pkg }: { pkg: MarketplacePackage }) {
   const submitEnabled =
     versionReady && Boolean(cluster) && namespacesReady && releaseValid;
 
+  const submitInstall = () => {
+    if (!versionReady || !namespacesReady || !cluster) return;
+    setPosting(true);
+    setInstallError(null);
+    fetch("/api/marketplace/install", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        package_id: pkg.package_id,
+        package_name: pkg.name,
+        version: versions.selected,
+        repository_name: pkg.repository?.name ?? "",
+        cluster,
+        namespace: namespaces.selected,
+        release_name: release,
+      }),
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        const body = (await response.json()) as { job_id?: string; message?: string };
+        if (!response.ok) throw new Error(body.message || "Installation request failed");
+        setQueuedJobId(body.job_id ?? null);
+      })
+      .catch((error) => {
+        setInstallError(
+          error instanceof Error ? error.message : "Installation request failed",
+        );
+      })
+      .finally(() => setPosting(false));
+  };
+
   return (
     <>
       <DialogHeader>
@@ -164,6 +198,14 @@ function InstallDialogBody({ pkg }: { pkg: MarketplacePackage }) {
         <DialogTitle className="truncate">{pkg.name}</DialogTitle>
         <p className="text-sm text-muted-foreground">{publisherOf(pkg)}</p>
       </DialogHeader>
+      {installError && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+        >
+          <span>{installError}</span>
+        </div>
+      )}
       <div className="grid gap-4">
         <div>
           <label className="text-sm font-medium text-foreground" htmlFor="install-version">
@@ -308,9 +350,15 @@ function InstallDialogBody({ pkg }: { pkg: MarketplacePackage }) {
         </div>
       </div>
       <DialogFooter>
-        <Button type="button" disabled={!submitEnabled}>
-          Install
-        </Button>
+        {queuedJobId ? (
+          <p className="text-sm text-muted-foreground">
+            Installation queued (job {queuedJobId})
+          </p>
+        ) : (
+          <Button type="button" disabled={!submitEnabled || posting} onClick={submitInstall}>
+            {posting ? "Queuing…" : "Install"}
+          </Button>
+        )}
       </DialogFooter>
     </>
   );

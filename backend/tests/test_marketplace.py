@@ -1,13 +1,16 @@
 from pathlib import Path
 from types import SimpleNamespace
+from uuid import UUID
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 
 from app.core.config import Settings
+from app.db.session import create_session_factory
 from app.models.base import Base
+from app.models.entities import AuditAction, ClusterConnection, InstallationJob
 
 
 @pytest.fixture()
@@ -297,3 +300,200 @@ def test_versions_unexpected_payload_maps_to_502(
         )
     assert response.status_code == 502
     assert response.json()["code"] == "marketplace_upstream_error"
+
+
+class FakeClusterClient:
+    def __init__(self, namespaces: list[tuple[str, str]]) -> None:
+        self._namespaces = list(namespaces)
+
+    def namespaces(self) -> list[tuple[str, str]]:
+        return list(self._namespaces)
+
+
+@pytest.fixture()
+def cluster_client(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
+    namespaces: list[tuple[str, str]] = [("default", "Active")]
+    requests: list[str | None] = []
+
+    def fake_create(*args, **kwargs) -> FakeClusterClient:
+        requests.append(kwargs.get("cluster_name"))
+        return FakeClusterClient(namespaces)
+
+    monkeypatch.setattr("app.api.v1.marketplace.create_cluster_client", fake_create)
+    return SimpleNamespace(namespaces=namespaces, requests=requests)
+
+
+INSTALL_BODY = {
+    "package_id": "340e1923-7f9c-4c5d-9a1e-8c0a1b2c3d4e",
+    "package_name": "redis",
+    "version": "2.0.0",
+    "repository_name": "bitnami",
+    "cluster": "primary",
+    "namespace": "default",
+    "release_name": "my-release",
+}
+
+UPSTREAM_INSTALL_DETAIL = {
+    "package_id": "340e1923-7f9c-4c5d-9a1e-8c0a1b2c3d4e",
+    "name": "redis",
+    "available_versions": [
+        {"version": "1.0.0", "ts": 100},
+        {"version": "2.0.0", "ts": 200},
+        {"version": "1.5.0", "ts": 200},
+    ],
+    "repository": {"name": "bitnami", "url": "https://charts.bitnami.com/bitnami", "kind": 0},
+}
+
+
+def test_install_requires_authentication(api: SimpleNamespace) -> None:
+    with api.client as client:
+        response = client.post("/api/v1/marketplace/install", json=INSTALL_BODY)
+    assert response.status_code == 401
+    assert response.json()["code"] == "authentication_required"
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"namespace": "Bad_Namespace"},
+        {"release_name": "Bad Name"},
+        {"repository_name": "Redis"},
+        {"cluster": ""},
+        {"package_id": None},
+    ],
+)
+def test_install_invalid_payload_rejected(
+    api: SimpleNamespace, cluster_client: SimpleNamespace, upstream: SimpleNamespace, override: dict
+) -> None:
+    body = {**INSTALL_BODY, **override}
+    with api.client as client:
+        response = client.post(
+            "/api/v1/marketplace/install", json=body, headers=cookie_header(admin_cookie(api))
+        )
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "validation_error"
+
+
+def test_install_unknown_cluster_rejected(
+    api: SimpleNamespace, cluster_client: SimpleNamespace, upstream: SimpleNamespace
+) -> None:
+    body = {**INSTALL_BODY, "cluster": "missing"}
+    with api.client as client:
+        response = client.post(
+            "/api/v1/marketplace/install", json=body, headers=cookie_header(admin_cookie(api))
+        )
+    assert response.status_code == 404
+    assert response.json()["code"] == "cluster_not_found"
+    assert upstream.urls == []
+
+
+def test_install_inactive_cluster_rejected(api: SimpleNamespace, upstream: SimpleNamespace) -> None:
+    database = create_session_factory(api.settings)()
+    try:
+        database.add(
+            ClusterConnection(
+                name="paused", endpoint="https://paused.invalid", kubeconfig_ref="", status="inactive"
+            )
+        )
+        database.commit()
+    finally:
+        database.close()
+    body = {**INSTALL_BODY, "cluster": "paused"}
+    with api.client as client:
+        response = client.post(
+            "/api/v1/marketplace/install", json=body, headers=cookie_header(admin_cookie(api))
+        )
+    assert response.status_code == 404
+    assert response.json()["code"] == "cluster_not_found"
+
+
+def test_install_namespace_not_found_rejected(
+    api: SimpleNamespace, cluster_client: SimpleNamespace, upstream: SimpleNamespace
+) -> None:
+    body = {**INSTALL_BODY, "namespace": "kube-system"}
+    with api.client as client:
+        response = client.post(
+            "/api/v1/marketplace/install", json=body, headers=cookie_header(admin_cookie(api))
+        )
+    assert response.status_code == 422
+    assert response.json()["code"] == "namespace_not_found"
+    assert upstream.urls == []
+
+
+def test_install_upstream_404_maps_to_not_found(
+    api: SimpleNamespace, cluster_client: SimpleNamespace, upstream: SimpleNamespace
+) -> None:
+    upstream.install(FakeUpstream(status_code=404, payload={}))
+    with api.client as client:
+        response = client.post(
+            "/api/v1/marketplace/install", json=INSTALL_BODY, headers=cookie_header(admin_cookie(api))
+        )
+    assert response.status_code == 404
+    assert response.json()["code"] == "marketplace_not_found"
+
+
+def test_install_upstream_error_maps_to_502(
+    api: SimpleNamespace, cluster_client: SimpleNamespace, upstream: SimpleNamespace
+) -> None:
+    upstream.install(FakeUpstream(status_code=429))
+    with api.client as client:
+        response = client.post(
+            "/api/v1/marketplace/install", json=INSTALL_BODY, headers=cookie_header(admin_cookie(api))
+        )
+    assert response.status_code == 502
+    assert response.json()["code"] == "marketplace_upstream_error"
+
+
+def test_install_version_not_available(
+    api: SimpleNamespace, cluster_client: SimpleNamespace, upstream: SimpleNamespace
+) -> None:
+    upstream.install(FakeUpstream(payload=UPSTREAM_INSTALL_DETAIL))
+    body = {**INSTALL_BODY, "version": "9.9.9"}
+    with api.client as client:
+        response = client.post(
+            "/api/v1/marketplace/install", json=body, headers=cookie_header(admin_cookie(api))
+        )
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "version_not_available"
+
+
+def test_install_happy_path(
+    api: SimpleNamespace, cluster_client: SimpleNamespace, upstream: SimpleNamespace
+) -> None:
+    upstream.install(FakeUpstream(payload=UPSTREAM_INSTALL_DETAIL))
+    with api.client as client:
+        response = client.post(
+            "/api/v1/marketplace/install", json=INSTALL_BODY, headers=cookie_header(admin_cookie(api))
+        )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert set(body.keys()) == {"job_id", "status"}
+    assert body["status"] == "queued"
+    job_id = UUID(body["job_id"])
+    assert upstream.urls == ["https://artifacthub.io/api/v1/packages/helm/bitnami/redis"]
+    assert cluster_client.requests == ["primary"]
+
+    database = create_session_factory(api.settings)()
+    try:
+        job = database.get(InstallationJob, job_id)
+        assert job is not None
+        assert job.status == "queued"
+        assert job.package_id == INSTALL_BODY["package_id"]
+        assert job.package_name == "redis"
+        assert job.chart_name == "redis"
+        assert job.chart_repository == "bitnami"
+        assert job.chart_version == "2.0.0"
+        assert job.namespace == "default"
+        assert job.release_name == "my-release"
+        assert job.error_message is None
+        assert job.started_at is None
+        assert job.completed_at is None
+        cluster = database.scalar(select(ClusterConnection).where(ClusterConnection.name == "primary"))
+        assert job.cluster_id == cluster.id
+        audit = database.scalar(
+            select(AuditAction).where(AuditAction.resource_id == str(job.id))
+        )
+        assert audit is not None
+        assert audit.action == "marketplace.install_queued"
+    finally:
+        database.close()

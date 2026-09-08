@@ -1,6 +1,7 @@
-from typing import Optional
+from typing import Literal, Optional
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class MarketplacePackageRepository(BaseModel):
@@ -46,3 +47,25 @@ class MarketplaceVersionsResponse(BaseModel):
     name: str
     repository_name: str
     versions: list[str]
+
+
+DNS_1123_LABEL_PATTERN = r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+
+
+class MarketplaceInstallRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    package_id: str = Field(min_length=1)
+    package_name: str = Field(min_length=1)
+    version: str = Field(min_length=1)
+    repository_name: str = Field(pattern=DNS_1123_LABEL_PATTERN, max_length=63)
+    cluster: str = Field(min_length=1)
+    namespace: str = Field(pattern=DNS_1123_LABEL_PATTERN, max_length=63)
+    release_name: str = Field(pattern=DNS_1123_LABEL_PATTERN, max_length=63)
+
+
+class MarketplaceInstallResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: UUID
+    status: Literal["queued"]

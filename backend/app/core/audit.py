@@ -23,6 +23,7 @@ class AuditEvent:
     CLUSTER_UPDATED = "cluster.update"
     CLUSTER_STATUS_CHANGED = "cluster.status_change"
     CLUSTER_DELETED = "cluster.delete"
+    MARKETPLACE_INSTALL_QUEUED = "marketplace.install_queued"
 
 
 def record_audit(

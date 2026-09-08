@@ -17,6 +17,7 @@ EXPECTED_TABLES = {
 	"events",
 	"audit_actions",
 	"user_preferences",
+	"installation_jobs",
 }
 
 

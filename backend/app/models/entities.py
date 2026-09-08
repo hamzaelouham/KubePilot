@@ -61,6 +61,7 @@ class ClusterConnection(Base):
     created_at: Mapped[CreatedAt]
 
     namespaces: Mapped[list["Namespace"]] = relationship(back_populates="cluster", cascade="all, delete-orphan")
+    installations: Mapped[list["InstallationJob"]] = relationship(back_populates="cluster")
     __table_args__ = (Index("ix_cluster_connections_status", "status"),)
 
 
@@ -192,3 +193,28 @@ class UserPreference(Base):
     view_settings: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
 
     user: Mapped[UserAccount] = relationship(back_populates="preferences")
+
+
+class InstallationJob(Base):
+    __tablename__ = "installation_jobs"
+
+    id: Mapped[PrimaryKey]
+    package_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    package_name: Mapped[str] = mapped_column(String(253), nullable=False)
+    chart_name: Mapped[str] = mapped_column(String(253), nullable=False)
+    chart_repository: Mapped[str] = mapped_column(String(253), nullable=False)
+    chart_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    cluster_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("cluster_connections.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    namespace: Mapped[str] = mapped_column(String(253), nullable=False)
+    release_name: Mapped[str] = mapped_column(String(253), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="queued", server_default="queued"
+    )
+    error_message: Mapped[str | None] = mapped_column(Text())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    cluster: Mapped[ClusterConnection] = relationship(back_populates="installations")
+    __table_args__ = (Index("ix_installation_jobs_cluster_status", "cluster_id", "status"),)

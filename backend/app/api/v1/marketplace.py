@@ -4,10 +4,23 @@ from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
+from sqlalchemy.orm import Session as SQLAlchemySession
 
-from app.core.dependencies import AuthenticatedActor, get_current_actor
+from app.core.audit import AuditEvent, record_audit
+from app.core.config import Settings
+from app.core.dependencies import (
+    AuthenticatedActor,
+    get_current_actor,
+    get_database_session,
+    get_settings,
+)
+from app.kubernetes.client import ClusterClient, create_cluster_client
+from app.models.entities import ClusterConnection, InstallationJob
 
 from .marketplace_schemas import (
+    MarketplaceInstallRequest,
+    MarketplaceInstallResponse,
     MarketplacePackageRepository,
     MarketplacePackageSummary,
     MarketplaceSearchResponse,
@@ -229,3 +242,125 @@ async def get_package_versions(
         repository_name=repo_segment,
         versions=_available_version_strings(raw_versions),
     )
+
+
+def _resolve_cluster(database: SQLAlchemySession, name: str) -> ClusterConnection:
+    row = database.scalar(select(ClusterConnection).where(ClusterConnection.name == name))
+    if row is None or row.status == "inactive":
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "cluster_not_found", "message": "Cluster was not found"},
+        )
+    return row
+
+
+def _ensure_namespace_exists(client: ClusterClient, namespace: str) -> None:
+    names = [name for name, _ in client.namespaces()]
+    if namespace not in names:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "namespace_not_found",
+                "message": "Namespace was not found in cluster",
+            },
+        )
+
+
+async def _fetch_package_detail(repository_name: str, package_name: str) -> dict[str, Any]:
+    repo_segment = _read_package_segment(repository_name, "repository")
+    package_segment = _read_package_segment(package_name, "package")
+    detail_url = ARTIFACT_HUB_PACKAGE_URL.format(
+        kind=ARTIFACT_HUB_HELM_KIND,
+        repository=repo_segment,
+        package=package_segment,
+    )
+
+    try:
+        upstream = await _fetch_artifact_hub_search(detail_url)
+    except httpx.HTTPError:
+        raise _upstream_error("Artifact Hub is unavailable")
+
+    if upstream.status_code == 404:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "marketplace_not_found", "message": "Package not found"},
+        )
+    if upstream.status_code != 200:
+        raise _upstream_error(f"Artifact Hub returned status {upstream.status_code}")
+
+    try:
+        payload = upstream.json()
+    except ValueError:
+        raise _upstream_error("Artifact Hub returned invalid package data")
+
+    if not isinstance(payload, dict):
+        raise _upstream_error("Artifact Hub returned unexpected package data")
+
+    raw_versions = payload.get("available_versions")
+    if not isinstance(raw_versions, list):
+        raise _upstream_error("Artifact Hub returned unexpected package data")
+    versions = _available_version_strings(raw_versions)
+
+    chart_name = str(payload.get("name") or "")
+    repository = payload.get("repository")
+    repo_name = str(repository.get("name") or "") if isinstance(repository, dict) else ""
+    if not chart_name or not repo_name:
+        raise _upstream_error("Artifact Hub returned unexpected package data")
+
+    return {
+        "versions": versions,
+        "chart_name": chart_name,
+        "chart_repository": repo_name,
+    }
+
+
+@router.post("/marketplace/install", response_model=MarketplaceInstallResponse, status_code=201)
+async def create_installation(
+    request: MarketplaceInstallRequest,
+    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> MarketplaceInstallResponse:
+    cluster = _resolve_cluster(database, request.cluster)
+
+    client = create_cluster_client(
+        settings,
+        kubeconfig_content=cluster.kubeconfig_content,
+        cluster_name=cluster.name,
+    )
+    _ensure_namespace_exists(client, request.namespace)
+
+    detail = await _fetch_package_detail(request.repository_name, request.package_name)
+    if request.version not in detail["versions"]:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "version_not_available",
+                "message": "Version is not available for this package",
+            },
+        )
+
+    job = InstallationJob(
+        package_id=request.package_id,
+        package_name=request.package_name,
+        chart_name=detail["chart_name"],
+        chart_repository=detail["chart_repository"],
+        chart_version=request.version,
+        cluster_id=cluster.id,
+        namespace=request.namespace,
+        release_name=request.release_name,
+        status="queued",
+    )
+    database.add(job)
+    database.commit()
+    database.refresh(job)
+    record_audit(
+        database,
+        AuditEvent.MARKETPLACE_INSTALL_QUEUED,
+        actor_id=_actor.user_id,
+        resource_type="installation_job",
+        resource_id=str(job.id),
+        result="success",
+    )
+    database.commit()
+    return MarketplaceInstallResponse(job_id=job.id, status="queued")
