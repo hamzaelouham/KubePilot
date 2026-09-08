@@ -16,6 +16,10 @@ class Settings:
     admin_password: str = "kubepilot"
     password_ttl_days: int = 15
     password_min_length: int = 10
+    worker_enabled: bool = True
+    worker_poll_seconds: int = 5
+    helm_binary: str = "helm"
+    helm_install_timeout_seconds: int = 600
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -27,6 +31,12 @@ class Settings:
         admin_password = os.getenv("KUBEPILOT_ADMIN_PASSWORD", "kubepilot")
         password_ttl_days = cls._positive_int("KUBEPILOT_PASSWORD_TTL_DAYS", 15)
         password_min_length = cls._positive_int("KUBEPILOT_PASSWORD_MIN_LENGTH", 10)
+        worker_enabled = cls._env_bool("KUBEPILOT_WORKER_ENABLED", True)
+        worker_poll_seconds = cls._positive_int("KUBEPILOT_WORKER_POLL_SECONDS", 5)
+        helm_binary = cls._non_empty("KUBEPILOT_HELM_BINARY", "helm")
+        helm_install_timeout_seconds = cls._positive_int(
+            "KUBEPILOT_HELM_INSTALL_TIMEOUT_SECONDS", 600
+        )
 
         missing = [
             name
@@ -58,7 +68,29 @@ class Settings:
             admin_password=admin_password,
             password_ttl_days=password_ttl_days,
             password_min_length=password_min_length,
+            worker_enabled=worker_enabled,
+            worker_poll_seconds=worker_poll_seconds,
+            helm_binary=helm_binary,
+            helm_install_timeout_seconds=helm_install_timeout_seconds,
         )
+
+    @staticmethod
+    def _env_bool(name: str, default: bool) -> bool:
+        raw = os.getenv(name, "").strip().lower()
+        if not raw:
+            return default
+        if raw in {"true", "1", "yes", "on"}:
+            return True
+        if raw in {"false", "0", "no", "off"}:
+            return False
+        raise ConfigurationError(f"{name} must be true or false")
+
+    @staticmethod
+    def _non_empty(name: str, default: str) -> str:
+        value = os.getenv(name, "").strip()
+        if not value:
+            return default
+        return value
 
     @staticmethod
     def _positive_int(name: str, default: int) -> int:

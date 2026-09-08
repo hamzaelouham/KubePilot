@@ -304,13 +304,15 @@ async def _fetch_package_detail(repository_name: str, package_name: str) -> dict
     chart_name = str(payload.get("name") or "")
     repository = payload.get("repository")
     repo_name = str(repository.get("name") or "") if isinstance(repository, dict) else ""
-    if not chart_name or not repo_name:
+    repo_url = str(repository.get("url") or "") if isinstance(repository, dict) else ""
+    if not chart_name or not repo_name or not repo_url:
         raise _upstream_error("Artifact Hub returned unexpected package data")
 
     return {
         "versions": versions,
         "chart_name": chart_name,
         "chart_repository": repo_name,
+        "chart_repository_url": repo_url,
     }
 
 
@@ -345,6 +347,7 @@ async def create_installation(
         package_name=request.package_name,
         chart_name=detail["chart_name"],
         chart_repository=detail["chart_repository"],
+        chart_repository_url=detail["chart_repository_url"],
         chart_version=request.version,
         cluster_id=cluster.id,
         namespace=request.namespace,

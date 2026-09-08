@@ -203,6 +203,7 @@ class InstallationJob(Base):
     package_name: Mapped[str] = mapped_column(String(253), nullable=False)
     chart_name: Mapped[str] = mapped_column(String(253), nullable=False)
     chart_repository: Mapped[str] = mapped_column(String(253), nullable=False)
+    chart_repository_url: Mapped[str | None] = mapped_column(String(2048))
     chart_version: Mapped[str] = mapped_column(String(64), nullable=False)
     cluster_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("cluster_connections.id", ondelete="CASCADE"), nullable=False, index=True
@@ -215,6 +216,7 @@ class InstallationJob(Base):
     error_message: Mapped[str | None] = mapped_column(Text())
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[CreatedAt]
 
     cluster: Mapped[ClusterConnection] = relationship(back_populates="installations")
     __table_args__ = (Index("ix_installation_jobs_cluster_status", "cluster_id", "status"),)

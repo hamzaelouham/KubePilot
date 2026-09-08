@@ -16,6 +16,9 @@ from app.db.session import create_session_factory
 from app.models.base import Base
 from app.models.entities import AuditAction, UserAccount
 
+
+
+os.environ.setdefault("KUBEPILOT_WORKER_ENABLED", "false")
 os.environ.setdefault("KUBEPILOT_PASSWORD_TTL_DAYS", "15")
 
 

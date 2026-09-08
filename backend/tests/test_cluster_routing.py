@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,6 +14,9 @@ from app.models.base import Base
 from app.models.entities import ClusterConnection
 
 
+
+
+os.environ.setdefault("KUBEPILOT_WORKER_ENABLED", "false")
 @pytest.fixture()
 def api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     database_url = f"sqlite:///{tmp_path / 'kubepilot-routing.db'}"

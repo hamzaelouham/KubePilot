@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID
@@ -13,6 +14,9 @@ from app.models.base import Base
 from app.models.entities import AuditAction, ClusterConnection, InstallationJob
 
 
+
+
+os.environ.setdefault("KUBEPILOT_WORKER_ENABLED", "false")
 @pytest.fixture()
 def api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     database_url = f"sqlite:///{tmp_path / 'kubepilot-marketplace.db'}"
@@ -482,6 +486,7 @@ def test_install_happy_path(
         assert job.package_name == "redis"
         assert job.chart_name == "redis"
         assert job.chart_repository == "bitnami"
+        assert job.chart_repository_url == "https://charts.bitnami.com/bitnami"
         assert job.chart_version == "2.0.0"
         assert job.namespace == "default"
         assert job.release_name == "my-release"

@@ -1,3 +1,4 @@
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -24,6 +25,8 @@ from app.kubernetes.client import (
     classify_kubernetes_error,
     create_cluster_client,
 )
+
+os.environ.setdefault("KUBEPILOT_WORKER_ENABLED", "false")
 
 
 class FakeCore:

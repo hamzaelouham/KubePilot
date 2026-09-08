@@ -11,6 +11,9 @@ os.environ.setdefault("KUBEPILOT_AUTH_SECRET", "x" * 32)
 os.environ.setdefault("KUBEPILOT_DATABASE_URL", "sqlite:///:memory:")
 
 
+
+
+os.environ.setdefault("KUBEPILOT_WORKER_ENABLED", "false")
 class FakeCluster:
     cluster_name = "test-cluster"
 

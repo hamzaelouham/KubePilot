@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
@@ -14,6 +15,7 @@ from app.api.v1.schemas import ErrorResponse
 from app.api.v1.users import router as users_router
 from app.core.config import ConfigurationError, Settings
 from app.db.session import create_session_factory
+from app.jobs.worker import requeue_running_jobs, _worker_loop
 from app.models.entities import ClusterConnection
 from app.kubernetes.client import (
     ClusterClientError,
@@ -49,11 +51,35 @@ def _seed_default_cluster(settings: Settings) -> None:
         database.close()
 
 
+def _requeue_orphaned_jobs(settings: Settings) -> None:
+    database = create_session_factory(settings)()
+    try:
+        requeue_running_jobs(database)
+    except Exception as error:  # noqa: BLE001
+        logger.warning("Skipped installation job requeue: %s", error)
+    finally:
+        database.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    app.state.settings = Settings.from_env()
-    _seed_default_cluster(app.state.settings)
-    yield
+    settings = Settings.from_env()
+    app.state.settings = settings
+    _seed_default_cluster(settings)
+    _requeue_orphaned_jobs(settings)
+
+    worker_task = None
+    if settings.worker_enabled:
+        worker_task = asyncio.create_task(_worker_loop(settings))
+    try:
+        yield
+    finally:
+        if worker_task is not None:
+            worker_task.cancel()
+            try:
+                await worker_task
+            except asyncio.CancelledError:
+                pass
 
 
 def create_app() -> FastAPI:
