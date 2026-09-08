@@ -5,12 +5,14 @@ import Link from "next/link";
 import {
   ChevronDown,
   Database,
+  KeyRound,
   Layers,
   LayoutDashboard,
   Network,
   Server,
-  Shield,
+  ShieldCog,
   SlidersHorizontal,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 import { NotificationPopover } from "@/components/notification-popover";
@@ -23,6 +25,13 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type NavGroup = {
   label: string;
@@ -73,10 +82,16 @@ const navGroups: NavGroup[] = [
   },
 ];
 
-const adminNavItems = [
-  { id: "clusters", label: "Clusters", href: "/settings/clusters", adminOnly: false },
-  { id: "users", label: "Users", href: "/settings/users", adminOnly: true },
-  { id: "password", label: "Password", href: "/settings/password", adminOnly: false },
+const adminNavItems: {
+  id: string;
+  label: string;
+  href: string;
+  adminOnly: boolean;
+  icon: LucideIcon;
+}[] = [
+  { id: "clusters", label: "Clusters", href: "/settings/clusters", adminOnly: false, icon: Server },
+  { id: "users", label: "Users", href: "/settings/users", adminOnly: true, icon: Users },
+  { id: "password", label: "Password", href: "/settings/password", adminOnly: false, icon: KeyRound },
 ];
 
 const ADMIN_GROUP = "Administration";
@@ -207,20 +222,37 @@ export function DashboardShell({
 
             <div className="ml-auto flex items-center gap-2">
               <div className="flex min-w-0 items-center gap-2 rounded-xl border border-border bg-header-control px-3 py-2">
+                <Server className="size-4 shrink-0 text-muted-foreground" />
                 <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Cluster</span>
                 {activeCluster ? (
-                  <select
-                    value={activeCluster}
-                    aria-label="Active cluster"
-                    onChange={onSelectCluster ? (event) => onSelectCluster(event.target.value) : undefined}
-                    className="bg-transparent text-sm font-medium text-foreground outline-none"
-                  >
-                    {(clusters && clusters.length > 0 ? clusters : [activeCluster]).map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
+                  <Select
+                  value={activeCluster}
+                  onValueChange={(value) => {
+                    if (value) onSelectCluster?.(value);
+                  }}
+                >
+                    <SelectTrigger
+                      aria-label="Active cluster"
+                      className="h-10 gap-1.5 border-0 bg-transparent p-0 pr-1 text-sm font-medium text-foreground shadow-none data-[size=default]:h-10"
+                    >
+                      <SelectValue placeholder="Select cluster" />
+                    </SelectTrigger>
+                    <SelectContent align="end">
+                      {(clusters && clusters.length > 0 ? clusters : [activeCluster]).map((name) => (
+                        <SelectItem
+                          key={name}
+                          value={name}
+                          className="data-selected:bg-primary/10 data-selected:text-primary data-selected:font-medium"
+                        >
+                          <span className="flex items-center gap-2">
+                            <span className="size-2 shrink-0 rounded-full bg-emerald-500" />
+                            <Server className="size-4 text-muted-foreground" />
+                            {name}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 ) : (
                   <span className="text-sm text-muted-foreground">Cluster unavailable</span>
                 )}
@@ -315,7 +347,7 @@ export function DashboardShell({
                 onOpenChange={() => toggleGroup(ADMIN_GROUP)}
               >
                 <CollapsibleTrigger className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-base font-medium text-sidebar-foreground transition hover:bg-sidebar-accent">
-                  <Shield className="h-4 w-4 shrink-0 text-sidebar-foreground/70" />
+                  <ShieldCog className="h-4 w-4 shrink-0 text-sidebar-foreground/70" />
                   <span>{ADMIN_GROUP}</span>
                   <ChevronDown
                     className={`ml-auto h-4 w-4 shrink-0 text-sidebar-foreground/70 transition-transform duration-200 ${
@@ -330,12 +362,13 @@ export function DashboardShell({
                       <Link
                         key={item.id}
                         href={item.href}
-                        className={`block w-full cursor-pointer rounded-md px-3 py-2 pl-10 text-left text-base transition ${
+                        className={`flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 pl-10 text-left text-base transition ${
                           isActive(item.id)
                             ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
                             : "text-sidebar-foreground/70 hover:bg-sidebar-accent"
                         }`}
                       >
+                        <item.icon className="size-4 shrink-0" />
                         {item.label}
                       </Link>
                     ))}
