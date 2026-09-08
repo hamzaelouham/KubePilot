@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { MarketplaceBrowser } from "@/components/marketplace-browser";
 import { useClusterSelection } from "@/lib/use-cluster-selection";
 import type { BackendUser } from "@/lib/auth";
 
@@ -32,6 +33,7 @@ export function MarketplaceView({ user }: { user: BackendUser }) {
             Discover and install Kubernetes applications.
           </p>
         </div>
+        <MarketplaceBrowser />
       </div>
     </DashboardShell>
   );

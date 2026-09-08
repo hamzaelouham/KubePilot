@@ -46,7 +46,7 @@
 * [ ] 18. **KubePilot Marketplace** - discover and install Kubernetes Helm packages from Artifact Hub.
 
   * [x] 18a. **Marketplace navigation & page** - add `/marketplace` route, a main sidebar entry, and a page header (Marketplace - "Discover and install Kubernetes applications") that reuses the existing application shell and preserves current navigation.
-  * [ ] 18b. **Package discovery** - integrate the Artifact Hub package search API (Helm charts only, kind=0) with pagination/Load More, a reusable PackageCard (logo, name, description, publisher/repository, latest version, Install button), loading skeletons, empty state, and API error state.
+  * [x] 18b. **Package discovery** - integrate the Artifact Hub package search API (Helm charts only, kind=0) with pagination/Load More, a reusable PackageCard (logo, name, description, publisher/repository, latest version, Install button), loading skeletons, empty state, and API error state.
   * [ ] 18c. **Package search & filtering** - search input connected to the Artifact Hub API with debounce, optional sorting if useful, and correct pagination with loading/empty/error handling.
   * [ ] 18d. **Package details** - a lightweight drawer/modal/dedicated view for a package showing name, logo, description, publisher, repository, version, Helm install info, and an Install button.
   * [ ] 18e. **Installation configuration dialog** - a reusable dialog collecting package/version/cluster/namespace/release name with validation, reusing the existing cluster and namespace selectors; no Helm command is executed by the frontend.

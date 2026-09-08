@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.api.v1.marketplace import router as marketplace_router
 from app.api.v1.routes import router as v1_router
 from app.api.v1.schemas import ErrorResponse
 from app.api.v1.users import router as users_router
@@ -157,6 +158,7 @@ def create_app() -> FastAPI:
 
     app.include_router(v1_router, prefix="/api/v1")
     app.include_router(users_router, prefix="/api/v1")
+    app.include_router(marketplace_router, prefix="/api/v1")
     return app
 
 
