@@ -1,6 +1,7 @@
 import re
 from typing import Annotated, Any
 from urllib.parse import urlencode
+from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -21,6 +22,7 @@ from app.models.entities import ClusterConnection, InstallationJob
 from .marketplace_schemas import (
     MarketplaceInstallRequest,
     MarketplaceInstallResponse,
+    MarketplaceInstallationStatus,
     MarketplacePackageRepository,
     MarketplacePackageSummary,
     MarketplaceSearchResponse,
@@ -367,3 +369,35 @@ async def create_installation(
     )
     database.commit()
     return MarketplaceInstallResponse(job_id=job.id, status="queued")
+
+
+@router.get(
+    "/marketplace/installations/{job_id}",
+    response_model=MarketplaceInstallationStatus,
+)
+async def get_installation_status(
+    job_id: UUID,
+    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+) -> MarketplaceInstallationStatus:
+    job = database.get(InstallationJob, job_id)
+    if job is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "installation_not_found",
+                "message": "Installation job was not found",
+            },
+        )
+    return MarketplaceInstallationStatus(
+        job_id=job.id,
+        package_name=job.package_name,
+        cluster=job.cluster.name,
+        namespace=job.namespace,
+        release_name=job.release_name,
+        status=job.status,
+        error_message=job.error_message,
+        created_at=job.created_at,
+        started_at=job.started_at,
+        completed_at=job.completed_at,
+    )

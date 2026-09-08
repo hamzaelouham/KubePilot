@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID
@@ -502,3 +503,151 @@ def test_install_happy_path(
         assert audit.action == "marketplace.install_queued"
     finally:
         database.close()
+
+
+def _seed_installation(
+    api: SimpleNamespace,
+    status: str = "succeeded",
+    error_message: str | None = None,
+    started_at: datetime | None = None,
+    completed_at: datetime | None = None,
+) -> UUID:
+    database = create_session_factory(api.settings)()
+    try:
+        cluster = database.scalar(
+            select(ClusterConnection).where(ClusterConnection.name == "primary")
+        )
+        if cluster is None:
+            cluster = ClusterConnection(
+                name="primary",
+                endpoint="https://k8s.example",
+                kubeconfig_ref="primary",
+                status="active",
+            )
+            database.add(cluster)
+            database.commit()
+            database.refresh(cluster)
+        job = InstallationJob(
+            package_id="340e1923-7f9c-4c5d-9a1e-8c0a1b2c3d4e",
+            package_name="redis",
+            chart_name="redis",
+            chart_repository="bitnami",
+            chart_repository_url="https://charts.bitnami.com/bitnami",
+            chart_version="2.0.0",
+            cluster_id=cluster.id,
+            namespace="default",
+            release_name="my-release",
+            status=status,
+            error_message=error_message,
+            started_at=started_at,
+            completed_at=completed_at,
+        )
+        database.add(job)
+        database.commit()
+        database.refresh(job)
+        return job.id
+    finally:
+        database.close()
+
+
+def _get_installation_status(
+    client: TestClient, job_id: UUID, cookie: str | None = None
+) -> httpx.Response:
+    headers = cookie_header(cookie) if cookie else {}
+    return client.get(f"/api/v1/marketplace/installations/{job_id}", headers=headers)
+
+
+def test_installation_status_requires_authentication(api: SimpleNamespace) -> None:
+    job_id = _seed_installation(api)
+    with api.client as client:
+        response = _get_installation_status(client, job_id)
+    assert response.status_code == 401
+
+
+def test_installation_status_not_found(api: SimpleNamespace) -> None:
+    cookie = admin_cookie(api)
+    job_id = UUID("00000000-0000-0000-0000-000000000000")
+    with api.client as client:
+        response = _get_installation_status(client, job_id, cookie)
+    assert response.status_code == 404
+    assert response.json()["code"] == "installation_not_found"
+
+
+def test_installation_status_succeeded(api: SimpleNamespace) -> None:
+    cookie = admin_cookie(api)
+    started = datetime.now(timezone.utc) - timedelta(minutes=2)
+    completed = datetime.now(timezone.utc)
+    job_id = _seed_installation(
+        api, error_message=None, started_at=started, completed_at=completed
+    )
+    with api.client as client:
+        response = _get_installation_status(client, job_id, cookie)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert set(body.keys()) == {
+        "job_id",
+        "package_name",
+        "cluster",
+        "namespace",
+        "release_name",
+        "status",
+        "error_message",
+        "created_at",
+        "started_at",
+        "completed_at",
+    }
+    assert body["job_id"] == str(job_id)
+    assert body["package_name"] == "redis"
+    assert body["cluster"] == "primary"
+    assert body["namespace"] == "default"
+    assert body["release_name"] == "my-release"
+    assert body["status"] == "succeeded"
+    assert body["error_message"] is None
+    assert datetime.fromisoformat(body["started_at"]).replace(tzinfo=None) == started.replace(tzinfo=None)
+    assert datetime.fromisoformat(body["completed_at"]).replace(tzinfo=None) == completed.replace(tzinfo=None)
+
+
+def test_installation_status_queued(api: SimpleNamespace) -> None:
+    cookie = admin_cookie(api)
+    job_id = _seed_installation(api, status="queued")
+    with api.client as client:
+        response = _get_installation_status(client, job_id, cookie)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "queued"
+    assert body["error_message"] is None
+    assert body["started_at"] is None
+    assert body["completed_at"] is None
+
+
+def test_installation_status_running(api: SimpleNamespace) -> None:
+    cookie = admin_cookie(api)
+    started = datetime.now(timezone.utc) - timedelta(seconds=30)
+    with api.client as client:
+        job_id = _seed_installation(api, status="running", started_at=started)
+        response = _get_installation_status(client, job_id, cookie)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "running"
+    assert datetime.fromisoformat(body["started_at"]).replace(tzinfo=None) == started.replace(tzinfo=None)
+    assert body["completed_at"] is None
+
+
+def test_installation_status_failed(api: SimpleNamespace) -> None:
+    cookie = admin_cookie(api)
+    started = datetime.now(timezone.utc) - timedelta(minutes=2)
+    completed = datetime.now(timezone.utc)
+    job_id = _seed_installation(
+        api,
+        status="failed",
+        error_message="helm install failed: release not found",
+        started_at=started,
+        completed_at=completed,
+    )
+    with api.client as client:
+        response = _get_installation_status(client, job_id, cookie)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "failed"
+    assert body["error_message"] == "helm install failed: release not found"
+    assert datetime.fromisoformat(body["completed_at"]).replace(tzinfo=None) == completed.replace(tzinfo=None)

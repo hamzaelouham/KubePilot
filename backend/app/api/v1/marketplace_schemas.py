@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal, Optional
 from uuid import UUID
 
@@ -69,3 +70,18 @@ class MarketplaceInstallResponse(BaseModel):
 
     job_id: UUID
     status: Literal["queued"]
+
+
+class MarketplaceInstallationStatus(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: UUID
+    package_name: str
+    cluster: str
+    namespace: str
+    release_name: str
+    status: Literal["queued", "running", "succeeded", "failed", "cancelled"]
+    error_message: Optional[str] = None
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
