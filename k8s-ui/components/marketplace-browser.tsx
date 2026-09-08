@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PackageCard, type MarketplacePackage } from "@/components/package-card";
+import { PackageDetailsDialog } from "@/components/package-details-dialog";
 
 const PAGE_SIZE = 24;
 const DEBOUNCE_MS = 350;
@@ -81,6 +82,7 @@ export function MarketplaceBrowser() {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [sort, setSort] = useState<Sort>("relevance");
+  const [selectedPackage, setSelectedPackage] = useState<MarketplacePackage | null>(null);
   const offsetRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -191,7 +193,11 @@ export function MarketplaceBrowser() {
         )}
         <div className="grid items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {packages.map((pkg) => (
-            <PackageCard key={pkg.package_id} pkg={pkg} />
+            <PackageCard
+              key={pkg.package_id}
+              pkg={pkg}
+              onSelect={() => setSelectedPackage(pkg)}
+            />
           ))}
         </div>
         {showLoadMore && (
@@ -233,6 +239,12 @@ export function MarketplaceBrowser() {
         </div>
       </div>
       {content}
+      <PackageDetailsDialog
+        pkg={selectedPackage}
+        onOpenChange={(open) => {
+          if (!open) setSelectedPackage(null);
+        }}
+      />
     </div>
   );
 }

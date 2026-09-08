@@ -28,21 +28,38 @@ export type MarketplacePackage = {
   repository?: MarketplacePackageRepository | null;
 };
 
-function packageLogo(pkg: MarketplacePackage) {
+export function packageLogo(pkg: MarketplacePackage) {
   return pkg.logo_image_id ? `https://artifacthub.io/image/${encodeURIComponent(pkg.logo_image_id)}` : null;
 }
 
-export function PackageCard({ pkg }: { pkg: MarketplacePackage }) {
-  const [logoFailed, setLogoFailed] = useState(false);
-  const logo = logoFailed ? null : packageLogo(pkg);
-  const publisher =
+export function publisherOf(pkg: MarketplacePackage) {
+  return (
     pkg.repository?.organization_display_name ??
     pkg.repository?.display_name ??
     pkg.repository?.name ??
-    "Unknown publisher";
+    "Unknown publisher"
+  );
+}
+
+export function PackageCard({
+  pkg,
+  onSelect,
+}: {
+  pkg: MarketplacePackage;
+  onSelect: () => void;
+}) {
+  const [logoFailed, setLogoFailed] = useState(false);
+  const logo = logoFailed ? null : packageLogo(pkg);
+  const publisher = publisherOf(pkg);
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface-elevated p-4 shadow-sm">
+    <div className="relative flex flex-col gap-3 rounded-xl border border-border bg-surface-elevated p-4 shadow-sm">
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-label={`View details for ${pkg.name}`}
+        className="absolute inset-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      />
       <div className="flex items-start gap-3">
         {logo ? (
           <img
@@ -67,7 +84,7 @@ export function PackageCard({ pkg }: { pkg: MarketplacePackage }) {
           <p className="text-xs text-muted-foreground">Latest version</p>
           <p className="truncate text-sm font-medium text-foreground">{pkg.version ?? "—"}</p>
         </div>
-        <Button size="sm" variant="default">
+        <Button size="sm" variant="default" className="relative z-10">
           Install
         </Button>
       </div>
