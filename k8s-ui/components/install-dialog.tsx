@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -35,6 +36,203 @@ type NamespacesState =
 
 const RELEASE_NAME_PATTERN = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
 const MAX_RELEASE_NAME_LENGTH = 63;
+const POLL_MS = 2000;
+
+type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+
+const TERMINAL_JOB_STAGES: ReadonlySet<string> = new Set([
+  "succeeded",
+  "failed",
+  "cancelled",
+]);
+
+const JOB_STAGE_LABELS: Record<JobStatus, string> = {
+  queued: "Queued",
+  running: "Running",
+  succeeded: "Succeeded",
+  failed: "Failed",
+  cancelled: "Cancelled",
+};
+
+const JOB_STAGE_VARIANTS: Record<
+  JobStatus,
+  "secondary" | "default" | "destructive" | "outline"
+> = {
+  queued: "secondary",
+  running: "secondary",
+  succeeded: "default",
+  failed: "destructive",
+  cancelled: "outline",
+};
+
+type JobPollState =
+  | { phase: "status"; stage: JobStatus; message: string | null }
+  | { phase: "error"; message: string };
+
+function isJobStatus(value: string): value is JobStatus {
+  return (
+    value === "queued" ||
+    value === "running" ||
+    value === "succeeded" ||
+    value === "failed" ||
+    value === "cancelled"
+  );
+}
+
+function Spinner() {
+  return (
+    <svg
+      className="size-4 animate-spin text-muted-foreground"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <circle
+        className="opacity-25"
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="4"
+      />
+      <path
+        className="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+      />
+    </svg>
+  );
+}
+
+function JobProgress({
+  jobId,
+  packageName,
+  cluster,
+  namespace,
+  release,
+  onClose,
+}: {
+  jobId: string;
+  packageName: string;
+  cluster: string;
+  namespace: string;
+  release: string;
+  onClose: () => void;
+}) {
+  const [poll, setPoll] = useState<JobPollState>({
+    phase: "status",
+    stage: "queued",
+    message: null,
+  });
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let timer: number | undefined;
+
+    const pollOnce = async () => {
+      try {
+        const response = await fetch(
+          `/api/marketplace/installations/${encodeURIComponent(jobId)}`,
+          { signal: controller.signal, cache: "no-store" },
+        );
+        const body = (await response.json()) as {
+          status?: string;
+          error_message?: string | null;
+          message?: string;
+        };
+        if (!response.ok) throw new Error(body.message || "Unable to load installation status");
+        const stage = body.status ?? "";
+        if (isJobStatus(stage)) {
+          setPoll({ phase: "status", stage, message: body.error_message ?? null });
+          if (!TERMINAL_JOB_STAGES.has(stage)) {
+            timer = window.setTimeout(pollOnce, POLL_MS);
+          }
+        } else {
+          setPoll((previous) =>
+            previous.phase === "status"
+              ? previous
+              : { phase: "status", stage: "running", message: null },
+          );
+          timer = window.setTimeout(pollOnce, POLL_MS);
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setPoll({
+          phase: "error",
+          message: error instanceof Error ? error.message : "Unable to load installation status",
+        });
+      }
+    };
+
+    void pollOnce();
+    return () => {
+      controller.abort();
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [jobId, attempt]);
+
+  const stage = poll.phase === "status" ? poll.stage : undefined;
+  const terminal = stage !== undefined && TERMINAL_JOB_STAGES.has(stage);
+  const loadingSentence =
+    stage === "queued"
+      ? "Installation queued. Waiting for the background worker to start it."
+      : stage === "running"
+        ? "Helm is installing the package."
+        : null;
+
+  return (
+    <>
+      <div className="grid gap-4">
+        <div className="rounded-xl border border-border bg-surface-elevated p-4 shadow-sm">
+          <p className="truncate text-sm font-medium text-foreground">{packageName}</p>
+          <p className="mt-1 truncate text-sm text-muted-foreground">
+            {cluster} · {namespace} · release {release}
+          </p>
+        </div>
+        <div role="status" aria-live="polite" className="flex items-center gap-2">
+          {stage !== undefined && !terminal && <Spinner />}
+          {stage !== undefined && (
+            <Badge variant={JOB_STAGE_VARIANTS[stage]}>{JOB_STAGE_LABELS[stage]}</Badge>
+          )}
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {loadingSentence}
+          {stage === "succeeded" && "Installation succeeded. You can close this dialog."}
+          {stage === "failed" &&
+            (poll.phase === "status"
+              ? "The installation failed."
+              : "The installation failed without an error message.")}
+          {stage === "cancelled" && "Installation cancelled."}
+        </p>
+        {stage === "failed" && poll.phase === "status" && poll.message && (
+          <div
+            role="alert"
+            className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+          >
+            {poll.message}
+          </div>
+        )}
+        {poll.phase === "error" && (
+          <div
+            role="alert"
+            className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+          >
+            <span>{poll.message}</span>
+            <Button variant="outline" size="xs" onClick={() => setAttempt((current) => current + 1)}>
+              Retry
+            </Button>
+          </div>
+        )}
+      </div>
+      <DialogFooter>
+        <Button type="button" onClick={onClose}>
+          Close
+        </Button>
+      </DialogFooter>
+    </>
+  );
+}
 
 export function InstallDialog({
   pkg,
@@ -47,14 +245,24 @@ export function InstallDialog({
     <Dialog open={pkg !== null} onOpenChange={onOpenChange}>
       {pkg && (
         <DialogContent className="sm:max-w-lg">
-          <InstallDialogBody key={pkg.package_id} pkg={pkg} />
+          <InstallDialogBody
+            key={pkg.package_id}
+            pkg={pkg}
+            onClose={() => onOpenChange(false)}
+          />
         </DialogContent>
       )}
     </Dialog>
   );
 }
 
-function InstallDialogBody({ pkg }: { pkg: MarketplacePackage }) {
+function InstallDialogBody({
+  pkg,
+  onClose,
+}: {
+  pkg: MarketplacePackage;
+  onClose: () => void;
+}) {
   const { cluster, clusters, selectCluster } = useClusterSelection();
   const [versions, setVersions] = useState<VersionsState>({ status: "loading" });
   const [versionRetry, setVersionRetry] = useState(0);
@@ -188,6 +396,19 @@ function InstallDialogBody({ pkg }: { pkg: MarketplacePackage }) {
       })
       .finally(() => setPosting(false));
   };
+
+  if (queuedJobId) {
+    return (
+      <JobProgress
+        jobId={queuedJobId}
+        packageName={pkg.name}
+        cluster={cluster ?? ""}
+        namespace={namespaces.status === "ready" ? namespaces.selected : ""}
+        release={release}
+        onClose={onClose}
+      />
+    );
+  }
 
   return (
     <>
@@ -350,15 +571,9 @@ function InstallDialogBody({ pkg }: { pkg: MarketplacePackage }) {
         </div>
       </div>
       <DialogFooter>
-        {queuedJobId ? (
-          <p className="text-sm text-muted-foreground">
-            Installation queued (job {queuedJobId})
-          </p>
-        ) : (
-          <Button type="button" disabled={!submitEnabled || posting} onClick={submitInstall}>
-            {posting ? "Queuing…" : "Install"}
-          </Button>
-        )}
+        <Button type="button" disabled={!submitEnabled || posting} onClick={submitInstall}>
+          {posting ? "Queuing…" : "Install"}
+        </Button>
       </DialogFooter>
     </>
   );
