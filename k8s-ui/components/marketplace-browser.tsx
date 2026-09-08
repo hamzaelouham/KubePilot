@@ -9,14 +9,31 @@ import {
   EmptyHeader,
   EmptyTitle,
 } from "@/components/ui/empty";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { PackageCard, type MarketplacePackage } from "@/components/package-card";
 
 const PAGE_SIZE = 24;
+const DEBOUNCE_MS = 350;
+
+type Sort = "relevance" | "stars";
 
 type MarketplaceResponse = { packages: MarketplacePackage[]; total: number };
 
-async function fetchPage(offset: number, signal: AbortSignal) {
-  const response = await fetch(`/api/marketplace/packages?limit=${PAGE_SIZE}&offset=${offset}`, {
+async function fetchPage(
+  params: { offset: number; query: string; sort: Sort },
+  signal: AbortSignal,
+) {
+  const search = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(params.offset) });
+  if (params.query) search.set("ts_query_web", params.query);
+  if (params.sort === "stars") search.set("sort", params.sort);
+  const response = await fetch(`/api/marketplace/packages?${search.toString()}`, {
     signal,
     cache: "no-store",
   });
@@ -61,35 +78,57 @@ export function MarketplaceBrowser() {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [loadingMore, setLoadingMore] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [sort, setSort] = useState<Sort>("relevance");
   const offsetRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
 
-  const fetchAt = useCallback(async (offset: number, replace: boolean) => {
-    const controller = new AbortController();
-    abortRef.current?.abort();
-    abortRef.current = controller;
-    try {
-      const body = await fetchPage(offset, controller.signal);
-      setPackages((previous) =>
-        replace || previous.length === 0 ? body.packages : [...previous, ...body.packages],
-      );
-      setTotal(body.total);
-      offsetRef.current = offset + body.packages.length;
-      setStatus("ready");
-      setErrorMessage("");
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") return;
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load packages");
-      setStatus("error");
-    } finally {
-      setLoadingMore(false);
-    }
-  }, []);
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (trimmed === debouncedQuery) return;
+    const timer = setTimeout(() => setDebouncedQuery(trimmed), DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [query, debouncedQuery]);
+
+  const fetchAt = useCallback(
+    async (offset: number, replace: boolean) => {
+      const controller = new AbortController();
+      abortRef.current?.abort();
+      abortRef.current = controller;
+      if (replace) setStatus("loading");
+      else setLoadingMore(true);
+      try {
+        const body = await fetchPage({ offset, query: debouncedQuery, sort }, controller.signal);
+        setPackages((previous) =>
+          replace || previous.length === 0 ? body.packages : [...previous, ...body.packages],
+        );
+        setTotal(body.total);
+        offsetRef.current = offset + body.packages.length;
+        setStatus("ready");
+        setErrorMessage("");
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setErrorMessage(error instanceof Error ? error.message : "Unable to load packages");
+        setStatus("error");
+      } finally {
+        setLoadingMore(false);
+      }
+    },
+    [debouncedQuery, sort],
+  );
 
   useEffect(() => {
     void Promise.resolve().then(() => fetchAt(0, true));
     return () => abortRef.current?.abort();
   }, [fetchAt]);
+
+  const handleSort = useCallback((value: Sort | null) => {
+    const next = value === "stars" ? "stars" : "relevance";
+    if (next === sort) return;
+    setStatus("loading");
+    setSort(next);
+  }, [sort]);
 
   const retry = useCallback(() => {
     const replace = offsetRef.current === 0;
@@ -106,10 +145,11 @@ export function MarketplaceBrowser() {
   const hasPackages = packages.length > 0;
   const showLoadMore = hasPackages && packages.length < total;
 
-  if (status === "loading" && !hasPackages) return <SkeletonGrid />;
-
-  if (status === "error" && !hasPackages) {
-    return (
+  let content;
+  if (status === "loading") {
+    content = <SkeletonGrid />;
+  } else if (status === "error" && !hasPackages) {
+    content = (
       <Empty>
         <EmptyContent>
           <EmptyHeader>
@@ -124,10 +164,8 @@ export function MarketplaceBrowser() {
         </Button>
       </Empty>
     );
-  }
-
-  if (!hasPackages) {
-    return (
+  } else if (!hasPackages) {
+    content = (
       <Empty>
         <EmptyContent>
           <EmptyHeader>
@@ -137,33 +175,64 @@ export function MarketplaceBrowser() {
         </EmptyContent>
       </Empty>
     );
+  } else {
+    content = (
+      <div>
+        {status === "error" && (
+          <div
+            role="alert"
+            className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+          >
+            <span>{errorMessage || "Unable to load more packages."}</span>
+            <Button variant="outline" size="xs" onClick={retry}>
+              Retry
+            </Button>
+          </div>
+        )}
+        <div className="grid items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {packages.map((pkg) => (
+            <PackageCard key={pkg.package_id} pkg={pkg} />
+          ))}
+        </div>
+        {showLoadMore && (
+          <div className="mt-6 flex justify-center">
+            <Button variant="secondary" onClick={loadMore} disabled={loadingMore}>
+              {loadingMore ? "Loading…" : "Load more"}
+            </Button>
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (
     <div>
-      {status === "error" && (
-        <div
-          role="alert"
-          className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700"
-        >
-          <span>{errorMessage || "Unable to load more packages."}</span>
-          <Button variant="outline" size="xs" onClick={retry}>
-            Retry
-          </Button>
+      <div className="mb-6 flex flex-wrap items-end gap-3">
+        <div className="min-w-60 flex-1">
+          <label htmlFor="marketplace-packages-search" className="sr-only">
+            Search packages
+          </label>
+          <Input
+            id="marketplace-packages-search"
+            type="search"
+            placeholder="Search packages…"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
         </div>
-      )}
-      <div className="grid items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {packages.map((pkg) => (
-          <PackageCard key={pkg.package_id} pkg={pkg} />
-        ))}
+        <div>
+          <Select value={sort} onValueChange={handleSort}>
+            <SelectTrigger aria-label="Sort packages" className="w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="end">
+              <SelectItem value="relevance">Relevance</SelectItem>
+              <SelectItem value="stars">Most stars</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
-      {showLoadMore && (
-        <div className="mt-6 flex justify-center">
-          <Button variant="secondary" onClick={loadMore} disabled={loadingMore}>
-            {loadingMore ? "Loading…" : "Load more"}
-          </Button>
-        </div>
-      )}
+      {content}
     </div>
   );
 }
