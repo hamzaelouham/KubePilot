@@ -25,6 +25,7 @@ Secondary users may include engineering managers and technical operators who nee
 - Basic resource actions such as scale and restart
 - Event-driven or refreshable data updates for operational clarity
 - AI-assisted investigation as a later expansion, not the initial delivery
+- KubePilot Marketplace (post-MVP) for discovering, installing, and tracking Kubernetes Helm packages from Artifact Hub
 
 ## 4. Data - What are we storing?
 
@@ -38,6 +39,7 @@ Secondary users may include engineering managers and technical operators who nee
 - User-defined settings such as default namespace and view preferences
 - Audit records for admin actions and resource operations
 - Application-level session and RBAC metadata for local access control
+- Marketplace installation jobs (package and chart metadata, target cluster, namespace, release name, status, error message, timestamps) and resolved Artifact Hub package metadata
 
 ## 5. Tech - What stack are we using?
 
@@ -48,6 +50,7 @@ Secondary users may include engineering managers and technical operators who nee
 - Authentication: local admin account with a shared, signed, HTTP-only session cookie validated by Next.js and FastAPI against PostgreSQL
 - Architecture: a modern UI backed by structured API endpoints, with Kubernetes as the operational system of record and credentials kept exclusively in FastAPI
 - Future direction: AI Copilot integration for investigation and guided action support
+- Marketplace integration: Artifact Hub package search API (read-only, public search, no API key for basic search) and Helm execution inside the FastAPI backend (repo add/update/install) with a simple background job mechanism for V1; do not introduce Celery/RQ unless the existing architecture already needs it
 
 Confirmed architecture: the browser reaches the Next.js UI, the UI reaches FastAPI over HTTPS or WebSocket, and FastAPI is the only application component that reaches the Kubernetes API. AI features will use the same backend API and never connect directly to Kubernetes.
 
