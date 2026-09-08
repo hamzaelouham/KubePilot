@@ -37,3 +37,12 @@ class MarketplaceSearchResponse(BaseModel):
 
     packages: list[MarketplacePackageSummary]
     total: int
+
+
+class MarketplaceVersionsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    package_id: str
+    name: str
+    repository_name: str
+    versions: list[str]

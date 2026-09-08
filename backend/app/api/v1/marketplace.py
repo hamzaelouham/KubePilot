@@ -1,3 +1,4 @@
+import re
 from typing import Annotated, Any
 from urllib.parse import urlencode
 
@@ -10,14 +11,19 @@ from .marketplace_schemas import (
     MarketplacePackageRepository,
     MarketplacePackageSummary,
     MarketplaceSearchResponse,
+    MarketplaceVersionsResponse,
 )
 
 router = APIRouter()
 
 ARTIFACT_HUB_SEARCH_URL = "https://artifacthub.io/api/v1/packages/search"
+ARTIFACT_HUB_PACKAGE_URL = "https://artifacthub.io/api/v1/packages/{kind}/{repository}/{package}"
+ARTIFACT_HUB_HELM_KIND = "helm"
 REQUEST_TIMEOUT_SECONDS = 15.0
 DEFAULT_LIMIT = 24
 MAX_LIMIT = 60
+MAX_PACKAGE_SEGMENT_LENGTH = 63
+PACKAGE_SEGMENT_PATTERN = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
 
 
 def _repository_summary(repository: Any) -> MarketplacePackageRepository | None:
@@ -143,3 +149,83 @@ async def list_marketplace_packages(
 
     packages = [_package_summary(item) for item in raw_packages if isinstance(item, dict)]
     return MarketplaceSearchResponse(packages=packages, total=total)
+
+
+def _read_package_segment(value: str, label: str) -> str:
+    if (
+        not value
+        or len(value) > MAX_PACKAGE_SEGMENT_LENGTH
+        or not PACKAGE_SEGMENT_PATTERN.fullmatch(value)
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "invalid_package_reference",
+                "message": f"{label} must be a DNS-1123 label (lowercase letters, digits, dashes)",
+            },
+        )
+    return value
+
+
+def _available_version_strings(raw_versions: list[Any]) -> list[str]:
+    entries: list[tuple[str, int]] = []
+    for entry in raw_versions:
+        if not isinstance(entry, dict):
+            continue
+        version = entry.get("version")
+        if not isinstance(version, str) or not version:
+            continue
+        ts = entry.get("ts")
+        entries.append((version, int(ts) if isinstance(ts, (int, float)) else 0))
+    entries.sort(key=lambda item: (item[1], item[0]), reverse=True)
+    return [version for version, _ in entries]
+
+
+@router.get(
+    "/marketplace/packages/{repository_name}/{package_name}/versions",
+    response_model=MarketplaceVersionsResponse,
+)
+async def get_package_versions(
+    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
+    repository_name: str,
+    package_name: str,
+) -> MarketplaceVersionsResponse:
+    repo_segment = _read_package_segment(repository_name, "repository")
+    package_segment = _read_package_segment(package_name, "package")
+    detail_url = ARTIFACT_HUB_PACKAGE_URL.format(
+        kind=ARTIFACT_HUB_HELM_KIND,
+        repository=repo_segment,
+        package=package_segment,
+    )
+
+    try:
+        upstream = await _fetch_artifact_hub_search(detail_url)
+    except httpx.HTTPError:
+        raise _upstream_error("Artifact Hub is unavailable")
+
+    if upstream.status_code == 404:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "marketplace_not_found", "message": "Package not found"},
+        )
+    if upstream.status_code != 200:
+        raise _upstream_error(f"Artifact Hub returned status {upstream.status_code}")
+
+    try:
+        payload = upstream.json()
+    except ValueError:
+        raise _upstream_error("Artifact Hub returned invalid package data")
+
+    if not isinstance(payload, dict):
+        raise _upstream_error("Artifact Hub returned unexpected package data")
+
+    raw_versions = payload.get("available_versions")
+    if not isinstance(raw_versions, list):
+        raise _upstream_error("Artifact Hub returned unexpected package data")
+
+    return MarketplaceVersionsResponse(
+        package_id=str(payload.get("package_id") or ""),
+        name=str(payload.get("name") or ""),
+        repository_name=repo_segment,
+        versions=_available_version_strings(raw_versions),
+    )

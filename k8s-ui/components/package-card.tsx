@@ -44,9 +44,11 @@ export function publisherOf(pkg: MarketplacePackage) {
 export function PackageCard({
   pkg,
   onSelect,
+  onInstall,
 }: {
   pkg: MarketplacePackage;
   onSelect: () => void;
+  onInstall?: () => void;
 }) {
   const [logoFailed, setLogoFailed] = useState(false);
   const logo = logoFailed ? null : packageLogo(pkg);
@@ -84,7 +86,7 @@ export function PackageCard({
           <p className="text-xs text-muted-foreground">Latest version</p>
           <p className="truncate text-sm font-medium text-foreground">{pkg.version ?? "—"}</p>
         </div>
-        <Button size="sm" variant="default" className="relative z-10">
+        <Button size="sm" variant="default" className="relative z-10" onClick={onInstall}>
           Install
         </Button>
       </div>

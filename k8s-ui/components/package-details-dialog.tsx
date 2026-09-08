@@ -50,7 +50,13 @@ function HelmInstallBlock({ pkg }: { pkg: MarketplacePackage }) {
   );
 }
 
-function PackageDetailsBody({ pkg }: { pkg: MarketplacePackage }) {
+function PackageDetailsBody({
+  pkg,
+  onInstall,
+}: {
+  pkg: MarketplacePackage;
+  onInstall?: () => void;
+}) {
   const showBadges = pkg.official || pkg.signed || pkg.deprecated;
 
   return (
@@ -105,7 +111,7 @@ function PackageDetailsBody({ pkg }: { pkg: MarketplacePackage }) {
         <HelmInstallBlock pkg={pkg} />
       </div>
       <DialogFooter>
-        <Button type="button">Install</Button>
+        <Button type="button" onClick={onInstall}>Install</Button>
       </DialogFooter>
     </>
   );
@@ -114,15 +120,17 @@ function PackageDetailsBody({ pkg }: { pkg: MarketplacePackage }) {
 export function PackageDetailsDialog({
   pkg,
   onOpenChange,
+  onInstall,
 }: {
   pkg: MarketplacePackage | null;
   onOpenChange: (open: boolean) => void;
+  onInstall?: () => void;
 }) {
   return (
     <Dialog open={pkg !== null} onOpenChange={onOpenChange}>
       {pkg && (
         <DialogContent className="sm:max-w-lg">
-          <PackageDetailsBody key={pkg.package_id} pkg={pkg} />
+          <PackageDetailsBody key={pkg.package_id} pkg={pkg} onInstall={onInstall} />
         </DialogContent>
       )}
     </Dialog>

@@ -207,3 +207,93 @@ def test_upstream_unexpected_shape_maps_to_502(api: SimpleNamespace, upstream: S
         response = client.get("/api/v1/marketplace/packages", headers=cookie_header(admin_cookie(api)))
     assert response.status_code == 502
     assert response.json()["code"] == "marketplace_upstream_error"
+
+
+UPSTREAM_PACKAGE_DETAIL = {
+    "package_id": "340e1923-7f9c-4c5d-9a1e-8c0a1b2c3d4e",
+    "name": "redis",
+    "normalized_name": "redis",
+    "available_versions": [
+        {"version": "1.0.0", "ts": 100},
+        {"version": "2.0.0", "ts": 200},
+        {"version": "1.5.0", "ts": 200},
+        {"version": ""},
+        {"bad": True},
+    ],
+}
+
+
+def test_versions_requires_authentication(api: SimpleNamespace) -> None:
+    with api.client as client:
+        response = client.get("/api/v1/marketplace/packages/bitnami/redis/versions")
+    assert response.status_code == 401
+    assert response.json()["code"] == "authentication_required"
+
+
+@pytest.mark.parametrize("package_ref", ["Redis", "redis_alpha", "UPPER", "redis%21", "r" * 64])
+def test_versions_invalid_package_reference_rejected(
+    api: SimpleNamespace, package_ref: str
+) -> None:
+    with api.client as client:
+        response = client.get(
+            f"/api/v1/marketplace/packages/{package_ref}/redis/versions",
+            headers=cookie_header(admin_cookie(api)),
+        )
+    assert response.status_code == 400, package_ref
+    assert response.json()["code"] == "invalid_package_reference"
+
+
+def test_versions_happy_path(api: SimpleNamespace, upstream: SimpleNamespace) -> None:
+    upstream.install(FakeUpstream(payload=UPSTREAM_PACKAGE_DETAIL))
+    with api.client as client:
+        response = client.get(
+            "/api/v1/marketplace/packages/bitnami/redis/versions",
+            headers=cookie_header(admin_cookie(api)),
+        )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["package_id"] == "340e1923-7f9c-4c5d-9a1e-8c0a1b2c3d4e"
+    assert body["name"] == "redis"
+    assert body["repository_name"] == "bitnami"
+    assert body["versions"] == ["2.0.0", "1.5.0", "1.0.0"]
+    assert upstream.urls[0] == "https://artifacthub.io/api/v1/packages/helm/bitnami/redis"
+    assert set(body.keys()) == {"package_id", "name", "repository_name", "versions"}
+
+
+def test_versions_upstream_404_maps_to_not_found(
+    api: SimpleNamespace, upstream: SimpleNamespace
+) -> None:
+    upstream.install(FakeUpstream(status_code=404, payload={}))
+    with api.client as client:
+        response = client.get(
+            "/api/v1/marketplace/packages/bitnami/redis/versions",
+            headers=cookie_header(admin_cookie(api)),
+        )
+    assert response.status_code == 404
+    assert response.json()["code"] == "marketplace_not_found"
+
+
+def test_versions_upstream_error_maps_to_502(
+    api: SimpleNamespace, upstream: SimpleNamespace
+) -> None:
+    upstream.install(FakeUpstream(status_code=429))
+    with api.client as client:
+        response = client.get(
+            "/api/v1/marketplace/packages/bitnami/redis/versions",
+            headers=cookie_header(admin_cookie(api)),
+        )
+    assert response.status_code == 502
+    assert response.json()["code"] == "marketplace_upstream_error"
+
+
+def test_versions_unexpected_payload_maps_to_502(
+    api: SimpleNamespace, upstream: SimpleNamespace
+) -> None:
+    upstream.install(FakeUpstream(payload={"unexpected": True}))
+    with api.client as client:
+        response = client.get(
+            "/api/v1/marketplace/packages/bitnami/redis/versions",
+            headers=cookie_header(admin_cookie(api)),
+        )
+    assert response.status_code == 502
+    assert response.json()["code"] == "marketplace_upstream_error"
