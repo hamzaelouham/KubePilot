@@ -711,6 +711,7 @@ def test_installation_status_succeeded(api: SimpleNamespace) -> None:
         "cluster",
         "namespace",
         "release_name",
+        "action",
         "status",
         "error_message",
         "created_at",
@@ -818,6 +819,7 @@ def test_installation_history_orders_most_recent_first(api: SimpleNamespace) -> 
         "cluster",
         "namespace",
         "release_name",
+        "action",
         "status",
         "error_message",
         "created_at",
@@ -859,3 +861,173 @@ def test_installation_history_limit_bounds(api: SimpleNamespace) -> None:
         too_large = _list_installations(client, cookie, "?limit=201")
     assert too_small.status_code == 422
     assert too_large.status_code == 422
+
+
+def _post_release_action(
+    client: TestClient, endpoint: str, job_id: UUID, cookie: str | None = None
+) -> httpx.Response:
+    headers = cookie_header(cookie) if cookie else {}
+    return client.post(f"/api/v1/marketplace/installations/{job_id}/{endpoint}", headers=headers)
+
+
+def _job_row(api: SimpleNamespace, job_id: UUID):
+    database = create_session_factory(api.settings)()
+    try:
+        return database.get(InstallationJob, job_id)
+    finally:
+        database.close()
+
+
+def test_release_actions_require_authentication(api: SimpleNamespace) -> None:
+    job_id = _seed_installation(api)
+    with api.client as client:
+        rollback = _post_release_action(client, "rollback", job_id)
+        uninstall = _post_release_action(client, "uninstall", job_id)
+    assert rollback.status_code == 401
+    assert uninstall.status_code == 401
+
+
+def test_release_actions_viewer_denied(api: SimpleNamespace) -> None:
+    cookie = _seed_user(api, "viewer@example.com", role="viewer")
+    job_id = _seed_installation(api)
+    with api.client as client:
+        rollback = _post_release_action(client, "rollback", job_id, cookie)
+        uninstall = _post_release_action(client, "uninstall", job_id, cookie)
+    assert rollback.status_code == 403
+    assert rollback.json()["code"] == "insufficient_permissions"
+    assert uninstall.status_code == 403
+    assert uninstall.json()["code"] == "insufficient_permissions"
+
+    database = create_session_factory(api.settings)()
+    try:
+        count = database.scalar(select(func.count()).select_from(InstallationJob))
+    finally:
+        database.close()
+    assert count == 1
+
+
+def test_release_actions_restricted_operator_denied(api: SimpleNamespace) -> None:
+    cookie = _seed_user(api, "ops-restricted@example.com", role="operator", restricted=True)
+    job_id = _seed_installation(api)
+    with api.client as client:
+        response = _post_release_action(client, "rollback", job_id, cookie)
+    assert response.status_code == 403
+    assert response.json()["code"] == "password_change_required"
+
+
+def test_rollback_unknown_job_rejected(api: SimpleNamespace) -> None:
+    cookie = admin_cookie(api)
+    job_id = UUID("00000000-0000-0000-0000-000000000000")
+    with api.client as client:
+        response = _post_release_action(client, "rollback", job_id, cookie)
+    assert response.status_code == 404
+    assert response.json()["code"] == "installation_not_found"
+
+
+def test_rollback_non_install_source_rejected(api: SimpleNamespace) -> None:
+    cookie = admin_cookie(api)
+    source_id = _seed_installation(api, status="succeeded")
+    with api.client as client:
+        first = _post_release_action(client, "rollback", source_id, cookie)
+    assert first.status_code == 201
+    rollback_id = UUID(first.json()["job_id"])
+    with api.client as client:
+        response = _post_release_action(client, "rollback", rollback_id, cookie)
+    assert response.status_code == 422
+    assert response.json()["code"] == "invalid_source_job"
+
+
+def test_rollback_uncompleted_install_rejected(api: SimpleNamespace) -> None:
+    cookie = admin_cookie(api)
+    job_id = _seed_installation(api, status="failed")
+    with api.client as client:
+        response = _post_release_action(client, "rollback", job_id, cookie)
+    assert response.status_code == 422
+    assert response.json()["code"] == "install_not_completed"
+
+
+def test_release_action_conflict_rejected(api: SimpleNamespace) -> None:
+    cookie = admin_cookie(api)
+    job_id = _seed_installation(api, status="succeeded")
+    _seed_installation(api, status="queued")
+    with api.client as client:
+        response = _post_release_action(client, "uninstall", job_id, cookie)
+    assert response.status_code == 409
+    assert response.json()["code"] == "release_action_conflict"
+
+
+def test_release_action_inactive_cluster_rejected(api: SimpleNamespace) -> None:
+    cookie = admin_cookie(api)
+    job_id = _seed_installation(api)
+    database = create_session_factory(api.settings)()
+    try:
+        source = database.get(InstallationJob, job_id)
+        source.cluster.status = "inactive"
+        database.commit()
+    finally:
+        database.close()
+    with api.client as client:
+        response = _post_release_action(client, "rollback", job_id, cookie)
+    assert response.status_code == 404
+    assert response.json()["code"] == "cluster_not_found"
+
+
+def test_rollback_queued_success(api: SimpleNamespace) -> None:
+    cookie = admin_cookie(api)
+    source_id = _seed_installation(api)
+    with api.client as client:
+        response = _post_release_action(client, "rollback", source_id, cookie)
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["status"] == "queued"
+    action_id = UUID(body["job_id"])
+    assert action_id != source_id
+
+    job = _job_row(api, action_id)
+    assert job.action == "rollback"
+    assert job.cluster_id is not None
+    assert job.namespace == "default"
+    assert job.release_name == "my-release"
+    assert job.package_name == "redis"
+    assert job.chart_name == "redis"
+    assert job.chart_repository == "bitnami"
+    assert job.chart_repository_url is None
+
+    database = create_session_factory(api.settings)()
+    try:
+        audit = database.scalar(select(AuditAction).where(AuditAction.resource_id == str(action_id)))
+        assert audit is not None
+        assert audit.action == "marketplace.rollback_queued"
+        assert audit.actor_id is not None
+        assert audit.result == "success"
+    finally:
+        database.close()
+
+    with api.client as client:
+        status = _get_installation_status(client, action_id, cookie)
+    assert status.status_code == 200
+    assert status.json()["action"] == "rollback"
+    assert status.json()["status"] == "queued"
+
+
+def test_uninstall_queued_success_operator(api: SimpleNamespace) -> None:
+    cookie = _seed_user(api, "ops-operator@example.com", role="operator")
+    source_id = _seed_installation(api)
+    with api.client as client:
+        response = _post_release_action(client, "uninstall", source_id, cookie)
+    assert response.status_code == 201, response.text
+    action_id = UUID(response.json()["job_id"])
+
+    job = _job_row(api, action_id)
+    assert job.action == "uninstall"
+    assert job.release_name == "my-release"
+    assert job.chart_repository_url is None
+
+    database = create_session_factory(api.settings)()
+    try:
+        audit = database.scalar(select(AuditAction).where(AuditAction.resource_id == str(action_id)))
+        assert audit is not None
+        assert audit.action == "marketplace.uninstall_queued"
+        assert audit.result == "success"
+    finally:
+        database.close()

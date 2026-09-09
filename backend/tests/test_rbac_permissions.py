@@ -63,6 +63,7 @@ def _client(role: str, restricted: bool = False) -> TestClient:
                 Permission.RESOURCES_UPDATE,
                 Permission.RESOURCES_DELETE,
                 Permission.MARKETPLACE_INSTALL,
+                Permission.MARKETPLACE_RELEASE,
             },
             {
                 Permission.CLUSTERS_DELETE,

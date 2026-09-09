@@ -437,12 +437,146 @@ async def get_installation_status(
         cluster=job.cluster.name,
         namespace=job.namespace,
         release_name=job.release_name,
+        action=job.action,
         status=job.status,
         error_message=job.error_message,
         created_at=job.created_at,
         started_at=job.started_at,
         completed_at=job.completed_at,
     )
+
+
+_RELEASE_ACTION_QUEUED_EVENT = {
+    "rollback": AuditEvent.MARKETPLACE_ROLLBACK_QUEUED,
+    "uninstall": AuditEvent.MARKETPLACE_UNINSTALL_QUEUED,
+}
+
+
+def _resolve_managed_install(database: SQLAlchemySession, job_id: UUID) -> InstallationJob:
+    job = database.get(InstallationJob, job_id)
+    if job is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "installation_not_found",
+                "message": "Installation job was not found",
+            },
+        )
+    if job.action != "install":
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "invalid_source_job",
+                "message": "Only an install job can be rolled back or uninstalled",
+            },
+        )
+    if job.status != "succeeded":
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "install_not_completed",
+                "message": "Only a completed install can be rolled back or uninstalled",
+            },
+        )
+    if job.cluster.status == "inactive":
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "cluster_not_found", "message": "Cluster was not found"},
+        )
+    return job
+
+
+def _ensure_no_pending_release_action(
+    database: SQLAlchemySession, job: InstallationJob
+) -> None:
+    existing = database.scalar(
+        select(InstallationJob).where(
+            InstallationJob.cluster_id == job.cluster_id,
+            InstallationJob.namespace == job.namespace,
+            InstallationJob.release_name == job.release_name,
+            InstallationJob.status.in_(("queued", "running")),
+        )
+    )
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "release_action_conflict",
+                "message": "A release action is already in progress for this release",
+            },
+        )
+
+
+def _queue_release_action(
+    database: SQLAlchemySession,
+    source: InstallationJob,
+    action: str,
+    actor_id: UUID,
+) -> InstallationJob:
+    job = InstallationJob(
+        package_id=source.package_id,
+        package_name=source.package_name,
+        chart_name=source.chart_name,
+        chart_repository=source.chart_repository,
+        chart_repository_url=None,
+        chart_version=source.chart_version,
+        cluster_id=source.cluster_id,
+        namespace=source.namespace,
+        release_name=source.release_name,
+        action=action,
+        status="queued",
+    )
+    database.add(job)
+    database.commit()
+    database.refresh(job)
+    record_audit(
+        database,
+        _RELEASE_ACTION_QUEUED_EVENT[action],
+        actor_id=actor_id,
+        resource_type="installation_job",
+        resource_id=str(job.id),
+        result="success",
+    )
+    database.commit()
+    return job
+
+
+def _queue_release_action_for_source(
+    job_id: UUID,
+    action: str,
+    actor: AuthenticatedActor,
+    database: SQLAlchemySession,
+) -> MarketplaceInstallResponse:
+    source = _resolve_managed_install(database, job_id)
+    _ensure_no_pending_release_action(database, source)
+    job = _queue_release_action(database, source, action, actor.user_id)
+    return MarketplaceInstallResponse(job_id=job.id, status="queued")
+
+
+@router.post(
+    "/marketplace/installations/{job_id}/rollback",
+    response_model=MarketplaceInstallResponse,
+    status_code=201,
+)
+async def create_rollback(
+    job_id: UUID,
+    actor: Annotated[AuthenticatedActor, Depends(require_permission(Permission.MARKETPLACE_RELEASE))],
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+) -> MarketplaceInstallResponse:
+    return _queue_release_action_for_source(job_id, "rollback", actor, database)
+
+
+@router.post(
+    "/marketplace/installations/{job_id}/uninstall",
+    response_model=MarketplaceInstallResponse,
+    status_code=201,
+)
+async def create_uninstall(
+    job_id: UUID,
+    actor: Annotated[AuthenticatedActor, Depends(require_permission(Permission.MARKETPLACE_RELEASE))],
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+) -> MarketplaceInstallResponse:
+    return _queue_release_action_for_source(job_id, "uninstall", actor, database)
 
 
 _INSTALLATION_STATUSES = ("queued", "running", "succeeded", "failed", "cancelled")
@@ -484,6 +618,7 @@ async def list_installations(
                 cluster=job.cluster.name,
                 namespace=job.namespace,
                 release_name=job.release_name,
+                action=job.action,
                 status=job.status,
                 error_message=job.error_message,
                 created_at=job.created_at,

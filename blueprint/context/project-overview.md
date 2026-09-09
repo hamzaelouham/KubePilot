@@ -1,6 +1,6 @@
 # KubePilot - Project Overview
 
-<!-- blueprint:source-hash 440847fc64891ae6c8c23192f618c8708f1a19344471b475f43771ddfbe774f8 -->
+<!-- blueprint:source-hash e1c402f748ad0477da4c45ef48d7d91c955bdf2fb16402b334b7524ee42a022d -->
 
 > A self-hosted, Kubernetes-native operations platform: a modern control plane for cluster health, workload visibility, and platform operations, with FastAPI as the only component that talks to the Kubernetes API.
 
@@ -40,7 +40,7 @@ MVP (build-plan order, shipped):
 Post-MVP, roadmap:
 
 18. **KubePilot Marketplace** *(next)* - discover and install Kubernetes Helm packages from Artifact Hub.
-    - 18a navigation & page → 18b package discovery → 18c search & filtering → 18d package details → 18e installation configuration dialog → 18f installation API → 18g job model + background worker → 18h status API → 18i progress UI → 18j installation history → 18k security & validation → 18l UI polish & responsive.
+    - 18a navigation & page → 18b package discovery → 18c search & filtering → 18d package details → 18e installation configuration dialog → 18f installation API → 18g job model + background worker → 18h status API → 18i progress UI → 18j installation history → 18k security & validation → 18l UI polish & responsive → 18m rollback/uninstall release management (backend) → 18n release action UI.
 
 ## Data model
 
@@ -58,7 +58,7 @@ All tables carry `id` (uuid pk) and `created_at`; cluster-scoped entities refere
 - **Event**: cluster_id + namespace (nullable), kind, name, message.
 - **AuditAction** (`audit_actions`): actor_id (FK, nullable), action, resource_type, resource_id, target_user_id (FK, nullable), result, context (nullable). Captures admin user-management actions; no UI surface yet.
 - **UserPreference**: user_id (unique FK), default_namespace, view_settings (JSON).
-- **InstallationJob** (`installation_jobs`, feature 18g): package_id, package_name, chart_name, chart_repository, chart_version, cluster_id (FK → ClusterConnection), namespace, release_name, status (queued/running/succeeded/failed/cancelled), error_message (nullable), started_at, completed_at.
+- **InstallationJob** (`installation_jobs`, feature 18g): package_id, package_name, chart_name, chart_repository, chart_version, cluster_id (FK → ClusterConnection), namespace, release_name, status (queued/running/succeeded/failed/cancelled), error_message (nullable), started_at, completed_at. Feature 18m extends it with `action` (`install` | `rollback` | `uninstall`) and nullable `revision` (backward-compatible migration) so rollback/uninstall run as the same job-driven Helm pipeline.
 
 > Lock the UserAccount/Session/RBAC shapes - Multi-cluster (13) and the audit-log surface build on them. InstallationJob is cluster-scoped via `cluster_connections.id` and surfaced by the Marketplace progress (18i) and history (18j) UIs.
 
@@ -69,7 +69,7 @@ All tables carry `id` (uuid pk) and `created_at`; cluster-scoped entities refere
 - **PostgreSQL** - users, sessions, audit records, settings, cluster metadata, and InstallationJob records.
 - **Kubernetes Python client** - cluster API access through FastAPI only; frontend never connects to Kubernetes directly.
 - **Artifact Hub search API** - read-only Helm package discovery (18b/18c); no API key for basic public search.
-- **Helm (backend)** - chart repo add/update/install run inside FastAPI for installs (18g).
+- **Helm (backend)** - chart repo add/update/install (18g), plus release rollback/uninstall (18m), all executed list-argv via subprocess inside FastAPI.
 - **Shared signed HTTP-only session cookie** - auth boundary between Next.js and FastAPI, validated against PostgreSQL.
 - **Alembic** - schema migrations (backward-compatible chain: `dd752e8644a9` → `570583371bec` → `a1b2c3d4e5f6`).
 
@@ -85,7 +85,7 @@ Desktop-first operations dashboard. Consistent light slate palette (`bg-slate-10
 - `/login` - simple centered sign-in form only.
 - `/dashboard?resource=<type>&namespace=<ns>` - shell with grouped sidebar + header (KubePilot brand, cluster selector, notifications, user menu); views for overview, workloads, pods, deployments, services, nodes, namespaces, cluster, cluster-roles, storage.
 - `/dashboard/detail?resourceType=&name=&namespace=` - resource detail: Status, YAML, Logs, Events tabs.
-- `/marketplace` - Marketplace (feature 18): discover and install Helm packages; package grid/cards, search, detail view, and install/progress/history surfaces reusing the shell, shadcn/ui, and existing cluster/namespace selectors.
+- `/marketplace` - Marketplace (feature 18): discover and install Helm packages; package grid/cards, search, detail view, install/progress/history surfaces, and (18n) Rollback/Uninstall actions on history rows, reusing the shell, shadcn/ui, and existing cluster/namespace selectors.
 - `/settings/clusters` - registered clusters + activate/deactivate (admin page).
 - `/settings/users` - admin user management (feature 12).
 - `/settings/password` - self-service / forced password change (simple centered form).
@@ -117,5 +117,6 @@ Self-hosted, Kubernetes-native:
 - **Project plan §3 lists "Basic resource actions such as scale and restart" as MVP, but the build plan has no such feature.** Add a build-plan item if those operations are wanted. (Plan §3 also still lists the MVP-era feature set rather than matching the shipped 1-17 checklist - reconciled in the overview from build-plan.md.)
 - **Project plan §7 describes a "dark, polished control-plane aesthetic"; the shipped UI and the approved feature 17 direction use the light slate palette.** Project plan §7 should be updated to match.
 - Audit logging is recorded per feature 12 but has no UI surface; ADMINISTRATION in feature 17's sidebar omits it until a dedicated audit-log feature exists.
+- Plan §4's data list was not restated to track the new build-plan items: 18m extends InstallationJob with `action`/`revision` MySQL-style, 18n adds no new data. Consider updating project-plan.md §4 if release-management jobs are part of the stored data.
 - Exact ServiceAccount and Kubernetes RBAC policy bindings for the first cluster are still not pinned in the plans.
-- Marketplace (18) open items to decide in their own specs: Artifact Hub package metadata contract (which fields count as "executable input" for 18k), install authorization policy (who may install per role), namespace/release-name validation rules, kube-system policy beyond "not allowed", Helm availability inside the backend image/container, and job restart behavior for a simple background worker.
+- Marketplace (18) items resolved in 18j/18k: install-permission gate is `marketplace:install` for operator + admin (viewer 403), kube-system installs blocked (422 `namespace_protected`), metadata handled as data not executable input (502 `invalid_package_source`, 422 `package_mismatch`), list-argv Helm construction. Remaining to decide in 18m: release-management semantics (previous-revision-only rollback, uninstall scope for releases the app installed), the new `marketplace:release` permission wiring, and job restart behavior for the background worker.

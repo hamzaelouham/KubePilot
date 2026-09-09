@@ -329,3 +329,166 @@ def test_lifespan_worker_on_boots_and_stops(
         assert database.scalar(select(InstallationJob)) is None
     finally:
         database.close()
+
+
+def _capture_helm_call(
+    monkeypatch: pytest.MonkeyPatch, calls: list[tuple]
+) -> None:
+    def fake_run(command: list[str], timeout: int) -> str:
+        calls.append((command, timeout))
+        return f"helm {command[1]} complete"
+    monkeypatch.setattr(worker, "_run_single_command", fake_run)
+
+
+def test_rollback_success_records_audit(
+    api: SimpleNamespace, seed: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple] = []
+    _capture_helm_call(monkeypatch, calls)
+    job_id = _add_job(api, seed.cluster, action="rollback")
+    database = create_session_factory(api.settings)()
+    try:
+        run_pending_installations(database, api.settings)
+    finally:
+        database.close()
+
+    assert len(calls) == 1
+    command, timeout = calls[0]
+    assert command[0] == "helm"
+    assert command[:6] == ["helm", "rollback", "my-release", "--namespace", "default", "--wait"]
+    assert command[6] == "--timeout"
+    assert command[7] == f"{api.settings.helm_install_timeout_seconds}s"
+    assert timeout == api.settings.helm_install_timeout_seconds
+    assert "--kubeconfig" in command
+    kubeconfig = command[command.index("--kubeconfig") + 1]
+    assert os.path.exists(kubeconfig) is False
+
+    database = create_session_factory(api.settings)()
+    try:
+        job = database.get(InstallationJob, job_id)
+        assert job.status == "succeeded"
+        assert job.completed_at is not None
+        audit = database.scalar(select(AuditAction).where(AuditAction.resource_id == str(job.id)))
+        assert audit is not None
+        assert audit.action == "marketplace.rollback_succeeded"
+        assert audit.actor_id is None
+        assert audit.result == "success"
+    finally:
+        database.close()
+
+
+def test_uninstall_success_records_audit(
+    api: SimpleNamespace, seed: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple] = []
+    _capture_helm_call(monkeypatch, calls)
+    job_id = _add_job(api, seed.cluster, action="uninstall")
+    database = create_session_factory(api.settings)()
+    try:
+        run_pending_installations(database, api.settings)
+    finally:
+        database.close()
+
+    assert len(calls) == 1
+    command, timeout = calls[0]
+    assert command[0] == "helm"
+    assert command[:4] == ["helm", "uninstall", "my-release", "--namespace"]
+    assert command[4] == "default"
+    assert "--wait" not in command
+    assert timeout == api.settings.helm_install_timeout_seconds
+    assert "--kubeconfig" in command
+    kubeconfig = command[command.index("--kubeconfig") + 1]
+    assert os.path.exists(kubeconfig) is False
+
+    database = create_session_factory(api.settings)()
+    try:
+        job = database.get(InstallationJob, job_id)
+        assert job.status == "succeeded"
+        audit = database.scalar(select(AuditAction).where(AuditAction.resource_id == str(job.id)))
+        assert audit.action == "marketplace.uninstall_succeeded"
+        assert audit.result == "success"
+    finally:
+        database.close()
+
+
+def test_rollback_failure_records_audit(
+    api: SimpleNamespace, seed: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fake_run(command: list[str], timeout: int) -> str:
+        raise HelmInstallError("release: not found")
+    monkeypatch.setattr(worker, "_run_single_command", fake_run)
+    job_id = _add_job(api, seed.cluster, action="rollback")
+    database = create_session_factory(api.settings)()
+    try:
+        run_pending_installations(database, api.settings)
+    finally:
+        database.close()
+
+    database = create_session_factory(api.settings)()
+    try:
+        job = database.get(InstallationJob, job_id)
+        assert job.status == "failed"
+        assert "release: not found" in job.error_message
+        audit = database.scalar(select(AuditAction).where(AuditAction.resource_id == str(job.id)))
+        assert audit.action == "marketplace.rollback_failed"
+        assert audit.result == "failure"
+    finally:
+        database.close()
+
+
+def test_rollback_invalid_namespace_fails_without_helm(
+    api: SimpleNamespace, seed: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    called = []
+
+    def boom(command: list[str], timeout: int) -> str:
+        called.append(command)
+        raise AssertionError("helm must not run")
+
+    monkeypatch.setattr(worker, "_run_single_command", boom)
+    job_id = _add_job(api, seed.cluster, action="rollback", namespace="Bad_Namespace")
+    database = create_session_factory(api.settings)()
+    try:
+        run_pending_installations(database, api.settings)
+    finally:
+        database.close()
+
+    assert called == []
+    database = create_session_factory(api.settings)()
+    try:
+        job = database.get(InstallationJob, job_id)
+        assert job.status == "failed"
+        assert "invalid job field 'namespace'" in job.error_message
+        audit = database.scalar(select(AuditAction).where(AuditAction.resource_id == str(job.id)))
+        assert audit.action == "marketplace.rollback_failed"
+    finally:
+        database.close()
+
+
+def test_unknown_action_fails_job(
+    api: SimpleNamespace, seed: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    called = []
+
+    def boom(command: list[str], timeout: int) -> str:
+        called.append(command)
+        raise AssertionError("helm must not run")
+
+    monkeypatch.setattr(worker, "_run_single_command", boom)
+    job_id = _add_job(api, seed.cluster, action="upgrade")
+    database = create_session_factory(api.settings)()
+    try:
+        run_pending_installations(database, api.settings)
+    finally:
+        database.close()
+
+    assert called == []
+    database = create_session_factory(api.settings)()
+    try:
+        job = database.get(InstallationJob, job_id)
+        assert job.status == "failed"
+        assert "unknown job action 'upgrade'" in job.error_message
+        audit = database.scalar(select(AuditAction).where(AuditAction.resource_id == str(job.id)))
+        assert audit.action == "marketplace.install_failed"
+    finally:
+        database.close()

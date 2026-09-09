@@ -213,6 +213,10 @@ class InstallationJob(Base):
     status: Mapped[str] = mapped_column(
         String(32), nullable=False, default="queued", server_default="queued"
     )
+    action: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="install", server_default="install"
+    )
+    revision: Mapped[int | None] = mapped_column(Integer())
     error_message: Mapped[str | None] = mapped_column(Text())
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

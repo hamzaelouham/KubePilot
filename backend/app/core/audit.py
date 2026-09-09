@@ -26,6 +26,12 @@ class AuditEvent:
     MARKETPLACE_INSTALL_QUEUED = "marketplace.install_queued"
     MARKETPLACE_INSTALL_SUCCEEDED = "marketplace.install_succeeded"
     MARKETPLACE_INSTALL_FAILED = "marketplace.install_failed"
+    MARKETPLACE_ROLLBACK_QUEUED = "marketplace.rollback_queued"
+    MARKETPLACE_ROLLBACK_SUCCEEDED = "marketplace.rollback_succeeded"
+    MARKETPLACE_ROLLBACK_FAILED = "marketplace.rollback_failed"
+    MARKETPLACE_UNINSTALL_QUEUED = "marketplace.uninstall_queued"
+    MARKETPLACE_UNINSTALL_SUCCEEDED = "marketplace.uninstall_succeeded"
+    MARKETPLACE_UNINSTALL_FAILED = "marketplace.uninstall_failed"
 
 
 def record_audit(

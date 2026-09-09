@@ -23,12 +23,32 @@ _DNS_1123_PATTERN = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
 _ALLOWED_REPOSITORY_SCHEMES = ("http", "https")
 
 
+_SUCCESS_EVENTS = {
+    "install": AuditEvent.MARKETPLACE_INSTALL_SUCCEEDED,
+    "rollback": AuditEvent.MARKETPLACE_ROLLBACK_SUCCEEDED,
+    "uninstall": AuditEvent.MARKETPLACE_UNINSTALL_SUCCEEDED,
+}
+
+_FAILED_EVENTS = {
+    "install": AuditEvent.MARKETPLACE_INSTALL_FAILED,
+    "rollback": AuditEvent.MARKETPLACE_ROLLBACK_FAILED,
+    "uninstall": AuditEvent.MARKETPLACE_UNINSTALL_FAILED,
+}
+
+
 def _invalid_job_field(job) -> str | None:
     for field in ("chart_name", "chart_repository", "namespace", "release_name"):
         if not _DNS_1123_PATTERN.fullmatch(getattr(job, field) or ""):
             return field
     if urlsplit(job.chart_repository_url or "").scheme not in _ALLOWED_REPOSITORY_SCHEMES:
         return "chart_repository_url"
+    return None
+
+
+def _invalid_release_target(job) -> str | None:
+    for field in ("namespace", "release_name"):
+        if not _DNS_1123_PATTERN.fullmatch(getattr(job, field) or ""):
+            return field
     return None
 
 
@@ -75,6 +95,20 @@ def claim_next_job(database) -> InstallationJob | None:
     return row
 
 
+def _run_single_command(command: list[str], timeout: int) -> str:
+    try:
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise HelmInstallError(f"helm command timed out after {timeout}s")
+    except OSError as error:
+        raise HelmInstallError(f"failed to run helm: {error}")
+    combined = _trim("\n".join(part for part in (completed.stdout, completed.stderr) if part))
+    if completed.returncode != 0:
+        message = combined or f"helm exited with code {completed.returncode}"
+        raise HelmInstallError(message)
+    return combined
+
+
 def _run_helm_install(settings: Settings, job, repository_url: str, kubeconfig_path: str | None) -> str:
     binary = settings.helm_binary
     timeout = settings.helm_install_timeout_seconds
@@ -99,27 +133,60 @@ def _run_helm_install(settings: Settings, job, repository_url: str, kubeconfig_p
     if kubeconfig_path:
         commands[2] = [*commands[2], "--kubeconfig", kubeconfig_path]
 
-    output_parts: list[str] = []
-    for command in commands:
-        try:
-            completed = subprocess.run(
-                command, capture_output=True, text=True, timeout=timeout
-            )
-        except subprocess.TimeoutExpired:
-            raise HelmInstallError(f"helm command timed out after {timeout}s")
-        except OSError as error:
-            raise HelmInstallError(f"failed to run helm: {error}")
-        combined = _trim(
-            "\n".join(part for part in (completed.stdout, completed.stderr) if part)
-        )
-        output_parts.append(combined)
-        if completed.returncode != 0:
-            message = combined or f"helm exited with code {completed.returncode}"
-            raise HelmInstallError(message)
+    output_parts = [_run_single_command(command, timeout) for command in commands]
     return "\n".join(part for part in output_parts if part)
 
 
-def _fail_job(database, job, message: str) -> None:
+def _run_helm_rollback(settings: Settings, job, kubeconfig_path: str | None) -> str:
+    timeout = settings.helm_install_timeout_seconds
+    command = [
+        settings.helm_binary,
+        "rollback",
+        job.release_name,
+        "--namespace",
+        job.namespace,
+        "--wait",
+        "--timeout",
+        f"{timeout}s",
+    ]
+    if kubeconfig_path:
+        command.extend(["--kubeconfig", kubeconfig_path])
+    return _run_single_command(command, timeout)
+
+
+def _run_helm_uninstall(settings: Settings, job, kubeconfig_path: str | None) -> str:
+    timeout = settings.helm_install_timeout_seconds
+    command = [
+        settings.helm_binary,
+        "uninstall",
+        job.release_name,
+        "--namespace",
+        job.namespace,
+    ]
+    if kubeconfig_path:
+        command.extend(["--kubeconfig", kubeconfig_path])
+    return _run_single_command(command, timeout)
+
+
+def _write_kubeconfig(cluster) -> str | None:
+    if not cluster.kubeconfig_content:
+        return None
+    handle = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
+    handle.write(cluster.kubeconfig_content)
+    handle.close()
+    os.chmod(handle.name, 0o600)
+    return handle.name
+
+
+def _unlink_kubeconfig(kubeconfig_path: str | None) -> None:
+    if kubeconfig_path:
+        try:
+            os.unlink(kubeconfig_path)
+        except OSError:
+            pass
+
+
+def _fail_job(database, job, message: str, event: str = AuditEvent.MARKETPLACE_INSTALL_FAILED) -> None:
     database.rollback()
     job.status = "failed"
     job.error_message = _trim(message)
@@ -127,7 +194,7 @@ def _fail_job(database, job, message: str) -> None:
     database.commit()
     record_audit(
         database,
-        AuditEvent.MARKETPLACE_INSTALL_FAILED,
+        event,
         None,
         "installation_job",
         str(job.id),
@@ -136,7 +203,7 @@ def _fail_job(database, job, message: str) -> None:
     database.commit()
 
 
-def _process_claimed_job(database, job, settings: Settings) -> None:
+def _process_install_job(database, job, settings: Settings) -> None:
     if not job.chart_repository_url:
         _fail_job(database, job, "chart repository URL is not set; the job cannot be processed")
         return
@@ -152,13 +219,7 @@ def _process_claimed_job(database, job, settings: Settings) -> None:
 
     kubeconfig_path: str | None = None
     try:
-        cluster = job.cluster
-        if cluster.kubeconfig_content:
-            handle = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
-            handle.write(cluster.kubeconfig_content)
-            handle.close()
-            os.chmod(handle.name, 0o600)
-            kubeconfig_path = handle.name
+        kubeconfig_path = _write_kubeconfig(job.cluster)
 
         _run_helm_install(settings, job, job.chart_repository_url, kubeconfig_path)
         job.status = "succeeded"
@@ -177,11 +238,55 @@ def _process_claimed_job(database, job, settings: Settings) -> None:
         logger.exception("Installation job %s failed: %s", job.id, type(error).__name__)
         _fail_job(database, job, str(error))
     finally:
-        if kubeconfig_path:
-            try:
-                os.unlink(kubeconfig_path)
-            except OSError:
-                pass
+        _unlink_kubeconfig(kubeconfig_path)
+
+
+def _process_release_job(database, job, settings: Settings) -> None:
+    invalid_field = _invalid_release_target(job)
+    if invalid_field is not None:
+        _fail_job(
+            database,
+            job,
+            f"refusing to run helm: invalid job field '{invalid_field}'",
+            _FAILED_EVENTS[job.action],
+        )
+        return
+
+    kubeconfig_path: str | None = None
+    try:
+        kubeconfig_path = _write_kubeconfig(job.cluster)
+
+        if job.action == "rollback":
+            _run_helm_rollback(settings, job, kubeconfig_path)
+        else:
+            _run_helm_uninstall(settings, job, kubeconfig_path)
+        job.status = "succeeded"
+        job.completed_at = datetime.now(timezone.utc)
+        database.commit()
+        record_audit(
+            database,
+            _SUCCESS_EVENTS[job.action],
+            None,
+            "installation_job",
+            str(job.id),
+            result="success",
+        )
+        database.commit()
+    except Exception as error:  # noqa: BLE001
+        logger.exception("Release job %s failed: %s", job.id, type(error).__name__)
+        _fail_job(database, job, str(error), _FAILED_EVENTS[job.action])
+    finally:
+        _unlink_kubeconfig(kubeconfig_path)
+
+
+def _process_claimed_job(database, job, settings: Settings) -> None:
+    if job.action == "install":
+        _process_install_job(database, job, settings)
+        return
+    if job.action in ("rollback", "uninstall"):
+        _process_release_job(database, job, settings)
+        return
+    _fail_job(database, job, f"unknown job action '{job.action}'")
 
 
 def run_pending_installations(database, settings: Settings) -> None:
