@@ -36,7 +36,7 @@ export function MarketplaceView({ user }: { user: BackendUser }) {
         </div>
         <MarketplaceBrowser />
         <section className="mt-10">
-          <MarketplaceHistory />
+          <MarketplaceHistory canManage={user.role === "admin" || user.role === "operator"} />
         </section>
       </div>
     </DashboardShell>

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -10,8 +11,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
+import {
+  ReleaseActionDialog,
+  type ReleaseActionKind,
+  type ReleaseActionTarget,
+} from "@/components/release-action-dialog";
 
 type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+
+type JobAction = "install" | "rollback" | "uninstall";
 
 type Installation = {
   job_id: string;
@@ -19,11 +27,17 @@ type Installation = {
   cluster: string;
   namespace: string;
   release_name: string;
+  action: JobAction;
   status: JobStatus;
   error_message: string | null;
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
+};
+
+type PendingAction = {
+  kind: ReleaseActionKind;
+  target: ReleaseActionTarget;
 };
 
 type InstallationResponse = { items: Installation[]; total: number };
@@ -55,6 +69,10 @@ function statusTone(status: JobStatus): string {
     case "cancelled":
       return "bg-amber-100 text-amber-700";
   }
+}
+
+function canActOn(job: Installation): boolean {
+  return job.action === "install" && job.status === "succeeded";
 }
 
 const tableColumns: DataTableColumn<Installation>[] = [
@@ -91,10 +109,59 @@ const tableColumns: DataTableColumn<Installation>[] = [
   },
 ];
 
-export function MarketplaceHistory() {
+export function MarketplaceHistory({ canManage }: { canManage: boolean }) {
   const [state, setState] = useState<HistoryState>({ status: "loading" });
   const [filter, setFilter] = useState<JobStatus | "all">("all");
+  const [pending, setPending] = useState<PendingAction | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  const openAction = useCallback(
+    (kind: ReleaseActionKind, job: Installation) => {
+      setPending({
+        kind,
+        target: {
+          job_id: job.job_id,
+          package_name: job.package_name,
+          cluster: job.cluster,
+          namespace: job.namespace,
+          release_name: job.release_name,
+        },
+      });
+    },
+    [],
+  );
+
+  const columns: DataTableColumn<Installation>[] = canManage
+    ? [
+        ...tableColumns,
+        {
+          id: "actions",
+          header: "Actions",
+          cell: ({ row }) => {
+            const job = row.original;
+            if (!canActOn(job)) return <span />;
+            return (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="xs"
+                  onClick={() => openAction("rollback", job)}
+                >
+                  Roll back
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="xs"
+                  onClick={() => openAction("uninstall", job)}
+                >
+                  Uninstall
+                </Button>
+              </div>
+            );
+          },
+        },
+      ]
+    : tableColumns;
 
   const load = useCallback(async () => {
     const controller = new AbortController();
@@ -185,13 +252,22 @@ export function MarketplaceHistory() {
           </div>
         ) : (
           <DataTable
-            columns={tableColumns}
+            columns={columns}
             data={visibleItems}
             placeholder="No installations yet."
             searchPlaceholder="Filter installations…"
           />
         )}
       </div>
+
+      {pending && (
+        <ReleaseActionDialog
+          kind={pending.kind}
+          target={pending.target}
+          onClose={() => setPending(null)}
+          onResolved={() => void load()}
+        />
+      )}
     </div>
   );
 }
