@@ -511,6 +511,7 @@ def _seed_installation(
     error_message: str | None = None,
     started_at: datetime | None = None,
     completed_at: datetime | None = None,
+    created_at: datetime | None = None,
 ) -> UUID:
     database = create_session_factory(api.settings)()
     try:
@@ -541,6 +542,7 @@ def _seed_installation(
             error_message=error_message,
             started_at=started_at,
             completed_at=completed_at,
+            **({"created_at": created_at} if created_at is not None else {}),
         )
         database.add(job)
         database.commit()
@@ -651,3 +653,90 @@ def test_installation_status_failed(api: SimpleNamespace) -> None:
     assert body["status"] == "failed"
     assert body["error_message"] == "helm install failed: release not found"
     assert datetime.fromisoformat(body["completed_at"]).replace(tzinfo=None) == completed.replace(tzinfo=None)
+
+
+def _list_installations(
+    client: TestClient, cookie: str | None = None, query: str = ""
+) -> httpx.Response:
+    headers = cookie_header(cookie) if cookie else {}
+    return client.get(f"/api/v1/marketplace/installations{query}", headers=headers)
+
+
+def test_installation_history_requires_authentication(api: SimpleNamespace) -> None:
+    with api.client as client:
+        response = _list_installations(client)
+    assert response.status_code == 401
+
+
+def test_installation_history_empty(api: SimpleNamespace) -> None:
+    cookie = admin_cookie(api)
+    with api.client as client:
+        response = _list_installations(client, cookie)
+    assert response.status_code == 200
+    assert response.json() == {"items": [], "total": 0}
+
+
+def test_installation_history_orders_most_recent_first(api: SimpleNamespace) -> None:
+    cookie = admin_cookie(api)
+    base = datetime.now(timezone.utc) - timedelta(days=1)
+    older = _seed_installation(api, status="succeeded", created_at=base)
+    newer = _seed_installation(
+        api,
+        status="failed",
+        created_at=base + timedelta(minutes=5),
+    )
+    with api.client as client:
+        response = _list_installations(client, cookie)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 2
+    job_ids = [item["job_id"] for item in body["items"]]
+    assert job_ids == [str(newer), str(older)]
+    first = body["items"][0]
+    assert set(first.keys()) == {
+        "job_id",
+        "package_name",
+        "cluster",
+        "namespace",
+        "release_name",
+        "status",
+        "error_message",
+        "created_at",
+        "started_at",
+        "completed_at",
+    }
+    assert first["package_name"] == "redis"
+    assert first["cluster"] == "primary"
+    assert first["namespace"] == "default"
+    assert first["release_name"] == "my-release"
+    assert first["status"] == "failed"
+    assert first["error_message"] is None
+
+
+def test_installation_history_status_filter(api: SimpleNamespace) -> None:
+    cookie = admin_cookie(api)
+    _seed_installation(api, status="succeeded")
+    _seed_installation(api, status="running")
+    with api.client as client:
+        response = _list_installations(client, cookie, "?status=succeeded")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert [item["status"] for item in body["items"]] == ["succeeded"]
+
+
+def test_installation_history_invalid_status_filter(api: SimpleNamespace) -> None:
+    cookie = admin_cookie(api)
+    with api.client as client:
+        response = _list_installations(client, cookie, "?status=invalid")
+    assert response.status_code == 422
+    assert response.json()["code"] == "invalid_status_filter"
+
+
+def test_installation_history_limit_bounds(api: SimpleNamespace) -> None:
+    cookie = admin_cookie(api)
+    with api.client as client:
+        too_small = _list_installations(client, cookie, "?limit=0")
+        too_large = _list_installations(client, cookie, "?limit=201")
+    assert too_small.status_code == 422
+    assert too_large.status_code == 422

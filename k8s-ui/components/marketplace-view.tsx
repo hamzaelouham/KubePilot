@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { MarketplaceBrowser } from "@/components/marketplace-browser";
+import { MarketplaceHistory } from "@/components/marketplace-history";
 import { useClusterSelection } from "@/lib/use-cluster-selection";
 import type { BackendUser } from "@/lib/auth";
 
@@ -34,6 +35,9 @@ export function MarketplaceView({ user }: { user: BackendUser }) {
           </p>
         </div>
         <MarketplaceBrowser />
+        <section className="mt-10">
+          <MarketplaceHistory />
+        </section>
       </div>
     </DashboardShell>
   );

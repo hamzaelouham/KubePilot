@@ -5,7 +5,7 @@ from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session as SQLAlchemySession
 
 from app.core.audit import AuditEvent, record_audit
@@ -20,6 +20,7 @@ from app.kubernetes.client import ClusterClient, create_cluster_client
 from app.models.entities import ClusterConnection, InstallationJob
 
 from .marketplace_schemas import (
+    MarketplaceInstallationListResponse,
     MarketplaceInstallRequest,
     MarketplaceInstallResponse,
     MarketplaceInstallationStatus,
@@ -400,4 +401,55 @@ async def get_installation_status(
         created_at=job.created_at,
         started_at=job.started_at,
         completed_at=job.completed_at,
+    )
+
+
+_INSTALLATION_STATUSES = ("queued", "running", "succeeded", "failed", "cancelled")
+
+
+@router.get("/marketplace/installations", response_model=MarketplaceInstallationListResponse)
+async def list_installations(
+    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+    status: Annotated[str | None, Query()] = None,
+    limit: Annotated[int | None, Query(ge=1, le=200)] = 100,
+) -> MarketplaceInstallationListResponse:
+    if status is not None and status not in _INSTALLATION_STATUSES:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "invalid_status_filter",
+                "message": "status must be one of queued, running, succeeded, failed, cancelled",
+            },
+        )
+
+    statement = select(InstallationJob)
+    count_statement = select(func.count()).select_from(InstallationJob)
+    if status is not None:
+        statement = statement.where(InstallationJob.status == status)
+        count_statement = count_statement.where(InstallationJob.status == status)
+
+    total = database.scalar(count_statement) or 0
+    rows = database.scalars(
+        statement.order_by(InstallationJob.created_at.desc(), InstallationJob.id.desc()).limit(
+            limit
+        )
+    ).all()
+    return MarketplaceInstallationListResponse(
+        items=[
+            MarketplaceInstallationStatus(
+                job_id=job.id,
+                package_name=job.package_name,
+                cluster=job.cluster.name,
+                namespace=job.namespace,
+                release_name=job.release_name,
+                status=job.status,
+                error_message=job.error_message,
+                created_at=job.created_at,
+                started_at=job.started_at,
+                completed_at=job.completed_at,
+            )
+            for job in rows
+        ],
+        total=total,
     )

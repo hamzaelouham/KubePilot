@@ -85,3 +85,10 @@ class MarketplaceInstallationStatus(BaseModel):
     created_at: datetime
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+
+
+class MarketplaceInstallationListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[MarketplaceInstallationStatus]
+    total: int
