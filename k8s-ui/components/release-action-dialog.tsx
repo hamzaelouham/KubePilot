@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { toast } from "@/components/ui/toast";
 
 export type ReleaseActionKind = "rollback" | "uninstall";
 
@@ -133,6 +134,17 @@ function JobProgress({
             if (!reportedRef.current) {
               reportedRef.current = true;
               onResolved();
+              if (stage === "succeeded") {
+                toast.add({
+                  title: kind === "rollback" ? "Rollback complete" : "Release uninstalled",
+                  description:
+                    kind === "rollback"
+                      ? `${target.release_name} was rolled back successfully.`
+                      : `${target.release_name} was uninstalled successfully.`,
+                  type: "success",
+                });
+                onClose();
+              }
             }
           } else {
             timer = window.setTimeout(pollOnce, POLL_MS);
@@ -159,7 +171,7 @@ function JobProgress({
       controller.abort();
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [jobId, attempt, onResolved]);
+  }, [attempt, jobId, kind, onClose, onResolved, target.release_name]);
 
   const stage = poll.phase === "status" ? poll.stage : undefined;
   const terminal = stage !== undefined && TERMINAL_JOB_STAGES.has(stage);
