@@ -55,7 +55,7 @@ export function PackageCard({
   const publisher = publisherOf(pkg);
 
   return (
-    <div className="relative flex flex-col gap-3 rounded-xl border border-border bg-surface-elevated p-4 shadow-sm">
+    <div className="relative flex flex-col gap-3  border border-border bg-surface-elevated p-4 ">
       <button
         type="button"
         onClick={onSelect}

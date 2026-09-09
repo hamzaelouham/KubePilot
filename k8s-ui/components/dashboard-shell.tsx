@@ -344,7 +344,7 @@ export function DashboardShell({
               <select
                 value={activeNamespace}
                 onChange={(event) => onNavigate(activeResource, event.target.value)}
-                className="w-full rounded-md border border-border bg-card px-3 py-2 text-base text-foreground outline-none"
+                className="h-11 w-full rounded-xl border border-border/70 bg-card px-3.5 text-sm font-medium text-foreground shadow-sm outline-none transition-all hover:border-border focus:border-ring focus:ring-2 focus:ring-ring/20"
               >
                 {namespaceOptions.map((namespace) => (
                   <option key={namespace} value={namespace}>
@@ -392,7 +392,7 @@ export function DashboardShell({
           </aside>
 
           <main className="min-w-0 flex-1 bg-surface p-4 md:p-6">
-            <div className="min-w-0 rounded-md border border-border bg-surface-elevated p-4 shadow-sm md:p-5">{children}</div>
+            <div className="min-w-0 rounded-2xl border border-border/70 bg-surface-elevated p-5 shadow-sm md:p-6">{children}</div>
           </main>
         </div>
       </div>
