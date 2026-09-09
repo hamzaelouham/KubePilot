@@ -195,7 +195,10 @@ export function MarketplaceHistory({ canManage }: { canManage: boolean }) {
     setFilter(value === null ? "all" : value);
   }, []);
 
-  const items = state.status === "ready" ? state.items : [];
+  const items =
+    state.status === "ready"
+      ? state.items.filter((item) => item.action === "install")
+      : [];
   const visibleItems =
     filter === "all" ? items : items.filter((item) => item.status === filter);
 
