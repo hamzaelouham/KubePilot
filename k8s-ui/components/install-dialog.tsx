@@ -21,6 +21,7 @@ import {
 import { useClusterSelection } from "@/lib/use-cluster-selection";
 import { withCluster } from "@/lib/cluster-query";
 import { publisherOf, type MarketplacePackage } from "@/components/package-card";
+import { cachedFetch, invalidateCache } from "@/lib/marketplace-cache";
 
 type VersionsState =
   | { status: "loading" }
@@ -284,18 +285,17 @@ function InstallDialogBody({
       return () => controller.abort();
     }
 
-    fetch(
+    cachedFetch(
       `/api/marketplace/packages/${encodeURIComponent(repository)}/${encodeURIComponent(pkg.name)}/versions`,
-      { signal: controller.signal, cache: "no-store" },
+      { signal: controller.signal },
     )
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Unable to load versions");
-        const body = (await response.json()) as { versions?: string[]; message?: string };
-        if (!Array.isArray(body.versions) || body.versions.length === 0) {
+      .then((body) => {
+        const typed = body as { versions?: string[]; message?: string };
+        if (!Array.isArray(typed.versions) || typed.versions.length === 0) {
           setVersions({ status: "empty" });
           return;
         }
-        setVersions({ status: "ready", versions: body.versions, selected: body.versions[0] });
+        setVersions({ status: "ready", versions: typed.versions, selected: typed.versions[0] });
       })
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
@@ -312,14 +312,12 @@ function InstallDialogBody({
     const controller = new AbortController();
     if (!cluster) return () => controller.abort();
 
-    fetch(withCluster("/api/cluster/namespaces", cluster), {
+    cachedFetch(withCluster("/api/cluster/namespaces", cluster), {
       signal: controller.signal,
-      cache: "no-store",
     })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Unable to load namespaces");
-        const body = (await response.json()) as { items?: { name: string }[] };
-        const names = (body.items ?? []).map((item) => item.name);
+      .then((body) => {
+        const typed = body as { items?: { name: string }[] };
+        const names = (typed.items ?? []).map((item) => item.name);
         if (names.length === 0) {
           setNamespaces({ status: "empty" });
           return;
@@ -387,6 +385,7 @@ function InstallDialogBody({
       .then(async (response) => {
         const body = (await response.json()) as { job_id?: string; message?: string };
         if (!response.ok) throw new Error(body.message || "Installation request failed");
+        invalidateCache("/api/marketplace/packages");
         setQueuedJobId(body.job_id ?? null);
       })
       .catch((error) => {

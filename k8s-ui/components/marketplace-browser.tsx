@@ -20,6 +20,7 @@ import {
 import { PackageCard, type MarketplacePackage } from "@/components/package-card";
 import { PackageDetailsDialog } from "@/components/package-details-dialog";
 import { InstallDialog } from "@/components/install-dialog";
+import { cachedFetch } from "@/lib/marketplace-cache";
 
 const PAGE_SIZE = 24;
 const DEBOUNCE_MS = 350;
@@ -35,13 +36,13 @@ async function fetchPage(
   const search = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(params.offset) });
   if (params.query) search.set("ts_query_web", params.query);
   if (params.sort === "stars") search.set("sort", params.sort);
-  const response = await fetch(`/api/marketplace/packages?${search.toString()}`, {
+  const body = await cachedFetch(`/api/marketplace/packages?${search.toString()}`, {
     signal,
-    cache: "no-store",
   });
-  const body = (await response.json()) as MarketplaceResponse & { message?: string };
-  if (!response.ok) throw new Error(body.message ?? "Unable to load packages");
-  return body;
+  if (!body || typeof body !== "object") throw new Error("Unable to load packages");
+  const typed = body as MarketplaceResponse & { message?: string };
+  if (!Array.isArray(typed.packages)) throw new Error(typed.message ?? "Unable to load packages");
+  return typed;
 }
 
 function SkeletonGrid() {
