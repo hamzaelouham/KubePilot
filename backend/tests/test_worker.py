@@ -81,7 +81,6 @@ def test_claim_marks_running_and_started(api: SimpleNamespace, seed: SimpleNames
         assert job is not None
         assert job.status == "running"
         assert job.started_at is not None
-        database.commit()
     finally:
         database.close()
 

@@ -58,6 +58,7 @@ def claim_next_job(database) -> InstallationJob | None:
         return None
     row.status = "running"
     row.started_at = now
+    database.commit()
     return row
 
 
