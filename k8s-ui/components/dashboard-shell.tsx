@@ -223,7 +223,7 @@ export function DashboardShell({
             </Link>
 
             <div className="ml-auto flex items-center gap-2">
-              <div className="flex min-w-0 items-center gap-2 rounded-xl border border-border bg-header-control px-3 py-2">
+              <div className="flex min-w-0 items-center gap-2 rounded-xl border border-border bg-header-control px-3 py-1">
                 <Server className="size-4 shrink-0 text-muted-foreground" />
                 <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Cluster</span>
                 {activeCluster ? (

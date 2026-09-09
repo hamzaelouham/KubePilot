@@ -3,9 +3,11 @@
 import asyncio
 import logging
 import os
+import re
 import subprocess
 import tempfile
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
 
 from sqlalchemy import select, update
 
@@ -17,6 +19,17 @@ from app.models.entities import InstallationJob
 logger = logging.getLogger(__name__)
 
 _ERROR_CAP = 4096
+_DNS_1123_PATTERN = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
+_ALLOWED_REPOSITORY_SCHEMES = ("http", "https")
+
+
+def _invalid_job_field(job) -> str | None:
+    for field in ("chart_name", "chart_repository", "namespace", "release_name"):
+        if not _DNS_1123_PATTERN.fullmatch(getattr(job, field) or ""):
+            return field
+    if urlsplit(job.chart_repository_url or "").scheme not in _ALLOWED_REPOSITORY_SCHEMES:
+        return "chart_repository_url"
+    return None
 
 
 class HelmInstallError(RuntimeError):
@@ -126,6 +139,15 @@ def _fail_job(database, job, message: str) -> None:
 def _process_claimed_job(database, job, settings: Settings) -> None:
     if not job.chart_repository_url:
         _fail_job(database, job, "chart repository URL is not set; the job cannot be processed")
+        return
+
+    invalid_field = _invalid_job_field(job)
+    if invalid_field is not None:
+        _fail_job(
+            database,
+            job,
+            f"refusing to run helm: invalid job field '{invalid_field}'",
+        )
         return
 
     kubeconfig_path: str | None = None

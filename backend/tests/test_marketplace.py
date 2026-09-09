@@ -7,12 +7,12 @@ from uuid import UUID
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, func, select
 
 from app.core.config import Settings
 from app.db.session import create_session_factory
 from app.models.base import Base
-from app.models.entities import AuditAction, ClusterConnection, InstallationJob
+from app.models.entities import AuditAction, ClusterConnection, InstallationJob, UserAccount
 
 
 
@@ -49,6 +49,26 @@ def login(api: SimpleNamespace, email: str, password: str) -> dict:
 
 def admin_cookie(api: SimpleNamespace) -> str:
     return login(api, api.settings.admin_email, api.settings.admin_password)["cookie"]
+
+
+def _seed_user(
+    api: SimpleNamespace, email: str, role: str, restricted: bool = False
+) -> str:
+    from app.core.passwords import hash_password
+
+    database = create_session_factory(api.settings)()
+    try:
+        user = UserAccount(
+            email=email,
+            password_hash=hash_password("correct-horse-00"),
+            role=role,
+            must_change_password=restricted,
+        )
+        database.add(user)
+        database.commit()
+    finally:
+        database.close()
+    return login(api, email, "correct-horse-00")["cookie"]
 
 
 UPSTREAM_PACKAGE = {
@@ -357,6 +377,54 @@ def test_install_requires_authentication(api: SimpleNamespace) -> None:
     assert response.json()["code"] == "authentication_required"
 
 
+def test_install_viewer_denied(
+    api: SimpleNamespace, cluster_client: SimpleNamespace, upstream: SimpleNamespace
+) -> None:
+    cookie = _seed_user(api, "viewer@example.com", role="viewer")
+    with api.client as client:
+        response = client.post(
+            "/api/v1/marketplace/install", json=INSTALL_BODY, headers=cookie_header(cookie)
+        )
+    assert response.status_code == 403
+    assert response.json()["code"] == "insufficient_permissions"
+    assert upstream.urls == []
+    assert cluster_client.requests == []
+
+    database = create_session_factory(api.settings)()
+    try:
+        count = database.scalar(select(func.count()).select_from(InstallationJob))
+    finally:
+        database.close()
+    assert count == 0
+
+
+def test_install_restricted_operator_denied(
+    api: SimpleNamespace, cluster_client: SimpleNamespace, upstream: SimpleNamespace
+) -> None:
+    cookie = _seed_user(api, "ops-restricted@example.com", role="operator", restricted=True)
+    with api.client as client:
+        response = client.post(
+            "/api/v1/marketplace/install", json=INSTALL_BODY, headers=cookie_header(cookie)
+        )
+    assert response.status_code == 403
+    assert response.json()["code"] == "password_change_required"
+    assert upstream.urls == []
+
+
+def test_install_operator_allowed(
+    api: SimpleNamespace, cluster_client: SimpleNamespace, upstream: SimpleNamespace
+) -> None:
+    upstream.install(FakeUpstream(payload=UPSTREAM_INSTALL_DETAIL))
+    cookie = _seed_user(api, "operator@example.com", role="operator")
+    with api.client as client:
+        response = client.post(
+            "/api/v1/marketplace/install", json=INSTALL_BODY, headers=cookie_header(cookie)
+        )
+    assert response.status_code == 201, response.text
+    assert response.json()["status"] == "queued"
+    assert upstream.urls == ["https://artifacthub.io/api/v1/packages/helm/bitnami/redis"]
+
+
 @pytest.mark.parametrize(
     "override",
     [
@@ -415,7 +483,7 @@ def test_install_inactive_cluster_rejected(api: SimpleNamespace, upstream: Simpl
 def test_install_namespace_not_found_rejected(
     api: SimpleNamespace, cluster_client: SimpleNamespace, upstream: SimpleNamespace
 ) -> None:
-    body = {**INSTALL_BODY, "namespace": "kube-system"}
+    body = {**INSTALL_BODY, "namespace": "analytics"}
     with api.client as client:
         response = client.post(
             "/api/v1/marketplace/install", json=body, headers=cookie_header(admin_cookie(api))
@@ -423,6 +491,57 @@ def test_install_namespace_not_found_rejected(
     assert response.status_code == 422
     assert response.json()["code"] == "namespace_not_found"
     assert upstream.urls == []
+
+
+def test_install_kube_system_protected(
+    api: SimpleNamespace, cluster_client: SimpleNamespace, upstream: SimpleNamespace
+) -> None:
+    cluster_client.namespaces.append(("kube-system", "Active"))
+    body = {**INSTALL_BODY, "namespace": "kube-system"}
+    with api.client as client:
+        response = client.post(
+            "/api/v1/marketplace/install", json=body, headers=cookie_header(admin_cookie(api))
+        )
+    assert response.status_code == 422
+    assert response.json()["code"] == "namespace_protected"
+    assert upstream.urls == []
+
+
+def test_install_package_id_mismatch(
+    api: SimpleNamespace, cluster_client: SimpleNamespace, upstream: SimpleNamespace
+) -> None:
+    payload = {**UPSTREAM_INSTALL_DETAIL, "package_id": "11111111-1111-1111-1111-111111111111"}
+    upstream.install(FakeUpstream(payload=payload))
+    with api.client as client:
+        response = client.post(
+            "/api/v1/marketplace/install", json=INSTALL_BODY, headers=cookie_header(admin_cookie(api))
+        )
+    assert response.status_code == 422
+    assert response.json()["code"] == "package_mismatch"
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"name": "Bad_Chart"},
+        {"repository": {"name": "Bad_Repo", "url": "https://charts.bitnami.com/bitnami", "kind": 0}},
+        {"repository": {"name": "bitnami", "url": "file:///etc/passwd", "kind": 0}},
+    ],
+)
+def test_install_untrusted_package_source(
+    api: SimpleNamespace,
+    cluster_client: SimpleNamespace,
+    upstream: SimpleNamespace,
+    override: dict,
+) -> None:
+    payload = {**UPSTREAM_INSTALL_DETAIL, **override}
+    upstream.install(FakeUpstream(payload=payload))
+    with api.client as client:
+        response = client.post(
+            "/api/v1/marketplace/install", json=INSTALL_BODY, headers=cookie_header(admin_cookie(api))
+        )
+    assert response.status_code == 502
+    assert response.json()["code"] == "invalid_package_source"
 
 
 def test_install_upstream_404_maps_to_not_found(

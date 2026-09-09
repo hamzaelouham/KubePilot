@@ -27,6 +27,7 @@ class Permission:
     USERS_DELETE = "users:delete"
     USERS_RESET_PASSWORD = "users:reset_password"
     USERS_FORCE_PASSWORD_CHANGE = "users:force_password_change"
+    MARKETPLACE_INSTALL = "marketplace:install"
 
 
 ALL_PERMISSIONS: frozenset[str] = frozenset(
@@ -53,6 +54,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[str]] = {
             Permission.RESOURCES_CREATE,
             Permission.RESOURCES_UPDATE,
             Permission.RESOURCES_DELETE,
+            Permission.MARKETPLACE_INSTALL,
         }
     ),
     Role.ADMIN: ALL_PERMISSIONS,

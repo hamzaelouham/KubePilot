@@ -1,6 +1,6 @@
 import re
 from typing import Annotated, Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 from uuid import UUID
 
 import httpx
@@ -16,6 +16,7 @@ from app.core.dependencies import (
     get_database_session,
     get_settings,
 )
+from app.core.rbac import Permission, require_permission
 from app.kubernetes.client import ClusterClient, create_cluster_client
 from app.models.entities import ClusterConnection, InstallationJob
 
@@ -257,6 +258,17 @@ def _resolve_cluster(database: SQLAlchemySession, name: str) -> ClusterConnectio
     return row
 
 
+def _ensure_namespace_allowed(namespace: str) -> None:
+    if namespace == "kube-system":
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "namespace_protected",
+                "message": "Installing into the kube-system namespace is not allowed",
+            },
+        )
+
+
 def _ensure_namespace_exists(client: ClusterClient, namespace: str) -> None:
     names = [name for name, _ in client.namespaces()]
     if namespace not in names:
@@ -311,7 +323,27 @@ async def _fetch_package_detail(repository_name: str, package_name: str) -> dict
     if not chart_name or not repo_name or not repo_url:
         raise _upstream_error("Artifact Hub returned unexpected package data")
 
+    if not PACKAGE_SEGMENT_PATTERN.fullmatch(chart_name) or not PACKAGE_SEGMENT_PATTERN.fullmatch(
+        repo_name
+    ):
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "invalid_package_source",
+                "message": "Artifact Hub returned an untrusted chart name or repository",
+            },
+        )
+    if urlsplit(repo_url).scheme not in ("http", "https"):
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "invalid_package_source",
+                "message": "Artifact Hub returned an untrusted chart repository URL",
+            },
+        )
+
     return {
+        "package_id": str(payload.get("package_id") or ""),
         "versions": versions,
         "chart_name": chart_name,
         "chart_repository": repo_name,
@@ -322,7 +354,7 @@ async def _fetch_package_detail(repository_name: str, package_name: str) -> dict
 @router.post("/marketplace/install", response_model=MarketplaceInstallResponse, status_code=201)
 async def create_installation(
     request: MarketplaceInstallRequest,
-    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
+    _actor: Annotated[AuthenticatedActor, Depends(require_permission(Permission.MARKETPLACE_INSTALL))],
     database: Annotated[SQLAlchemySession, Depends(get_database_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> MarketplaceInstallResponse:
@@ -333,9 +365,18 @@ async def create_installation(
         kubeconfig_content=cluster.kubeconfig_content,
         cluster_name=cluster.name,
     )
+    _ensure_namespace_allowed(request.namespace)
     _ensure_namespace_exists(client, request.namespace)
 
     detail = await _fetch_package_detail(request.repository_name, request.package_name)
+    if request.package_id != detail["package_id"]:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "package_mismatch",
+                "message": "Package does not match the requested package",
+            },
+        )
     if request.version not in detail["versions"]:
         raise HTTPException(
             status_code=422,

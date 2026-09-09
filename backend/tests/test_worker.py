@@ -210,6 +210,49 @@ def test_missing_repository_url_fails_without_helm(
         database.close()
 
 
+@pytest.mark.parametrize(
+    "overrides, expected_field",
+    [
+        ({"release_name": "Bad Name"}, "release_name"),
+        ({"chart_name": "Bad_Chart"}, "chart_name"),
+        ({"chart_repository": "Repo"}, "chart_repository"),
+        ({"namespace": "Default"}, "namespace"),
+        ({"chart_repository_url": "file:///etc/passwd"}, "chart_repository_url"),
+        ({"chart_repository_url": "ftp://charts.example.com"}, "chart_repository_url"),
+    ],
+)
+def test_invalid_job_fields_fail_without_helm(
+    api: SimpleNamespace,
+    seed: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+    overrides: dict,
+    expected_field: str,
+) -> None:
+    job_id = _add_job(api, seed.cluster, **overrides)
+    called: list[bool] = []
+
+    def fake_helm(settings, job, repository_url, kubeconfig_path):
+        called.append(True)
+        return "unreachable"
+
+    monkeypatch.setattr(worker, "_run_helm_install", fake_helm)
+    database = create_session_factory(api.settings)()
+    try:
+        run_pending_installations(database, api.settings)
+    finally:
+        database.close()
+
+    assert called == []
+    database = create_session_factory(api.settings)()
+    try:
+        job = database.get(InstallationJob, job_id)
+    finally:
+        database.close()
+    assert job.status == "failed"
+    assert expected_field in job.error_message
+    assert "refusing to run helm" in job.error_message
+
+
 def test_no_kubeconfig_for_incluster_cluster(
     api: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
 ) -> None:
