@@ -34,7 +34,11 @@ export function MarketplaceView({ user }: { user: BackendUser }) {
             Discover and install Kubernetes applications.
           </p>
         </div>
-        <MarketplaceBrowser />
+        <MarketplaceBrowser
+          cluster={cluster}
+          clusters={clusters}
+          onSelectCluster={selectCluster}
+        />
         <section className="mt-10">
           <MarketplaceHistory canManage={user.role === "admin" || user.role === "operator"} />
         </section>

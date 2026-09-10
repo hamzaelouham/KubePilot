@@ -59,6 +59,11 @@ interface DataTableProps<TData extends RowData, TValue> {
   searchPlaceholder?: string
   searchable?: boolean
   pageSize?: number
+  serverPagination?: {
+    page: number
+    totalPages: number
+    onPageChange: (page: number) => void
+  }
   className?: string
 }
 
@@ -70,6 +75,7 @@ export function DataTable<TData extends RowData, TValue>({
   searchPlaceholder = "Filter rows…",
   searchable = true,
   pageSize = 10,
+  serverPagination,
   className,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([])
@@ -214,19 +220,21 @@ const table = useTable<typeof features, TData, SelectedState>(
 
       <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-3">
         <p className="text-sm text-muted-foreground" data-testid="pagination-page">
-          Page {table.state.pagination.pageIndex + 1} of{" "}
-          {Math.max(1, table.getPageCount())}
+          Page {serverPagination ? serverPagination.page + 1 : table.state.pagination.pageIndex + 1} of{" "}
+          {serverPagination ? Math.max(1, serverPagination.totalPages) : Math.max(1, table.getPageCount())}
         </p>
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
             size="sm"
-            disabled={!table.getCanPreviousPage()}
+            disabled={serverPagination ? serverPagination.page === 0 : !table.getCanPreviousPage()}
             onClick={() =>
-              setPagination((previous) => ({
-                ...previous,
-                pageIndex: previous.pageIndex - 1,
-              }))
+              serverPagination
+                ? serverPagination.onPageChange(serverPagination.page - 1)
+                : setPagination((previous) => ({
+                    ...previous,
+                    pageIndex: previous.pageIndex - 1,
+                  }))
             }
           >
             Previous
@@ -234,12 +242,14 @@ const table = useTable<typeof features, TData, SelectedState>(
           <Button
             variant="outline"
             size="sm"
-            disabled={!table.getCanNextPage()}
+            disabled={serverPagination ? serverPagination.page >= serverPagination.totalPages - 1 : !table.getCanNextPage()}
             onClick={() =>
-              setPagination((previous) => ({
-                ...previous,
-                pageIndex: previous.pageIndex + 1,
-              }))
+              serverPagination
+                ? serverPagination.onPageChange(serverPagination.page + 1)
+                : setPagination((previous) => ({
+                    ...previous,
+                    pageIndex: previous.pageIndex + 1,
+                  }))
             }
           >
             Next

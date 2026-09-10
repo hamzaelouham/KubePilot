@@ -16,6 +16,9 @@ import {
   type ReleaseActionKind,
   type ReleaseActionTarget,
 } from "@/components/release-action-dialog";
+import { apiErrorMessage } from "@/lib/api-error";
+
+const PAGE_SIZE = 10;
 
 type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 
@@ -33,6 +36,7 @@ type Installation = {
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
+  can_manage_release: boolean;
 };
 
 type PendingAction = {
@@ -44,7 +48,7 @@ type InstallationResponse = { items: Installation[]; total: number };
 
 type HistoryState =
   | { status: "loading" }
-  | { status: "ready"; items: Installation[] }
+  | { status: "ready"; items: Installation[]; total: number }
   | { status: "error"; message: string };
 
 const STATUS_FILTERS: { value: JobStatus | "all"; label: string }[] = [
@@ -72,7 +76,7 @@ function statusTone(status: JobStatus): string {
 }
 
 function canActOn(job: Installation): boolean {
-  return job.action === "install" && job.status === "succeeded";
+  return job.action === "install" && job.status === "succeeded" && job.can_manage_release;
 }
 
 const tableColumns: DataTableColumn<Installation>[] = [
@@ -90,6 +94,11 @@ const tableColumns: DataTableColumn<Installation>[] = [
     accessorKey: "namespace",
     header: "Namespace",
     cell: ({ row }) => <span className="text-sm">{row.original.namespace}</span>,
+  },
+  {
+    accessorKey: "action",
+    header: "Action",
+    cell: ({ row }) => <span className="text-sm capitalize">{row.original.action}</span>,
   },
   {
     accessorKey: "status",
@@ -112,6 +121,7 @@ const tableColumns: DataTableColumn<Installation>[] = [
 export function MarketplaceHistory({ canManage }: { canManage: boolean }) {
   const [state, setState] = useState<HistoryState>({ status: "loading" });
   const [filter, setFilter] = useState<JobStatus | "all">("all");
+  const [page, setPage] = useState(0);
   const [pending, setPending] = useState<PendingAction | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -169,13 +179,18 @@ export function MarketplaceHistory({ canManage }: { canManage: boolean }) {
     abortRef.current = controller;
     setState({ status: "loading" });
     try {
-      const response = await fetch("/api/marketplace/installations", {
+      const query = new URLSearchParams({
+        limit: String(PAGE_SIZE),
+        offset: String(page * PAGE_SIZE),
+      });
+      if (filter !== "all") query.set("status", filter);
+      const response = await fetch(`/api/marketplace/installations?${query.toString()}`, {
         signal: controller.signal,
         cache: "no-store",
       });
-      const body = (await response.json()) as InstallationResponse & { message?: string };
-      if (!response.ok) throw new Error(body.message ?? "Unable to load installation history");
-      setState({ status: "ready", items: body.items });
+      const body = (await response.json()) as InstallationResponse;
+      if (!response.ok) throw new Error(apiErrorMessage(body, "Unable to load installation history"));
+      setState({ status: "ready", items: body.items, total: body.total });
     } catch (error: unknown) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       setState({
@@ -183,7 +198,7 @@ export function MarketplaceHistory({ canManage }: { canManage: boolean }) {
         message: error instanceof Error ? error.message : "Unable to load installation history",
       });
     }
-  }, []);
+  }, [filter, page]);
 
   useEffect(() => {
     abortRef.current?.abort();
@@ -193,14 +208,11 @@ export function MarketplaceHistory({ canManage }: { canManage: boolean }) {
 
   const handleFilter = useCallback((value: JobStatus | "all" | null) => {
     setFilter(value === null ? "all" : value);
+    setPage(0);
   }, []);
 
-  const items =
-    state.status === "ready"
-      ? state.items.filter((item) => item.action === "install")
-      : [];
-  const visibleItems =
-    filter === "all" ? items : items.filter((item) => item.status === filter);
+  const items = state.status === "ready" ? state.items : [];
+  const totalPages = state.status === "ready" ? Math.ceil(state.total / PAGE_SIZE) : 0;
 
   return (
     <div>
@@ -256,9 +268,11 @@ export function MarketplaceHistory({ canManage }: { canManage: boolean }) {
         ) : (
           <DataTable
             columns={columns}
-            data={visibleItems}
+            data={items}
             placeholder="No installations yet."
             searchPlaceholder="Filter installations…"
+            pageSize={PAGE_SIZE}
+            serverPagination={{ page, totalPages, onPageChange: setPage }}
           />
         )}
       </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 export type MarketplacePackageRepository = {
@@ -55,7 +56,7 @@ export function PackageCard({
   const publisher = publisherOf(pkg);
 
   return (
-    <div className="relative flex flex-col gap-3  border border-border bg-surface-elevated p-4 ">
+    <div className="relative flex flex-col gap-3 rounded-xl border border-border bg-surface-elevated p-4 shadow-sm transition duration-150 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md">
       <button
         type="button"
         onClick={onSelect}
@@ -78,6 +79,13 @@ export function PackageCard({
         <div className="min-w-0">
           <h3 className="truncate text-sm font-medium text-foreground">{pkg.name}</h3>
           <p className="truncate text-xs text-muted-foreground">{publisher}</p>
+          {(pkg.official || pkg.signed || pkg.deprecated) && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {pkg.official && <Badge variant="secondary">Official</Badge>}
+              {pkg.signed && <Badge variant="outline">Signed</Badge>}
+              {pkg.deprecated && <Badge variant="destructive">Deprecated</Badge>}
+            </div>
+          )}
         </div>
       </div>
       <p className="line-clamp-2 text-sm text-muted-foreground">{pkg.description ?? "No description provided."}</p>

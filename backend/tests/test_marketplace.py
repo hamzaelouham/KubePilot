@@ -717,6 +717,7 @@ def test_installation_status_succeeded(api: SimpleNamespace) -> None:
         "created_at",
         "started_at",
         "completed_at",
+        "can_manage_release",
     }
     assert body["job_id"] == str(job_id)
     assert body["package_name"] == "redis"
@@ -832,6 +833,22 @@ def test_installation_history_orders_most_recent_first(api: SimpleNamespace) -> 
     assert first["release_name"] == "my-release"
     assert first["status"] == "failed"
     assert first["error_message"] is None
+    assert first["can_manage_release"] is False
+
+
+def test_installation_history_supports_offset_pagination(api: SimpleNamespace) -> None:
+    cookie = admin_cookie(api)
+    base = datetime.now(timezone.utc) - timedelta(days=1)
+    oldest = _seed_installation(api, created_at=base)
+    middle = _seed_installation(api, created_at=base + timedelta(minutes=1))
+    _seed_installation(api, created_at=base + timedelta(minutes=2))
+    with api.client as client:
+        response = _list_installations(client, cookie, "?limit=1&offset=1")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 3
+    assert [item["job_id"] for item in body["items"]] == [str(middle)]
+    assert str(oldest) not in [item["job_id"] for item in body["items"]]
 
 
 def test_installation_history_status_filter(api: SimpleNamespace) -> None:
@@ -1031,3 +1048,33 @@ def test_uninstall_queued_success_operator(api: SimpleNamespace) -> None:
         assert audit.result == "success"
     finally:
         database.close()
+
+
+def test_completed_uninstall_disables_release_actions_and_remains_in_history(
+    api: SimpleNamespace,
+) -> None:
+    cookie = admin_cookie(api)
+    source_id = _seed_installation(api)
+    with api.client as client:
+        queued = _post_release_action(client, "uninstall", source_id, cookie)
+    assert queued.status_code == 201
+    uninstall_id = UUID(queued.json()["job_id"])
+
+    database = create_session_factory(api.settings)()
+    try:
+        uninstall = database.get(InstallationJob, uninstall_id)
+        assert uninstall is not None
+        uninstall.status = "succeeded"
+        database.commit()
+    finally:
+        database.close()
+
+    with api.client as client:
+        repeated = _post_release_action(client, "uninstall", source_id, cookie)
+        history = _list_installations(client, cookie)
+    assert repeated.status_code == 422
+    assert repeated.json()["code"] == "release_not_active"
+    assert history.status_code == 200
+    items = {item["job_id"]: item for item in history.json()["items"]}
+    assert items[str(source_id)]["can_manage_release"] is False
+    assert items[str(uninstall_id)]["action"] == "uninstall"

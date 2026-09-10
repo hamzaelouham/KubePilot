@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/toast";
+import { apiErrorMessage } from "@/lib/api-error";
 
 export type ReleaseActionKind = "rollback" | "uninstall";
 
@@ -272,8 +273,8 @@ export function ReleaseActionDialog({
       cache: "no-store",
     })
       .then(async (response) => {
-        const body = (await response.json()) as { job_id?: string; message?: string };
-        if (!response.ok) throw new Error(body.message || `Unable to ${kind} the release`);
+        const body = (await response.json()) as { job_id?: string };
+        if (!response.ok) throw new Error(apiErrorMessage(body, `Unable to ${kind} the release`));
         setQueuedJobId(body.job_id ?? null);
       })
       .catch((error) => {

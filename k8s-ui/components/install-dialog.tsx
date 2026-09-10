@@ -18,10 +18,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useClusterSelection } from "@/lib/use-cluster-selection";
 import { withCluster } from "@/lib/cluster-query";
 import { publisherOf, type MarketplacePackage } from "@/components/package-card";
 import { cachedFetch, invalidateCache } from "@/lib/marketplace-cache";
+import { apiErrorMessage } from "@/lib/api-error";
 
 type VersionsState =
   | { status: "loading" }
@@ -237,9 +237,15 @@ function JobProgress({
 
 export function InstallDialog({
   pkg,
+  cluster,
+  clusters,
+  onSelectCluster,
   onOpenChange,
 }: {
   pkg: MarketplacePackage | null;
+  cluster: string;
+  clusters: string[];
+  onSelectCluster: (cluster: string) => void;
   onOpenChange: (open: boolean) => void;
 }) {
   return (
@@ -249,6 +255,9 @@ export function InstallDialog({
           <InstallDialogBody
             key={pkg.package_id}
             pkg={pkg}
+            cluster={cluster}
+            clusters={clusters}
+            onSelectCluster={onSelectCluster}
             onClose={() => onOpenChange(false)}
           />
         </DialogContent>
@@ -259,12 +268,17 @@ export function InstallDialog({
 
 function InstallDialogBody({
   pkg,
+  cluster,
+  clusters,
+  onSelectCluster,
   onClose,
 }: {
   pkg: MarketplacePackage;
+  cluster: string;
+  clusters: string[];
+  onSelectCluster: (cluster: string) => void;
   onClose: () => void;
 }) {
-  const { cluster, clusters, selectCluster } = useClusterSelection();
   const [versions, setVersions] = useState<VersionsState>({ status: "loading" });
   const [versionRetry, setVersionRetry] = useState(0);
   const [namespaces, setNamespaces] = useState<NamespacesState>({ status: "loading" });
@@ -347,7 +361,7 @@ function InstallDialogBody({
 
   const handleClusterChange = (value: string | null) => {
     if (!value) return;
-    selectCluster(value);
+    onSelectCluster(value);
     setNamespaces({ status: "loading" });
   };
 
@@ -383,8 +397,8 @@ function InstallDialogBody({
       cache: "no-store",
     })
       .then(async (response) => {
-        const body = (await response.json()) as { job_id?: string; message?: string };
-        if (!response.ok) throw new Error(body.message || "Installation request failed");
+        const body = (await response.json()) as { job_id?: string };
+        if (!response.ok) throw new Error(apiErrorMessage(body, "Installation request failed"));
         invalidateCache("/api/marketplace/packages");
         setQueuedJobId(body.job_id ?? null);
       })

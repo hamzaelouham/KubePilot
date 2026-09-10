@@ -21,6 +21,7 @@ import { PackageCard, type MarketplacePackage } from "@/components/package-card"
 import { PackageDetailsDialog } from "@/components/package-details-dialog";
 import { InstallDialog } from "@/components/install-dialog";
 import { cachedFetch } from "@/lib/marketplace-cache";
+import { apiErrorMessage } from "@/lib/api-error";
 
 const PAGE_SIZE = 12;
 const DEBOUNCE_MS = 350;
@@ -40,8 +41,8 @@ async function fetchPage(
     signal,
   });
   if (!body || typeof body !== "object") throw new Error("Unable to load packages");
-  const typed = body as MarketplaceResponse & { message?: string };
-  if (!Array.isArray(typed.packages)) throw new Error(typed.message ?? "Unable to load packages");
+  const typed = body as MarketplaceResponse;
+  if (!Array.isArray(typed.packages)) throw new Error(apiErrorMessage(typed, "Unable to load packages"));
   return typed;
 }
 
@@ -87,7 +88,15 @@ function Spinner() {
   );
 }
 
-export function MarketplaceBrowser() {
+export function MarketplaceBrowser({
+  cluster,
+  clusters,
+  onSelectCluster,
+}: {
+  cluster: string;
+  clusters: string[];
+  onSelectCluster: (cluster: string) => void;
+}) {
   const [packages, setPackages] = useState<MarketplacePackage[]>([]);
   const [total, setTotal] = useState(0);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -305,6 +314,9 @@ export function MarketplaceBrowser() {
       />
       <InstallDialog
         pkg={installTarget}
+        cluster={cluster}
+        clusters={clusters}
+        onSelectCluster={onSelectCluster}
         onOpenChange={(open) => {
           if (!open) setInstallTarget(null);
         }}

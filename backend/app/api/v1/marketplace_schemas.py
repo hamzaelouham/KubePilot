@@ -86,6 +86,7 @@ class MarketplaceInstallationStatus(BaseModel):
     created_at: datetime
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    can_manage_release: bool = False
 
 
 class MarketplaceInstallationListResponse(BaseModel):

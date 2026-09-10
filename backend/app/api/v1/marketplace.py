@@ -507,6 +507,22 @@ def _ensure_no_pending_release_action(
         )
 
 
+def _release_can_be_managed(database: SQLAlchemySession, job: InstallationJob) -> bool:
+    latest = database.scalars(
+        select(InstallationJob)
+        .where(
+            InstallationJob.cluster_id == job.cluster_id,
+            InstallationJob.namespace == job.namespace,
+            InstallationJob.release_name == job.release_name,
+        )
+        .order_by(InstallationJob.created_at.desc(), InstallationJob.id.desc())
+        .limit(1)
+    ).first()
+    if latest is None or latest.status in ("queued", "running"):
+        return False
+    return not (latest.action == "uninstall" and latest.status == "succeeded")
+
+
 def _queue_release_action(
     database: SQLAlchemySession,
     source: InstallationJob,
@@ -549,6 +565,14 @@ def _queue_release_action_for_source(
 ) -> MarketplaceInstallResponse:
     source = _resolve_managed_install(database, job_id)
     _ensure_no_pending_release_action(database, source)
+    if not _release_can_be_managed(database, source):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "release_not_active",
+                "message": "This release has already been uninstalled",
+            },
+        )
     job = _queue_release_action(database, source, action, actor.user_id)
     return MarketplaceInstallResponse(job_id=job.id, status="queued")
 
@@ -588,6 +612,7 @@ async def list_installations(
     database: Annotated[SQLAlchemySession, Depends(get_database_session)],
     status: Annotated[str | None, Query()] = None,
     limit: Annotated[int | None, Query(ge=1, le=200)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> MarketplaceInstallationListResponse:
     if status is not None and status not in _INSTALLATION_STATUSES:
         raise HTTPException(
@@ -608,7 +633,7 @@ async def list_installations(
     rows = database.scalars(
         statement.order_by(InstallationJob.created_at.desc(), InstallationJob.id.desc()).limit(
             limit
-        )
+        ).offset(offset)
     ).all()
     return MarketplaceInstallationListResponse(
         items=[
@@ -624,6 +649,11 @@ async def list_installations(
                 created_at=job.created_at,
                 started_at=job.started_at,
                 completed_at=job.completed_at,
+                can_manage_release=(
+                    job.action == "install"
+                    and job.status == "succeeded"
+                    and _release_can_be_managed(database, job)
+                ),
             )
             for job in rows
         ],
