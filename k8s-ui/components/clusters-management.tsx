@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CalendarDays, Link, Server, Wifi } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,8 +47,22 @@ function formatDateTime(value: string) {
 }
 
 function statusBadge(status: string) {
-  if (status === "active") return <Badge variant="secondary">Active</Badge>;
-  if (status === "inactive") return <Badge variant="destructive">Inactive</Badge>;
+  if (status === "active") {
+    return (
+      <Badge variant="secondary" className="gap-1.5">
+        <span aria-hidden="true" className="size-1.5 rounded-full bg-emerald-500" />
+        Connected
+      </Badge>
+    );
+  }
+  if (status === "inactive") {
+    return (
+      <Badge variant="destructive" className="gap-1.5">
+        <span aria-hidden="true" className="size-1.5 rounded-full bg-current opacity-70" />
+        Inactive
+      </Badge>
+    );
+  }
   return <Badge variant="outline">{status}</Badge>;
 }
 
@@ -301,9 +316,9 @@ export function ClustersManagement({ canManage, canDelete }: { canManage: boolea
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
+              <TableHead>Cluster name</TableHead>
               <TableHead>Endpoint</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead>Connection</TableHead>
               <TableHead>Created</TableHead>
               {canManage ? <TableHead className="text-right">Actions</TableHead> : null}
             </TableRow>
@@ -312,11 +327,34 @@ export function ClustersManagement({ canManage, canDelete }: { canManage: boolea
             {clusters.map((cluster) => (
               <TableRow key={cluster.id}>
                 <TableCell>
-                  <span className="font-medium">{cluster.name}</span>
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-muted/40 text-muted-foreground">
+                      <Server aria-hidden="true" className="size-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="block font-medium text-foreground">{cluster.name}</span>
+                      <span className="block text-xs text-muted-foreground">Cluster</span>
+                    </div>
+                  </div>
                 </TableCell>
-                <TableCell className="text-sm text-muted-foreground">{cluster.endpoint}</TableCell>
-                <TableCell>{statusBadge(cluster.status)}</TableCell>
-                <TableCell className="text-sm text-muted-foreground">{formatDateTime(cluster.created_at)}</TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Link aria-hidden="true" className="size-3.5 shrink-0" />
+                    <span className="max-w-60 truncate" title={cluster.endpoint}>{cluster.endpoint}</span>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    <Wifi aria-hidden="true" className="size-3.5 text-muted-foreground" />
+                    {statusBadge(cluster.status)}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <CalendarDays aria-hidden="true" className="size-3.5 shrink-0" />
+                    <span>{formatDateTime(cluster.created_at)}</span>
+                  </div>
+                </TableCell>
                 {canManage ? (
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
