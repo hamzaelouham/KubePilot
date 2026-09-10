@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -11,6 +12,7 @@ class ClusterSummary(BaseModel):
     name: str
     endpoint: str
     status: str
+    connection_status: Literal["connected", "unavailable", "forbidden", "inactive", "unknown"] = "unknown"
     created_at: datetime
 
 

@@ -31,15 +31,16 @@ export function useClusterSelection(initialCluster?: string) {
     fetch("/api/clusters", { signal: controller.signal, cache: "no-store" })
       .then(async (response) => {
         if (!response.ok) return;
-        const body = (await response.json()) as { items?: { name: string; status?: string }[] };
+        const body = (await response.json()) as {
+          items?: { name: string; status?: string; connection_status?: string }[];
+        };
         const names = (body.items ?? [])
-          .filter((item) => item.status === "active")
+          .filter((item) => item.status === "active" && item.connection_status === "connected")
           .map((item) => item.name);
-        if (names.length === 0) return;
         setClusters(names);
         setCluster((current) => {
           if (current && names.includes(current)) return current;
-          return names[0];
+          return names[0] ?? "";
         });
       })
       .catch(() => {});

@@ -629,10 +629,11 @@ def _probe_kubeconfig(settings: Settings, content: str, endpoint: str) -> None:
 
 @router.get("/clusters", response_model=ClusterListResponse)
 def cluster_list(
-    _database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
     _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.CLUSTERS_READ))],
 ) -> ClusterListResponse:
-    rows = _database.scalars(select(ClusterConnection).order_by(ClusterConnection.name)).all()
+    rows = database.scalars(select(ClusterConnection).order_by(ClusterConnection.name)).all()
     return ClusterListResponse(
         items=[
             ClusterSummary(
@@ -640,11 +641,29 @@ def cluster_list(
                 name=row.name,
                 endpoint=row.endpoint,
                 status=row.status,
+                connection_status=_connection_status(settings, row),
                 created_at=row.created_at,
             )
             for row in rows
         ]
     )
+
+
+def _connection_status(settings: Settings, cluster: ClusterConnection) -> str:
+    """Return current reachability without modifying the saved activation state."""
+    if cluster.status == "inactive":
+        return "inactive"
+    try:
+        create_cluster_client(
+            settings,
+            kubeconfig_content=cluster.kubeconfig_content,
+            cluster_name=cluster.name,
+        ).health()
+        return "connected"
+    except ClusterForbiddenError:
+        return "forbidden"
+    except ClusterClientError:
+        return "unavailable"
 
 
 async def cluster_create(

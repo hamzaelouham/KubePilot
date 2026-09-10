@@ -84,6 +84,13 @@ class ClusterClient:
     storage: Any = None
     metrics_api: Any = None
 
+    def health(self) -> None:
+        """Confirm that the Kubernetes API can answer a bounded read request."""
+        try:
+            self.core.list_namespace(limit=1, _request_timeout=5)
+        except Exception as error:
+            raise classify_kubernetes_error(error) from error
+
     def namespaces(self) -> list[tuple[str, str]]:
         try:
             return [(item.metadata.name, item.status.phase or "unknown") for item in self.core.list_namespace().items]

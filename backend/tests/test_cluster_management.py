@@ -81,6 +81,9 @@ def create_operator(api: SimpleNamespace) -> dict:
 
 
 class _ProbeOkClient(ClusterClient):
+    def health(self) -> None:
+        return None
+
     def namespaces(self) -> list[tuple[str, str]]:
         return [("default", "Active")]
 
@@ -178,6 +181,86 @@ def test_list_clusters_excludes_kubeconfig_content(api: SimpleNamespace) -> None
     assert response.status_code == 200, response.text
     for item in response.json()["items"]:
         assert "kubeconfig_content" not in item
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (None, "connected"),
+        (ClusterUnavailableError("connection refused"), "unavailable"),
+        (ClusterForbiddenError("denied"), "forbidden"),
+    ],
+)
+def test_list_clusters_reports_live_connection_status(
+    api: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+    error: Exception | None,
+    expected: str,
+) -> None:
+    class HealthClient(_ProbeOkClient):
+        def health(self) -> None:
+            if error is not None:
+                raise error
+
+    database = api.factory()
+    try:
+        database.add(
+            ClusterConnection(
+                name="staging",
+                endpoint="https://10.0.0.1:6443",
+                kubeconfig_ref="",
+                kubeconfig_content=VALID_KUBECONFIG,
+                status="active",
+            )
+        )
+        database.commit()
+    finally:
+        database.close()
+    monkeypatch.setattr(
+        "app.api.v1.routes.create_cluster_client",
+        lambda settings, **kwargs: HealthClient(kwargs.get("cluster_name") or "primary", object(), object()),
+    )
+
+    admin = admin_login(api)
+    with api.client as client:
+        response = client.get("/api/v1/clusters", headers=cookie_header(admin["cookie"]))
+
+    assert response.status_code == 200, response.text
+    staging = next(item for item in response.json()["items"] if item["name"] == "staging")
+    assert staging["status"] == "active"
+    assert staging["connection_status"] == expected
+
+
+def test_list_clusters_skips_probe_for_inactive_connections(api: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
+    database = api.factory()
+    try:
+        database.add(
+            ClusterConnection(
+                name="staging",
+                endpoint="https://10.0.0.1:6443",
+                kubeconfig_ref="",
+                kubeconfig_content=VALID_KUBECONFIG,
+                status="inactive",
+            )
+        )
+        database.commit()
+    finally:
+        database.close()
+
+    def raise_if_staging(settings, **kwargs):
+        if kwargs.get("cluster_name") == "staging":
+            raise AssertionError("inactive clusters must not be probed")
+        return _ProbeOkClient("primary", object(), object())
+
+    monkeypatch.setattr("app.api.v1.routes.create_cluster_client", raise_if_staging)
+    admin = admin_login(api)
+    with api.client as client:
+        response = client.get("/api/v1/clusters", headers=cookie_header(admin["cookie"]))
+
+    assert response.status_code == 200, response.text
+    staging = next(item for item in response.json()["items"] if item["name"] == "staging")
+    assert staging["status"] == "inactive"
+    assert staging["connection_status"] == "inactive"
 
 
 def test_viewer_can_list_clusters(api: SimpleNamespace) -> None:

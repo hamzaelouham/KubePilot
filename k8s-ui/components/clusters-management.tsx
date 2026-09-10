@@ -37,6 +37,7 @@ export type ManagedCluster = {
   name: string;
   endpoint: string;
   status: string;
+  connection_status: "connected" | "unavailable" | "forbidden" | "inactive" | "unknown";
   created_at: string;
 };
 
@@ -46,16 +47,8 @@ function formatDateTime(value: string) {
   return date.toLocaleString();
 }
 
-function statusBadge(status: string) {
-  if (status === "active") {
-    return (
-      <Badge variant="secondary" className="gap-1.5">
-        <span aria-hidden="true" className="size-1.5 rounded-full bg-emerald-500" />
-        Connected
-      </Badge>
-    );
-  }
-  if (status === "inactive") {
+function statusBadge(cluster: ManagedCluster) {
+  if (cluster.status === "inactive" || cluster.connection_status === "inactive") {
     return (
       <Badge variant="destructive" className="gap-1.5">
         <span aria-hidden="true" className="size-1.5 rounded-full bg-current opacity-70" />
@@ -63,7 +56,23 @@ function statusBadge(status: string) {
       </Badge>
     );
   }
-  return <Badge variant="outline">{status}</Badge>;
+  if (cluster.connection_status === "connected") {
+    return (
+      <Badge variant="secondary" className="gap-1.5">
+        <span aria-hidden="true" className="size-1.5 rounded-full bg-emerald-500" />
+        Connected
+      </Badge>
+    );
+  }
+  if (cluster.connection_status === "forbidden") {
+    return (
+      <Badge variant="destructive" className="gap-1.5">
+        <span aria-hidden="true" className="size-1.5 rounded-full bg-current opacity-70" />
+        Access denied
+      </Badge>
+    );
+  }
+  return <Badge variant="destructive">Unavailable</Badge>;
 }
 
 function ClusterManagementCallout({ children }: { children: React.ReactNode }) {
@@ -346,7 +355,7 @@ export function ClustersManagement({ canManage, canDelete }: { canManage: boolea
                 <TableCell>
                   <div className="flex items-center gap-2">
                     <Wifi aria-hidden="true" className="size-3.5 text-muted-foreground" />
-                    {statusBadge(cluster.status)}
+                    {statusBadge(cluster)}
                   </div>
                 </TableCell>
                 <TableCell>
