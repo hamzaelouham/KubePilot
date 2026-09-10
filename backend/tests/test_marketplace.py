@@ -821,6 +821,7 @@ def test_installation_history_orders_most_recent_first(api: SimpleNamespace) -> 
         "namespace",
         "release_name",
         "action",
+        "can_manage_release",
         "status",
         "error_message",
         "created_at",

@@ -30,6 +30,7 @@ from app.models.entities import (
     ClusterConnection,
     Deployment,
     Event,
+    InstallationJob,
     Namespace,
     Node,
     Pod,
@@ -854,7 +855,7 @@ def cluster_delete(
             detail={"code": "cluster_not_found", "message": "Cluster was not found"},
         )
     deleted_name = row.name
-    for model in (Namespace, Workload, Pod, Deployment, Service, Node, Event):
+    for model in (Namespace, Workload, Pod, Deployment, Service, Node, Event, InstallationJob):
         database.execute(delete(model).where(model.cluster_id == cluster_id))
     database.delete(row)
     record_audit(

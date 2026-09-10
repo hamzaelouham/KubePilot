@@ -16,7 +16,7 @@ from app.kubernetes.client import (
     ClusterUnavailableError,
 )
 from app.models.base import Base
-from app.models.entities import AuditAction, ClusterConnection, Namespace, Workload
+from app.models.entities import AuditAction, ClusterConnection, InstallationJob, Namespace, Workload
 
 
 
@@ -792,10 +792,34 @@ def test_delete_cluster_removes_row_cascades_and_audits(api: SimpleNamespace) ->
     try:
         namespace = Namespace(cluster_id=UUID(cluster_id), name="default", status="Active")
         workload = Workload(cluster_id=UUID(cluster_id), namespace="default", kind="Deployment", name="api", status="Running")
-        database.add_all([namespace, workload])
+        installation = InstallationJob(
+            package_id="staging-package",
+            package_name="redis",
+            chart_name="redis",
+            chart_repository="bitnami",
+            chart_version="2.0.0",
+            cluster_id=UUID(cluster_id),
+            namespace="default",
+            release_name="staging-redis",
+        )
+        primary = database.scalar(select(ClusterConnection).where(ClusterConnection.name == "primary"))
+        assert primary is not None
+        unrelated_installation = InstallationJob(
+            package_id="primary-package",
+            package_name="redis",
+            chart_name="redis",
+            chart_repository="bitnami",
+            chart_version="2.0.0",
+            cluster_id=primary.id,
+            namespace="default",
+            release_name="primary-redis",
+        )
+        database.add_all([namespace, workload, installation, unrelated_installation])
         database.commit()
         namespace_id = namespace.id
         workload_id = workload.id
+        installation_id = installation.id
+        unrelated_installation_id = unrelated_installation.id
     finally:
         database.close()
 
@@ -808,6 +832,8 @@ def test_delete_cluster_removes_row_cascades_and_audits(api: SimpleNamespace) ->
         assert database.get(ClusterConnection, UUID(cluster_id)) is None
         assert database.get(Namespace, namespace_id) is None
         assert database.get(Workload, workload_id) is None
+        assert database.get(InstallationJob, installation_id) is None
+        assert database.get(InstallationJob, unrelated_installation_id) is not None
         audit = database.scalar(
             select(AuditAction)
             .where(AuditAction.action == "cluster.delete")

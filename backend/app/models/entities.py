@@ -61,7 +61,7 @@ class ClusterConnection(Base):
     created_at: Mapped[CreatedAt]
 
     namespaces: Mapped[list["Namespace"]] = relationship(back_populates="cluster", cascade="all, delete-orphan")
-    installations: Mapped[list["InstallationJob"]] = relationship(back_populates="cluster")
+    installations: Mapped[list["InstallationJob"]] = relationship(back_populates="cluster", passive_deletes=True)
     __table_args__ = (Index("ix_cluster_connections_status", "status"),)
 
 
