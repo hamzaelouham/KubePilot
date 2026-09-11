@@ -32,7 +32,7 @@ export async function DELETE(request: NextRequest, ctx: { params: Promise<{ id: 
       cache: "no-store",
     });
     const body = await response.text();
-    return new NextResponse(body, {
+    return new NextResponse(body ? body : null, {
       status: response.status,
       headers: body ? { "content-type": "application/json" } : {},
     });

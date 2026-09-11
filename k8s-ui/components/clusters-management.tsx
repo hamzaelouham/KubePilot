@@ -48,6 +48,10 @@ function formatDateTime(value: string) {
   return date.toLocaleString();
 }
 
+function isLocal(cluster: ManagedCluster) {
+  return cluster.endpoint === "in-cluster";
+}
+
 function statusBadge(cluster: ManagedCluster, connectionStatus?: ClusterConnectionStatus) {
   if (cluster.status === "inactive" || connectionStatus === "inactive") {
     return (
@@ -414,14 +418,18 @@ export function ClustersManagement({ canManage, canDelete }: { canManage: boolea
                         {cluster.status === "active" ? "Deactivate" : "Reactivate"}
                       </Button>
                       {canDelete ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setDeleteTarget(cluster)}
-                          disabled={toggleId === cluster.id || pending !== null}
-                        >
-                          Delete
-                        </Button>
+                        isLocal(cluster) ? (
+                          <span className="text-xs text-muted-foreground">Local</span>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setDeleteTarget(cluster)}
+                            disabled={toggleId === cluster.id || pending !== null}
+                          >
+                            Delete
+                          </Button>
+                        )
                       ) : null}
                     </div>
                   </TableCell>

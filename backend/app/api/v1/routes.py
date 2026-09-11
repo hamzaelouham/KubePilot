@@ -888,6 +888,14 @@ def cluster_delete(
             status_code=404,
             detail={"code": "cluster_not_found", "message": "Cluster was not found"},
         )
+    if row.endpoint == "in-cluster":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "local_cluster_protected",
+                "message": "The local in-cluster connection cannot be deleted",
+            },
+        )
     deleted_name = row.name
     for model in (Namespace, Workload, Pod, Deployment, Service, Node, Event, InstallationJob):
         database.execute(delete(model).where(model.cluster_id == cluster_id))

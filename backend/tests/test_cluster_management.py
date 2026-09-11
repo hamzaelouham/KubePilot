@@ -957,6 +957,29 @@ def test_delete_cluster_unknown_id_returns_404(api: SimpleNamespace) -> None:
     assert response.json()["code"] == "cluster_not_found"
 
 
+def test_delete_local_cluster_returns_409_and_keeps_row(api: SimpleNamespace) -> None:
+    admin = admin_login(api)
+
+    database = api.factory()
+    try:
+        primary = database.scalar(select(ClusterConnection).where(ClusterConnection.endpoint == "in-cluster"))
+        assert primary is not None
+        primary_id = primary.id
+    finally:
+        database.close()
+
+    with api.client as client:
+        response = client.delete(f"/api/v1/clusters/{primary_id}", headers=cookie_header(admin["cookie"]))
+    assert response.status_code == 409, response.text
+    assert response.json()["code"] == "local_cluster_protected"
+
+    database = api.factory()
+    try:
+        assert database.get(ClusterConnection, primary_id) is not None
+    finally:
+        database.close()
+
+
 def test_delete_cluster_viewer_returns_403(api: SimpleNamespace) -> None:
     create_viewer(api)
     admin = admin_login(api)
