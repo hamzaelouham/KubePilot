@@ -32,6 +32,10 @@ class AuditEvent:
     MARKETPLACE_UNINSTALL_QUEUED = "marketplace.uninstall_queued"
     MARKETPLACE_UNINSTALL_SUCCEEDED = "marketplace.uninstall_succeeded"
     MARKETPLACE_UNINSTALL_FAILED = "marketplace.uninstall_failed"
+    RESOURCE_CREATE_REQUESTED = "resource.create_requested"
+    RESOURCE_CREATE_RESULT = "resource.create_result"
+    RESOURCE_DELETE_REQUESTED = "resource.delete_requested"
+    RESOURCE_DELETE_RESULT = "resource.delete_result"
 
 
 def record_audit(

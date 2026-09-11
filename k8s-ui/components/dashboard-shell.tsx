@@ -13,6 +13,7 @@ import {
   ShieldCog,
   SlidersHorizontal,
   Store,
+  SquarePen,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -29,6 +30,7 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -103,6 +105,7 @@ const resourceTitles: Record<string, string> = {
   overview: "Overview",
   workloads: "Workloads",
   marketplace: "Marketplace",
+  "manage-resources": "Manage resources",
   users: "Users",
   clusters: "Clusters",
   "cron-jobs": "Cron Jobs",
@@ -130,6 +133,8 @@ type DashboardShellProps = {
   activeCluster: string;
   clusters?: string[];
   onSelectCluster?: (cluster: string) => void;
+  namespaceOptions?: string[];
+  namespaceDisabled?: boolean;
   onNavigate: (resource: string, namespace: string) => void;
   children: React.ReactNode;
 };
@@ -141,25 +146,29 @@ export function DashboardShell({
   activeCluster,
   clusters,
   onSelectCluster,
+  namespaceOptions: suppliedNamespaces,
+  namespaceDisabled = false,
   onNavigate,
   children,
 }: DashboardShellProps) {
   const headerLabel = resourceTitles[activeResource] ?? "Overview";
 
-  const [namespaceOptions, setNamespaceOptions] = useState<string[]>(["default"]);
+  const [discoveredNamespaces, setNamespaceOptions] = useState<string[]>(["default"]);
+  const namespaceOptions = suppliedNamespaces ?? discoveredNamespaces;
 
   useEffect(() => {
+    if (suppliedNamespaces !== undefined) return;
     const controller = new AbortController();
     fetch(withCluster("/api/cluster/namespaces", activeCluster), { signal: controller.signal, cache: "no-store" })
       .then(async (response) => {
         if (!response.ok) return;
         const body = (await response.json()) as { items: { name: string }[] };
         const names = body.items.map((n) => n.name);
-        if (names.length > 0) setNamespaceOptions(names);
+        if (!controller.signal.aborted && names.length > 0) setNamespaceOptions(names);
       })
       .catch(() => {});
     return () => controller.abort();
-  }, [activeCluster]);
+  }, [activeCluster, suppliedNamespaces]);
 
   const isActive = (id: string) => id === activeResource;
 
@@ -229,6 +238,7 @@ export function DashboardShell({
                 {activeCluster ? (
                   <Select
                   value={activeCluster}
+                  items={(clusters?.length ? clusters : [activeCluster]).map((name) => ({ value: name, label: name }))}
                   onValueChange={(value) => {
                     if (value) onSelectCluster?.(value);
                   }}
@@ -240,6 +250,7 @@ export function DashboardShell({
                       <SelectValue placeholder="Select cluster" />
                     </SelectTrigger>
                     <SelectContent align="end">
+                      <SelectGroup>
                       {(clusters && clusters.length > 0 ? clusters : [activeCluster]).map((name) => (
                         <SelectItem
                           key={name}
@@ -253,6 +264,7 @@ export function DashboardShell({
                           </span>
                         </SelectItem>
                       ))}
+                      </SelectGroup>
                     </SelectContent>
                   </Select>
                 ) : (
@@ -304,6 +316,19 @@ export function DashboardShell({
                 Marketplace
               </Link>
 
+              <Link
+                href={withCluster(`/manage-resources?namespace=${encodeURIComponent(activeNamespace)}`, activeCluster)}
+                aria-current={isActive("manage-resources") ? "page" : undefined}
+                className={`flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-base transition ${
+                  isActive("manage-resources")
+                    ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent"
+                }`}
+              >
+                <SquarePen className="size-4 shrink-0" />
+                Manage resources
+              </Link>
+
               {navGroups.map((group) => {
                 const open = isGroupOpen(group.label);
                 const GroupIcon = group.icon;
@@ -342,10 +367,15 @@ export function DashboardShell({
             <div className="mt-6">
               <label className="mb-2 block text-sidebar-foreground/70">Namespace</label>
               <select
+                aria-label="Namespace"
                 value={activeNamespace}
+                disabled={namespaceDisabled}
                 onChange={(event) => onNavigate(activeResource, event.target.value)}
                 className="h-11 w-full rounded-xl border border-border/70 bg-card px-3.5 text-sm font-medium text-foreground shadow-sm outline-none transition-all hover:border-border focus:border-ring focus:ring-2 focus:ring-ring/20"
               >
+                {suppliedNamespaces !== undefined ? <option value="">All namespaces</option> : null}
+                {suppliedNamespaces !== undefined && activeNamespace && !namespaceOptions.includes(activeNamespace)
+                  ? <option value={activeNamespace}>{activeNamespace} (unavailable)</option> : null}
                 {namespaceOptions.map((namespace) => (
                   <option key={namespace} value={namespace}>
                     {namespace}

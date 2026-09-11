@@ -10,6 +10,8 @@ from sqlalchemy import select
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.v1.marketplace import router as marketplace_router
+from app.api.v1.resource_management import router as resource_management_router
+from app.kubernetes.resource_management import ResourceManagementError
 from app.api.v1.routes import router as v1_router
 from app.api.v1.schemas import ErrorResponse
 from app.api.v1.users import router as users_router
@@ -88,6 +90,15 @@ def create_app() -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
+
+    @app.exception_handler(ResourceManagementError)
+    async def resource_management_error_handler(
+        _request: Request, exception: ResourceManagementError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=exception.status,
+            content=ErrorResponse(code=exception.code, message=exception.message).model_dump(),
+        )
 
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(
@@ -185,6 +196,7 @@ def create_app() -> FastAPI:
     app.include_router(v1_router, prefix="/api/v1")
     app.include_router(users_router, prefix="/api/v1")
     app.include_router(marketplace_router, prefix="/api/v1")
+    app.include_router(resource_management_router, prefix="/api/v1")
     return app
 
 

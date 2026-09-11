@@ -1,122 +1,132 @@
 # KubePilot - Project Overview
 
-<!-- blueprint:source-hash e1c402f748ad0477da4c45ef48d7d91c955bdf2fb16402b334b7524ee42a022d -->
+<!-- blueprint:source-hash f43d2e6f8c1c2be38a803fe0f439b897920db8bd9b009ff93f945244ed843d2b -->
 
-> A self-hosted, Kubernetes-native operations platform: a modern control plane for cluster health, workload visibility, and platform operations, with FastAPI as the only component that talks to the Kubernetes API.
+> A self-hosted Kubernetes operations platform for cluster visibility, troubleshooting, and resource management, with FastAPI as the only application component that talks to Kubernetes.
 
 ## Problem
 
-Kubernetes operations teams face operational overload: raw kubectl and fragmented dashboards force context-switching, obscuring cluster health, workload failures, and safe remediation. KubePilot gives a centralized, decision-oriented interface for understanding health, investigating failures, and managing workloads with less operational friction.
+Kubernetes operations teams need to understand cluster health, investigate workload failures, and manage resources without constantly switching between terminals and fragmented dashboards. KubePilot brings these tasks into one interface while keeping Kubernetes as the operational source of truth.
 
 ## Users
 
-Primary: DevOps engineers, platform engineers, SREs who operate clusters and troubleshoot without living in kubectl.
-Secondary: engineering managers and technical operators needing higher-level health visibility.
-
-Auth tiers: anonymous (login only) → signed-in operator/viewer → admin (user management + role-aware UI).
+- DevOps engineers, platform engineers, and SREs operating clusters and investigating failures.
+- Engineering managers and technical operators needing higher-level health visibility.
+- Anonymous users can access login only. Signed-in users have exactly one role: admin, operator, or viewer. Admins manage users; admins and operators manage resources and Helm releases; viewers remain read-only.
 
 ## Features
 
-MVP (build-plan order, shipped):
+Features are listed in build-plan order. MVP covers 1–9; later items are post-MVP. Checked build-plan items are completed; pending items remain explicitly identified here.
 
-1. **Dashboard foundation** - polished operations UI shell, navigation, and resource layout.
-2. **Cluster overview and mock data** - overview metrics, workload statuses, namespace controls, and resource tables.
-3. **Authentication and protected app access** - local admin login, sessions, protected routes.
-4. **FastAPI backend foundation** - API layer, project structure, PostgreSQL-backed service foundation.
-5. **PostgreSQL application data model** - persistent users, sessions, cluster metadata, settings, audit records.
-6. **Kubernetes connection and namespace discovery** - live cluster access and resource inventory through the backend.
-7. **Core resource views** - pods, deployments, services, and nodes with status-driven data.
-8. **Resource details and troubleshooting surfaces** - detail pages for status, YAML, logs, events.
-9. **Run app on real k8s cluster (Minikube)** - containerized images (9a) deployed as workloads on Minikube (9b).
-10. **Real-time refresh and health updates** - live refresh, alerting cues, operational status updates.
-11. **Live resource metrics and observability** - CPU/memory/storage utilization with Metrics API (a-e) and metrics UI.
-12. **Users, Authentication & RBAC** - three roles (admin/operator/viewer), admin provisioning, password policy, centralized enforcement, audit logging, role-aware UI.
-13. **Multi-cluster support** - connect and compare multiple environments; backend cluster store + routing (a/b), header selector (c), admin cluster management page (d).
-14. **AI Copilot for Kubernetes operations** *(next unstarted item before Marketplace)* - natural-language investigation and approved actions.
-15. **shadcn/ui integration and table migration** - shadcn/ui components and reusable Data Tables.
-16. **Header components and theme support** - shadcn header controls and light/dark theme switching.
-17. **UI polish & design consistency** - unified light-palette pages, grouped sidebar (OVERVIEW / WORKLOADS / NETWORK / CONFIGURATION / STORAGE / CLUSTER / ADMINISTRATION), client-routed shell around a `clusterId` context.
+1. **Dashboard foundation** — completed application shell, navigation, and resource layout.
+2. **Cluster overview and mock data** — completed overview metrics, workload statuses, namespace controls, and resource tables.
+3. **Authentication and protected app access** — completed local login, sessions, and protected routes.
+4. **FastAPI backend foundation** — completed API and database-backed service foundation.
+5. **PostgreSQL application data model** — completed persistence for users, sessions, settings, cluster metadata, and operational records.
+6. **Kubernetes connection and namespace discovery** — completed cluster connection and live namespace/resource discovery.
+7. **Core resource views** — completed pods, deployments, services, and node listings.
+8. **Resource details and troubleshooting** — completed status, YAML, logs, and events views.
+9. **Run on Minikube** — completed containerization (9a) and in-cluster deployment/RBAC (9b).
+10. **Real-time refresh and health updates** — completed live refresh, alerting cues, and status updates.
+11. **Live resource metrics and observability** — completed node, workload, and storage metrics (11a–c), Metrics API integration (11d), and metrics UI (11e).
+12. **Users, Authentication & RBAC** — completed admin/operator/viewer roles, admin provisioning, activation, password reset/forced change, 15-day password expiration, centralized permissions, audit logging, and role-aware UI.
+13. **Multi-cluster support** — completed cluster store/registration (13a), backend routing (13b), header selector (13c), and admin cluster management (13d).
+14. **AI Copilot for Kubernetes operations** — pending natural-language investigation and approved actions; first unchecked item in numeric build order.
+15. **shadcn/ui integration and table migration** — completed reusable resource Data Tables while preserving the existing design.
+16. **Header components and theme support** — completed header controls and light/dark themes.
+17. **UI polish & design consistency** — completed light-palette pages, grouped sidebar, header, and cluster-aware shell.
+18. **KubePilot Marketplace** — mostly completed; 18l responsive UI polish remains pending. Completed scope includes navigation, Artifact Hub discovery/search/details, install configuration/API/jobs/status/progress/history, validation, and rollback/uninstall actions (18a–k, 18m–n). Current release management is limited to releases installed through KubePilot, with previous-revision rollback and no upgrade or revision picker.
+19. **Manage resources** — approved, pending sidebar section for resource and Helm management in the selected cluster, delivered in order:
 
-Post-MVP, roadmap:
+    - **19a — Kubernetes resource management:** `/manage-resources` and Kubernetes resources tab; list, create through validated YAML, and delete pods, deployments, namespaces, services, and other explicitly supported common types.
+    - **19b — Installed Helm release management:** Helm releases tab; discover releases directly from the selected cluster across namespaces, including installations outside KubePilot; show status and revision history; support confirmed rollback/uninstall using the existing job, progress, and audit pipeline.
+    - **19c — Helm repositories and upgrades:** list/add/update/remove KubePilot-managed chart repository connections and upgrade installed releases using an explicitly resolved chart source and version, with review and background job progress.
 
-18. **KubePilot Marketplace** *(next)* - discover and install Kubernetes Helm packages from Artifact Hub.
-    - 18a navigation & page → 18b package discovery → 18c search & filtering → 18d package details → 18e installation configuration dialog → 18f installation API → 18g job model + background worker → 18h status API → 18i progress UI → 18j installation history → 18k security & validation → 18l UI polish & responsive → 18m rollback/uninstall release management (backend) → 18n release action UI.
+Feature 19 reuses cluster selection, namespace controls, application layout, and backend permissions. Admins/operators receive management controls; viewers remain read-only. Destructive actions require confirmation and audit records. Cluster changes refresh the displayed scope and prevent actions from using a stale target. Repository connections are Helm client configuration, not resources automatically discoverable from a cluster.
 
 ## Data model
 
-All tables carry `id` (uuid pk) and `created_at`; cluster-scoped entities reference `cluster_connections.id`.
+Existing application records use UUID identifiers and creation timestamps; cluster-scoped records reference `cluster_connections.id`. Preserve existing authentication and cluster identity contracts when implementing feature 19.
 
-- **UserAccount** (`user_accounts`): email (unique), password_hash, role (default `operator`), is_active, updated_at, last_login_at, password_changed_at, password_expires_at, must_change_password. One-to-many Session, UserPreference; one-to-many AuditAction as actor.
-- **Session**: user_id (FK, cascade), token_hash (unique), issued_at, expires_at, restricted (forced non-admin access for password/restricted sessions).
-- **ClusterConnection** (`cluster_connections`): name (unique), endpoint, kubeconfig_ref, status. One-to-many Namespace, Workload, Pod, Deployment, Service, Node, Event, InstallationJob.
+- **UserAccount** (`user_accounts`): email (unique string), password_hash, role (admin/operator/viewer), is_active (boolean), updated_at, last_login_at, password_changed_at, password_expires_at, must_change_password. One-to-many sessions and audit actions.
+- **Session**: user_id (foreign key), token_hash (unique), issued_at, expires_at, restricted (boolean for password-change restrictions).
+- **ClusterConnection** (`cluster_connections`): name (unique), endpoint, kubeconfig reference/configuration, status. Associated namespaces, resources, events, and Helm jobs share its identity; credentials remain backend-only.
 - **Namespace**: cluster_id + name (unique pair), status.
 - **Workload**: cluster_id + namespace + kind + name (unique), status, labels (JSON), image.
 - **Pod**: cluster_id + namespace + name (unique), status, ready, restarts, age.
 - **Deployment**: cluster_id + namespace + name (unique), replicas, status, image.
 - **Service**: cluster_id + namespace + name (unique), selector (JSON), ports (JSON), status.
 - **Node**: cluster_id + name (unique), role, status, version.
-- **Event**: cluster_id + namespace (nullable), kind, name, message.
-- **AuditAction** (`audit_actions`): actor_id (FK, nullable), action, resource_type, resource_id, target_user_id (FK, nullable), result, context (nullable). Captures admin user-management actions; no UI surface yet.
-- **UserPreference**: user_id (unique FK), default_namespace, view_settings (JSON).
-- **InstallationJob** (`installation_jobs`, feature 18g): package_id, package_name, chart_name, chart_repository, chart_version, cluster_id (FK → ClusterConnection), namespace, release_name, status (queued/running/succeeded/failed/cancelled), error_message (nullable), started_at, completed_at. Feature 18m extends it with `action` (`install` | `rollback` | `uninstall`) and nullable `revision` (backward-compatible migration) so rollback/uninstall run as the same job-driven Helm pipeline.
+- **Event**: cluster_id, namespace (nullable), kind, name, message.
+- **AuditAction** (`audit_actions`): actor_id (nullable foreign key), action, resource_type, resource_id, target_user_id (nullable foreign key), result, context (nullable). Feature 19 records resource and Helm management actions with their target scope.
+- **UserPreference**: user_id (unique foreign key), default_namespace, view_settings (JSON).
+- **InstallationJob** (`installation_jobs`): package/chart metadata, cluster_id (foreign key), namespace, release_name, action (`install`/`rollback`/`uninstall`), revision where applicable, status (`queued`/`running`/`succeeded`/`failed`/`cancelled`), error_message (nullable), started_at, completed_at. Feature 19b must support release actions without requiring a Marketplace install record; 19c adds upgrade job metadata and behavior through a compatible extension.
+- **Helm repository configuration** (planned, 19c): repository name and URL managed by KubePilot. Storage scope, credential support, and release-to-chart-source associations must be specified before implementation.
 
-> Lock the UserAccount/Session/RBAC shapes - Multi-cluster (13) and the audit-log surface build on them. InstallationJob is cluster-scoped via `cluster_connections.id` and surfaced by the Marketplace progress (18i) and history (18j) UIs.
+Kubernetes remains the source of truth for live resources and Helm releases. Marketplace job history is not a complete inventory of installed releases. Feature 19 persists application configuration, action/job metadata, and audit records needed for management and progress reporting; it reads current inventory from the selected cluster.
 
 ## Tech stack
 
-- **Next.js (TypeScript, Tailwind CSS, shadcn/ui)** - frontend UI; same-origin API proxy (`proxy.ts`) forwards `/api/*` to the backend.
-- **FastAPI (Python)** - backend API, session validation, RBAC enforcement, Kubernetes integration, and (18f-18h) Marketplace install jobs + background Helm execution.
-- **PostgreSQL** - users, sessions, audit records, settings, cluster metadata, and InstallationJob records.
-- **Kubernetes Python client** - cluster API access through FastAPI only; frontend never connects to Kubernetes directly.
-- **Artifact Hub search API** - read-only Helm package discovery (18b/18c); no API key for basic public search.
-- **Helm (backend)** - chart repo add/update/install (18g), plus release rollback/uninstall (18m), all executed list-argv via subprocess inside FastAPI.
-- **Shared signed HTTP-only session cookie** - auth boundary between Next.js and FastAPI, validated against PostgreSQL.
-- **Alembic** - schema migrations (backward-compatible chain: `dd752e8644a9` → `570583371bec` → `a1b2c3d4e5f6`).
+- **Next.js, TypeScript, Tailwind CSS, shadcn/ui** — UI, reusable components, and same-origin API routes to FastAPI.
+- **FastAPI (Python)** — authentication, permissions, application APIs, Kubernetes operations, and backend Helm integration.
+- **PostgreSQL** — users, sessions, settings, cluster configuration, audit records, and operational jobs.
+- **Kubernetes Python client** — live cluster discovery and planned resource creation/deletion through FastAPI only.
+- **Artifact Hub search API** — public Helm package discovery; no API key for basic public search.
+- **Helm in the backend** — repository setup and installs, rollback/uninstall, and planned release discovery/history, repository management, and upgrades. Use validated argument lists, never arbitrary user-provided commands.
+- **Existing background job mechanism** — installation and release mutation progress; no new Celery/RQ requirement.
+- **Signed HTTP-only session cookie** — shared Next.js/FastAPI authentication contract.
+- **Alembic** — compatible PostgreSQL schema migrations when persisted job/configuration contracts change.
 
 ## Monetization
 
-Self-hosted operations platform, likely commercial open-core or enterprise model (licensing, support/onboarding, premium multi-cluster/audit modules, managed hosting). v1 focuses on product value and reliability before aggressive monetization.
+Self-hosted operations software with potential licensing, support/onboarding, premium multi-cluster/audit modules, or managed hosting. Initial delivery focuses on product reliability and useful operations workflows before monetization expansion.
 
 ## UI/UX
 
-Desktop-first operations dashboard. Consistent light slate palette (`bg-slate-100` surfaces, `cyan` accents, `red-50/amber-50` status colors) with semantic shade tokens and light/dark mode via next-themes.
+Desktop-first operations interface with readable tables, status emphasis, namespace/resource navigation, and low-noise layouts. Feature 17 establishes the light palette and shared design language; feature 16 provides light/dark theme support. The project plan still describes an older dark-first direction; see Open questions.
 
-- `/` - branded home page (light dashboard palette).
-- `/login` - simple centered sign-in form only.
-- `/dashboard?resource=<type>&namespace=<ns>` - shell with grouped sidebar + header (KubePilot brand, cluster selector, notifications, user menu); views for overview, workloads, pods, deployments, services, nodes, namespaces, cluster, cluster-roles, storage.
-- `/dashboard/detail?resourceType=&name=&namespace=` - resource detail: Status, YAML, Logs, Events tabs.
-- `/marketplace` - Marketplace (feature 18): discover and install Helm packages; package grid/cards, search, detail view, install/progress/history surfaces, and (18n) Rollback/Uninstall actions on history rows, reusing the shell, shadcn/ui, and existing cluster/namespace selectors.
-- `/settings/clusters` - registered clusters + activate/deactivate (admin page).
-- `/settings/users` - admin user management (feature 12).
-- `/settings/password` - self-service / forced password change (simple centered form).
-- `/api/auth/*`, `/api/users/*` - same-origin proxy routes to the backend.
+- `/` and `/login` — branded home and local sign-in.
+- `/dashboard?resource=<type>&namespace=<ns>` — resource navigation, grouped sidebar, header cluster selector, notifications, and user menu.
+- `/dashboard/detail?resourceType=&name=&namespace=` — resource status, YAML, logs, and events.
+- `/marketplace` — Artifact Hub package discovery, install configuration, job progress/history, and existing rollback/uninstall controls.
+- `/manage-resources` (planned, 19) — sidebar label **Manage resources**, Kubernetes resources and Helm releases tabs, and repository configuration within the same section. Reuse the application shell and selected cluster/namespace controls.
+- `/settings/clusters` — registered cluster management.
+- `/settings/users` — admin user management.
+- `/settings/password` — self-service and forced password change.
+- `/api/auth/*`, `/api/users/*`, and operational API routes — same-origin bridge to FastAPI.
 
-Design direction (feature 17 + 18l): one design language across home, auth, and dashboard pages; structured sidebar navigation by resource group and namespace; low-noise layouts; status emphasis with actionable data; Marketplace looks native to KubePilot (reuse shadcn/ui, Tailwind theme/spacing/colors).
+Manage resources must show loading, empty, denied, invalid-input, and unexpected-error states, clear create/delete results, release progress, and destructive-target confirmation. Kubernetes credentials stay out of the browser. Preserve Marketplace behavior while extending live release management under feature 19.
 
 ## Deployment
 
-Self-hosted, Kubernetes-native:
+Self-hosted Next.js frontend, FastAPI backend, and PostgreSQL, with completed containerization and Minikube deployment from feature 9. The customer may operate the platform on-premise, in a private cloud, or in managed Kubernetes.
 
-- Frontend: Next.js standalone build, deployed as a pod (`hamzaelouham/kubepilot-ui`).
-- Backend: FastAPI + uvicorn + Alembic upgrade on boot (pod `hamzaelouham/kubepilot-backend`); also runs OCI-backed background Helm install jobs for the Marketplace.
-- Database: PostgreSQL stateful workload on the cluster.
-- Kubernetes: FastAPI connects to the cluster in-cluster via ServiceAccount + RBAC (imagePullPolicy IfNotPresent for local Minikube workflow).
-- Env vars: `KUBEPILOT_AUTH_SECRET` (≥32 chars), `KUBEPILOT_DATABASE_URL`, `KUBEPILOT_CLUSTER_NAME` (default `primary`), `KUBEPILOT_ADMIN_EMAIL`, `KUBEPILOT_ADMIN_PASSWORD`, `KUBEPILOT_BACKEND_URL` (frontend → backend, default `http://127.0.0.1:8000`, in-cluster `http://backend:8000`).
+- Frontend: standalone Next.js runtime; development `yarn dev`, build `yarn build`, production `yarn start`.
+- Backend: FastAPI/uvicorn, database migrations on boot, and the existing Helm background worker.
+- PostgreSQL: durable application data, sessions, configuration, audit records, and jobs.
+- Kubernetes: backend ServiceAccount/RBAC for in-cluster access and registered cluster connections for multi-cluster routing. API credentials remain exclusively in the backend.
+- Runtime configuration includes `KUBEPILOT_AUTH_SECRET`, `KUBEPILOT_DATABASE_URL`, `KUBEPILOT_CLUSTER_NAME`, `KUBEPILOT_ADMIN_EMAIL`, `KUBEPILOT_ADMIN_PASSWORD`, and `KUBEPILOT_BACKEND_URL`.
 - Health endpoint: `GET /api/v1/health`.
-- Topology: one cluster now; Multi-cluster (13) later - the UI shell already carries a `clusterId` context by design.
+- Deployment needs secure secret handling, worker execution, health checks, and logs. Repository configuration persistence/credentials for feature 19c must be specified before implementation.
+
+The project plan's topology text still describes multi-cluster support as future work; the completed feature 13 checklist defines the current delivery state.
 
 ## Authentication boundary
 
-- Next.js and FastAPI share the signing secret, cookie name (`kubepilot_session`), and session format.
-- Cookie is signed and HTTP-only; browser JavaScript cannot mint or override identity.
-- FastAPI validates signature/expiry, loads the user from PostgreSQL, and enforces roles before serving protected data.
-- Kubernetes credentials remain exclusively in the backend runtime; never sent to the frontend, browser, or AI.
+- Next.js and FastAPI share the signing secret, session cookie name, and format.
+- The cookie is signed and HTTP-only; browser JavaScript and request payloads cannot mint or override identity.
+- FastAPI validates signature/expiry, loads the authenticated user from PostgreSQL, and enforces permissions before protected reads or mutations.
+- Each feature 19 resource/release operation must resolve its selected registered cluster and applicable namespace on the backend.
+- Kubernetes credentials remain in the backend runtime, never the frontend, browser, or AI integration.
+- Destructive management actions require target confirmation, backend authorization, and audit logging.
 
 ## Open questions
 
-- **Project plan §3 lists "Basic resource actions such as scale and restart" as MVP, but the build plan has no such feature.** Add a build-plan item if those operations are wanted. (Plan §3 also still lists the MVP-era feature set rather than matching the shipped 1-17 checklist - reconciled in the overview from build-plan.md.)
-- **Project plan §7 describes a "dark, polished control-plane aesthetic"; the shipped UI and the approved feature 17 direction use the light slate palette.** Project plan §7 should be updated to match.
-- Audit logging is recorded per feature 12 but has no UI surface; ADMINISTRATION in feature 17's sidebar omits it until a dedicated audit-log feature exists.
-- Plan §4's data list was not restated to track the new build-plan items: 18m extends InstallationJob with `action`/`revision` MySQL-style, 18n adds no new data. Consider updating project-plan.md §4 if release-management jobs are part of the stored data.
-- Exact ServiceAccount and Kubernetes RBAC policy bindings for the first cluster are still not pinned in the plans.
-- Marketplace (18) items resolved in 18j/18k: install-permission gate is `marketplace:install` for operator + admin (viewer 403), kube-system installs blocked (422 `namespace_protected`), metadata handled as data not executable input (502 `invalid_package_source`, 422 `package_mismatch`), list-argv Helm construction. Remaining to decide in 18m: release-management semantics (previous-revision-only rollback, uninstall scope for releases the app installed), the new `marketplace:release` permission wiring, and job restart behavior for the background worker.
+- **Resource scope for 19a:** the exact additional common resource types, YAML validation contract, and protected-resource/namespace policy must be defined in its spec. Pods, deployments, namespaces, and services are explicit requirements.
+- **Helm contracts for 19b/19c:** define rollback targeting, repository storage scope and credential support, chart-source association for external releases, and upgrade values handling. Do not infer repository connections from live release inventory.
+- **Scale/restart gap:** project-plan §3 lists basic scale/restart actions, but the build plan has no dedicated item. Feature 19 approves create/delete, Helm management, and upgrades; it does not silently add scale/restart.
+- **UI direction mismatch:** project-plan §7 describes a dark-first aesthetic, while completed feature 17 establishes a light palette and shared shell. Preserve the existing UI for feature 19.
+- **Outdated milestone text:** project-plan §8 and its assumptions still describe single-cluster operation and backend integration as future work; completed build-plan items record multi-cluster/backend delivery. Earlier MVP feature summaries also omit later shipped items.
+- Exact ServiceAccount/RBAC policy and system namespace protections for new management operations must be carried into the implementation specs. Marketplace 18k already requires kube-system protection unless explicitly allowed by policy.
+- Audit recording is planned/implemented across features, but a dedicated audit-log UI is not a build-plan item.
+- The final self-hosted/managed-service offering remains a product decision.

@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import os
+import re
 
 
 class ConfigurationError(RuntimeError):
@@ -20,6 +21,13 @@ class Settings:
     worker_poll_seconds: int = 5
     helm_binary: str = "helm"
     helm_install_timeout_seconds: int = 600
+    host_namespace: str = "kubepilot"
+
+    def __post_init__(self) -> None:
+        if len(self.host_namespace) > 63 or not re.fullmatch(
+            r"[a-z0-9](?:[-a-z0-9]*[a-z0-9])?", self.host_namespace
+        ):
+            raise ConfigurationError("KUBEPILOT_HOST_NAMESPACE must be a valid namespace name")
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -72,6 +80,7 @@ class Settings:
             worker_poll_seconds=worker_poll_seconds,
             helm_binary=helm_binary,
             helm_install_timeout_seconds=helm_install_timeout_seconds,
+            host_namespace=os.getenv("KUBEPILOT_HOST_NAMESPACE", "kubepilot").strip(),
         )
 
     @staticmethod

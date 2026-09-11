@@ -26,6 +26,15 @@ Secondary users may include engineering managers and technical operators who nee
 - Event-driven or refreshable data updates for operational clarity
 - AI-assisted investigation as a later expansion, not the initial delivery
 - KubePilot Marketplace (post-MVP) for discovering, installing, and tracking Kubernetes Helm packages from Artifact Hub
+- Manage resources (post-MVP, feature 19) for Kubernetes create/delete operations and Helm release/repository management in the selected cluster
+
+Manage resources is delivered in three ordered items:
+
+- **19a - Kubernetes resources:** list, create through validated YAML, and delete pods, deployments, namespaces, services, and other common resource types explicitly identified in the implementation spec.
+- **19b - Installed Helm releases:** discover releases directly from the selected cluster, including installations outside KubePilot; show release status and revision history, and support rollback and uninstall.
+- **19c - Helm repositories and upgrades:** list, add, update, and remove chart repository connections managed by KubePilot, and upgrade installed releases using an explicitly resolved chart source and version. Helm repositories are client configuration and cannot be automatically discovered from a cluster in the same way as installed releases.
+
+All three items live under the "Manage resources" sidebar entry. Admins and operators have management controls; viewers remain read-only. Every resource operation and release action targets the selected registered cluster and applicable namespace, with FastAPI enforcing permissions. Destructive actions require confirmation of the target and produce audit records. Helm mutations use the existing background job/progress pattern, and credentials stay in the backend.
 
 ## 4. Data - What are we storing?
 
@@ -39,7 +48,10 @@ Secondary users may include engineering managers and technical operators who nee
 - User-defined settings such as default namespace and view preferences
 - Audit records for admin actions and resource operations
 - Application-level session and RBAC metadata for local access control
-- Marketplace installation jobs (package and chart metadata, target cluster, namespace, release name, status, error message, timestamps) and resolved Artifact Hub package metadata
+- Marketplace installation and release-action jobs (package and chart metadata, target cluster, namespace, release name, action, revision where applicable, status, error message, timestamps) and resolved Artifact Hub package metadata; feature 19 extends release management to externally installed releases and upgrades
+- KubePilot-managed Helm chart repository configuration (name and URL); storage scope, credential support, and release-to-chart-source associations are to be specified in 19c
+
+Kubernetes remains the source of truth for live resources and Helm releases. Manage resources reads current cluster state; Marketplace installation history is not an inventory of every installed release. Persist only the application configuration, action/job metadata, and audit records needed to support management and progress reporting.
 
 ## 5. Tech - What stack are we using?
 
@@ -51,6 +63,7 @@ Secondary users may include engineering managers and technical operators who nee
 - Architecture: a modern UI backed by structured API endpoints, with Kubernetes as the operational system of record and credentials kept exclusively in FastAPI
 - Future direction: AI Copilot integration for investigation and guided action support
 - Marketplace integration: Artifact Hub package search API (read-only, public search, no API key for basic search) and Helm execution inside the FastAPI backend (repo add/update/install) with a simple background job mechanism for V1; do not introduce Celery/RQ unless the existing architecture already needs it
+- Resource management: Kubernetes resource creation/deletion through the Kubernetes Python client in FastAPI; live Helm release discovery, history, rollback, uninstall, repository configuration, and upgrades through backend Helm integration, using validated command arguments and the existing job mechanism for release mutations
 
 Confirmed architecture: the browser reaches the Next.js UI, the UI reaches FastAPI over HTTPS or WebSocket, and FastAPI is the only application component that reaches the Kubernetes API. AI features will use the same backend API and never connect directly to Kubernetes.
 
@@ -79,6 +92,8 @@ The interface should prioritize:
 - Actionable data without hiding technical detail beneath visual clutter
 - Consistency across overview, workload, and detail views
 - A responsive, desktop-first experience for operations work
+- A "Manage resources" sidebar entry at `/manage-resources`, using the existing application shell and selected cluster/namespace controls, with Kubernetes resources and Helm releases tabs plus repository configuration under the same section
+- Clear creation/deletion feedback, release action progress, confirmation of destructive targets, and loading, empty, denied, and error states; switching clusters refreshes the displayed scope and prevents actions from using a stale target
 
 The long-term UI should evolve from an elegant dashboard foundation into a dense but readable operational workflow surface that supports investigation, change review, and escalation.
 
