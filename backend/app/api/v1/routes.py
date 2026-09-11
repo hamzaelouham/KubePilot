@@ -52,6 +52,7 @@ from .discovery_schemas import (
 from .auth_schemas import ChangePasswordRequest, LoginRequest, LoginResponse, MeResponse
 from .cluster_schemas import (
     ClusterCreateRequest,
+    ClusterHealthResponse,
     ClusterListResponse,
     ClusterSummary,
     ClusterUpdateRequest,
@@ -630,7 +631,6 @@ def _probe_kubeconfig(settings: Settings, content: str, endpoint: str) -> None:
 @router.get("/clusters", response_model=ClusterListResponse)
 def cluster_list(
     database: Annotated[SQLAlchemySession, Depends(get_database_session)],
-    settings: Annotated[Settings, Depends(get_settings)],
     _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.CLUSTERS_READ))],
 ) -> ClusterListResponse:
     rows = database.scalars(select(ClusterConnection).order_by(ClusterConnection.name)).all()
@@ -641,7 +641,6 @@ def cluster_list(
                 name=row.name,
                 endpoint=row.endpoint,
                 status=row.status,
-                connection_status=_connection_status(settings, row),
                 created_at=row.created_at,
             )
             for row in rows
@@ -664,6 +663,22 @@ def _connection_status(settings: Settings, cluster: ClusterConnection) -> str:
         return "forbidden"
     except ClusterClientError:
         return "unavailable"
+
+
+@router.get("/clusters/{cluster_id}/health", response_model=ClusterHealthResponse)
+def cluster_health(
+    cluster_id: UUID,
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.CLUSTERS_READ))],
+) -> ClusterHealthResponse:
+    row = database.get(ClusterConnection, cluster_id)
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "cluster_not_found", "message": "Cluster was not found"},
+        )
+    return ClusterHealthResponse(connection_status=_connection_status(settings, row))
 
 
 async def cluster_create(

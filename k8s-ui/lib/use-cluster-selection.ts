@@ -32,10 +32,10 @@ export function useClusterSelection(initialCluster?: string) {
       .then(async (response) => {
         if (!response.ok) return;
         const body = (await response.json()) as {
-          items?: { name: string; status?: string; connection_status?: string }[];
+          items?: { name: string; status?: string }[];
         };
         const names = (body.items ?? [])
-          .filter((item) => item.status === "active" && item.connection_status === "connected")
+          .filter((item) => item.status === "active")
           .map((item) => item.name);
         setClusters(names);
         setCluster((current) => {

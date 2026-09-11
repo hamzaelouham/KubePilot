@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { CalendarDays, Link, Server, Wifi } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,9 +37,10 @@ export type ManagedCluster = {
   name: string;
   endpoint: string;
   status: string;
-  connection_status: "connected" | "unavailable" | "forbidden" | "inactive" | "unknown";
   created_at: string;
 };
+
+export type ClusterConnectionStatus = "connected" | "unavailable" | "forbidden" | "inactive" | "checking";
 
 function formatDateTime(value: string) {
   const date = new Date(value);
@@ -47,8 +48,8 @@ function formatDateTime(value: string) {
   return date.toLocaleString();
 }
 
-function statusBadge(cluster: ManagedCluster) {
-  if (cluster.status === "inactive" || cluster.connection_status === "inactive") {
+function statusBadge(cluster: ManagedCluster, connectionStatus?: ClusterConnectionStatus) {
+  if (cluster.status === "inactive" || connectionStatus === "inactive") {
     return (
       <Badge variant="destructive" className="gap-1.5">
         <span aria-hidden="true" className="size-1.5 rounded-full bg-current opacity-70" />
@@ -56,7 +57,10 @@ function statusBadge(cluster: ManagedCluster) {
       </Badge>
     );
   }
-  if (cluster.connection_status === "connected") {
+  if (!connectionStatus || connectionStatus === "checking") {
+    return <Badge variant="outline">Checking…</Badge>;
+  }
+  if (connectionStatus === "connected") {
     return (
       <Badge variant="secondary" className="gap-1.5">
         <span aria-hidden="true" className="size-1.5 rounded-full bg-emerald-500" />
@@ -64,7 +68,7 @@ function statusBadge(cluster: ManagedCluster) {
       </Badge>
     );
   }
-  if (cluster.connection_status === "forbidden") {
+  if (connectionStatus === "forbidden") {
     return (
       <Badge variant="destructive" className="gap-1.5">
         <span aria-hidden="true" className="size-1.5 rounded-full bg-current opacity-70" />
@@ -91,6 +95,7 @@ async function fetchClusters(): Promise<{ items: ManagedCluster[] } | "unauthori
 
 export function ClustersManagement({ canManage, canDelete }: { canManage: boolean; canDelete?: boolean }) {
   const [clusters, setClusters] = useState<ManagedCluster[]>([]);
+  const [healthByCluster, setHealthByCluster] = useState<Record<string, ClusterConnectionStatus>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
@@ -104,6 +109,29 @@ export function ClustersManagement({ canManage, canDelete }: { canManage: boolea
   const [editName, setEditName] = useState("");
   const [editKubeconfig, setEditKubeconfig] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ManagedCluster | null>(null);
+
+  const refreshHealth = useCallback(async (items: ManagedCluster[]) => {
+    if (items.length === 0) {
+      setHealthByCluster({});
+      return;
+    }
+    const results = await Promise.all(
+      items.map(async (cluster) => {
+        let status: ClusterConnectionStatus = "unavailable";
+        try {
+          const response = await fetch(`/api/clusters/${cluster.id}/health`, { cache: "no-store" });
+          if (response.ok) {
+            const body = (await response.json()) as { connection_status?: ClusterConnectionStatus };
+            status = body.connection_status ?? "unavailable";
+          }
+        } catch {
+          // Health check is best-effort; the badge stays on the last known state.
+        }
+        return [cluster.id, status] as const;
+      }),
+    );
+    setHealthByCluster(Object.fromEntries(results));
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -129,11 +157,12 @@ export function ClustersManagement({ canManage, canDelete }: { canManage: boolea
       setClusters(result.items);
       setError(null);
       setLoading(false);
+      void refreshHealth(result.items);
     })();
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [refreshHealth]);
 
   const extractError = async (response: Response): Promise<string | null> => {
     if (response.status === 401) {
@@ -166,6 +195,7 @@ export function ClustersManagement({ canManage, canDelete }: { canManage: boolea
       return;
     }
     setClusters(result.items);
+    void refreshHealth(result.items);
   };
 
   const doCreate = async () => {
@@ -355,7 +385,7 @@ export function ClustersManagement({ canManage, canDelete }: { canManage: boolea
                 <TableCell>
                   <div className="flex items-center gap-2">
                     <Wifi aria-hidden="true" className="size-3.5 text-muted-foreground" />
-                    {statusBadge(cluster)}
+                    {statusBadge(cluster, healthByCluster[cluster.id])}
                   </div>
                 </TableCell>
                 <TableCell>

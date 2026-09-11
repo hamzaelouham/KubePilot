@@ -12,8 +12,13 @@ class ClusterSummary(BaseModel):
     name: str
     endpoint: str
     status: str
-    connection_status: Literal["connected", "unavailable", "forbidden", "inactive", "unknown"] = "unknown"
     created_at: datetime
+
+
+class ClusterHealthResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    connection_status: Literal["connected", "unavailable", "forbidden", "inactive", "unknown"]
 
 
 class ClusterListResponse(BaseModel):

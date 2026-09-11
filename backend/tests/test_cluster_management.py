@@ -156,6 +156,7 @@ def test_default_cluster_seeded_on_startup(api: SimpleNamespace) -> None:
     assert body["items"][0]["name"] == "primary"
     assert body["items"][0]["endpoint"] == "in-cluster"
     assert body["items"][0]["status"] == "active"
+    assert "connection_status" not in body["items"][0]
 
 
 def test_seeding_is_idempotent(api: SimpleNamespace) -> None:
@@ -191,7 +192,7 @@ def test_list_clusters_excludes_kubeconfig_content(api: SimpleNamespace) -> None
         (ClusterForbiddenError("denied"), "forbidden"),
     ],
 )
-def test_list_clusters_reports_live_connection_status(
+def test_cluster_health_reports_live_connection_status(
     api: SimpleNamespace,
     monkeypatch: pytest.MonkeyPatch,
     error: Exception | None,
@@ -204,16 +205,16 @@ def test_list_clusters_reports_live_connection_status(
 
     database = api.factory()
     try:
-        database.add(
-            ClusterConnection(
-                name="staging",
-                endpoint="https://10.0.0.1:6443",
-                kubeconfig_ref="",
-                kubeconfig_content=VALID_KUBECONFIG,
-                status="active",
-            )
+        cluster = ClusterConnection(
+            name="staging",
+            endpoint="https://10.0.0.1:6443",
+            kubeconfig_ref="",
+            kubeconfig_content=VALID_KUBECONFIG,
+            status="active",
         )
+        database.add(cluster)
         database.commit()
+        cluster_id = cluster.id
     finally:
         database.close()
     monkeypatch.setattr(
@@ -223,27 +224,25 @@ def test_list_clusters_reports_live_connection_status(
 
     admin = admin_login(api)
     with api.client as client:
-        response = client.get("/api/v1/clusters", headers=cookie_header(admin["cookie"]))
+        response = client.get(f"/api/v1/clusters/{cluster_id}/health", headers=cookie_header(admin["cookie"]))
 
     assert response.status_code == 200, response.text
-    staging = next(item for item in response.json()["items"] if item["name"] == "staging")
-    assert staging["status"] == "active"
-    assert staging["connection_status"] == expected
+    assert response.json() == {"connection_status": expected}
 
 
-def test_list_clusters_skips_probe_for_inactive_connections(api: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cluster_health_inactive_returns_inactive(api: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
     database = api.factory()
     try:
-        database.add(
-            ClusterConnection(
-                name="staging",
-                endpoint="https://10.0.0.1:6443",
-                kubeconfig_ref="",
-                kubeconfig_content=VALID_KUBECONFIG,
-                status="inactive",
-            )
+        cluster = ClusterConnection(
+            name="staging",
+            endpoint="https://10.0.0.1:6443",
+            kubeconfig_ref="",
+            kubeconfig_content=VALID_KUBECONFIG,
+            status="inactive",
         )
+        database.add(cluster)
         database.commit()
+        cluster_id = cluster.id
     finally:
         database.close()
 
@@ -255,12 +254,31 @@ def test_list_clusters_skips_probe_for_inactive_connections(api: SimpleNamespace
     monkeypatch.setattr("app.api.v1.routes.create_cluster_client", raise_if_staging)
     admin = admin_login(api)
     with api.client as client:
-        response = client.get("/api/v1/clusters", headers=cookie_header(admin["cookie"]))
+        response = client.get(f"/api/v1/clusters/{cluster_id}/health", headers=cookie_header(admin["cookie"]))
 
     assert response.status_code == 200, response.text
-    staging = next(item for item in response.json()["items"] if item["name"] == "staging")
-    assert staging["status"] == "inactive"
-    assert staging["connection_status"] == "inactive"
+    assert response.json() == {"connection_status": "inactive"}
+
+
+def test_cluster_health_unknown_id_returns_404(api: SimpleNamespace) -> None:
+    admin = admin_login(api)
+    with api.client as client:
+        response = client.get(f"/api/v1/clusters/{uuid4()}/health", headers=cookie_header(admin["cookie"]))
+    assert response.status_code == 404, response.text
+    assert response.json()["code"] == "cluster_not_found"
+
+
+def test_viewer_can_check_cluster_health(api: SimpleNamespace) -> None:
+    create_viewer(api)
+    admin = admin_login(api)
+    with api.client as client:
+        response = client.get("/api/v1/clusters", headers=cookie_header(admin["cookie"]))
+    cluster_id = response.json()["items"][0]["id"]
+    viewer = login(api, "viewer@example.com", "correct-horse-00")
+    with api.client as client:
+        health = client.get(f"/api/v1/clusters/{cluster_id}/health", headers=cookie_header(viewer["cookie"]))
+    assert health.status_code == 200, health.text
+    assert "connection_status" in health.json()
 
 
 def test_viewer_can_list_clusters(api: SimpleNamespace) -> None:
