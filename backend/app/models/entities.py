@@ -199,12 +199,12 @@ class InstallationJob(Base):
     __tablename__ = "installation_jobs"
 
     id: Mapped[PrimaryKey]
-    package_id: Mapped[str] = mapped_column(String(512), nullable=False)
-    package_name: Mapped[str] = mapped_column(String(253), nullable=False)
-    chart_name: Mapped[str] = mapped_column(String(253), nullable=False)
-    chart_repository: Mapped[str] = mapped_column(String(253), nullable=False)
+    package_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    package_name: Mapped[str | None] = mapped_column(String(253), nullable=True)
+    chart_name: Mapped[str | None] = mapped_column(String(253), nullable=True)
+    chart_repository: Mapped[str | None] = mapped_column(String(253), nullable=True)
     chart_repository_url: Mapped[str | None] = mapped_column(String(2048))
-    chart_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    chart_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     cluster_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("cluster_connections.id", ondelete="CASCADE"), nullable=False, index=True
     )
