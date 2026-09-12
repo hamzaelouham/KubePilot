@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   ChevronDown,
   Boxes,
+  BriefcaseBusiness,
   Database,
   KeyRound,
   Layers,
@@ -106,6 +107,7 @@ const resourceTitles: Record<string, string> = {
   overview: "Overview",
   workloads: "Workloads",
   marketplace: "Marketplace",
+  "background-jobs": "Background jobs",
   "manage-resources": "Manage resources",
   users: "Users",
   clusters: "Clusters",
@@ -312,6 +314,19 @@ export function DashboardShell({
               >
                 <Store className="h-4 w-4 shrink-0" />
                 Marketplace
+              </Link>
+
+              <Link
+                href={withCluster("/background-jobs", activeCluster)}
+                aria-current={isActive("background-jobs") ? "page" : undefined}
+                className={`flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-base transition ${
+                  isActive("background-jobs")
+                    ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                }`}
+              >
+                <BriefcaseBusiness className="size-4 shrink-0" />
+                Background jobs
               </Link>
 
               <Link

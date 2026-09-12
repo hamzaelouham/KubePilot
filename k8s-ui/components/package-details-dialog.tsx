@@ -61,7 +61,7 @@ function PackageDetailsBody({
 
   return (
     <>
-      <DialogHeader>
+      <DialogHeader className="border-b border-border pb-4">
         <div className="flex items-start gap-3">
           <PackageLogo pkg={pkg} />
           <div className="min-w-0">
@@ -81,7 +81,7 @@ function PackageDetailsBody({
         <DialogDescription>
           {pkg.description ?? "No description provided."}
         </DialogDescription>
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg border bg-muted/40 p-3 text-sm">
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl border border-border bg-muted/30 p-4 text-sm">
           <dt className="text-muted-foreground">Repository</dt>
           <dd className="truncate text-foreground">{pkg.repository?.name ?? "—"}</dd>
           <dt className="text-muted-foreground">Latest version</dt>

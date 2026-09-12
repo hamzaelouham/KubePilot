@@ -3,11 +3,11 @@
 import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { MarketplaceBrowser } from "@/components/marketplace-browser";
-import { MarketplaceHistory } from "@/components/marketplace-history";
 import { useClusterSelection } from "@/lib/use-cluster-selection";
 import type { BackendUser } from "@/lib/auth";
+import type { InitialMarketplaceData } from "@/lib/marketplace-server";
 
-export function MarketplaceView({ user }: { user: BackendUser }) {
+export function MarketplaceView({ user, initialData }: { user: BackendUser; initialData: InitialMarketplaceData }) {
   const router = useRouter();
   const { cluster, clusters, selectCluster } = useClusterSelection();
 
@@ -38,10 +38,8 @@ export function MarketplaceView({ user }: { user: BackendUser }) {
           cluster={cluster}
           clusters={clusters}
           onSelectCluster={selectCluster}
+          initialData={initialData}
         />
-        <section className="mt-10">
-          <MarketplaceHistory canManage={user.role === "admin" || user.role === "operator"} />
-        </section>
       </div>
     </DashboardShell>
   );

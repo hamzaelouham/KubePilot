@@ -94,3 +94,10 @@ class MarketplaceInstallationListResponse(BaseModel):
 
     items: list[MarketplaceInstallationStatus]
     total: int
+
+
+class MarketplaceInstallationLogsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: UUID
+    log_output: Optional[str] = None

@@ -56,31 +56,31 @@ export function PackageCard({
   const publisher = publisherOf(pkg);
 
   return (
-    <div className="relative flex flex-col gap-3 rounded-xl border border-border bg-surface-elevated p-4 shadow-sm transition duration-150 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md">
+    <article className="group relative flex min-h-64 flex-col gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm transition duration-150 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
       <button
         type="button"
         onClick={onSelect}
         aria-label={`View details for ${pkg.name}`}
         className="absolute inset-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       />
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-3.5">
         {logo ? (
           <img
             src={logo}
             alt=""
-            className="size-9 shrink-0 rounded-md object-cover"
+            className="size-12 shrink-0 rounded-xl border border-border bg-background object-cover p-1"
             onError={() => setLogoFailed(true)}
           />
         ) : (
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-xs font-medium text-muted-foreground">
+          <div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-border bg-primary/10 text-sm font-semibold text-primary">
             {pkg.name.slice(0, 2).toUpperCase()}
           </div>
         )}
         <div className="min-w-0">
-          <h3 className="truncate text-sm font-medium text-foreground">{pkg.name}</h3>
-          <p className="truncate text-xs text-muted-foreground">{publisher}</p>
+          <h3 className="truncate text-base font-semibold text-foreground">{pkg.name}</h3>
+          <p className="mt-0.5 truncate text-sm text-muted-foreground">{publisher}</p>
           {(pkg.official || pkg.signed || pkg.deprecated) && (
-            <div className="mt-1.5 flex flex-wrap gap-1">
+            <div className="mt-2 flex flex-wrap gap-1">
               {pkg.official && <Badge variant="secondary">Official</Badge>}
               {pkg.signed && <Badge variant="outline">Signed</Badge>}
               {pkg.deprecated && <Badge variant="destructive">Deprecated</Badge>}
@@ -88,16 +88,16 @@ export function PackageCard({
           )}
         </div>
       </div>
-      <p className="line-clamp-2 text-sm text-muted-foreground">{pkg.description ?? "No description provided."}</p>
-      <div className="mt-auto flex items-center justify-between gap-2">
+      <p className="line-clamp-3 text-sm leading-6 text-muted-foreground">{pkg.description ?? "No description provided."}</p>
+      <div className="mt-auto flex items-end justify-between gap-3 border-t border-border pt-4">
         <div className="min-w-0">
-          <p className="text-xs text-muted-foreground">Latest version</p>
+          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">Latest version</p>
           <p className="truncate text-sm font-medium text-foreground">{pkg.version ?? "—"}</p>
         </div>
-        <Button size="sm" variant="default" className="relative z-10" onClick={onInstall}>
+        <Button size="sm" variant="default" className="relative z-10" onClick={(event) => { event.stopPropagation(); onInstall?.(); }}>
           Install
         </Button>
       </div>
-    </div>
+    </article>
   );
 }

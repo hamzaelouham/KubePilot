@@ -628,6 +628,7 @@ def _seed_installation(
     api: SimpleNamespace,
     status: str = "succeeded",
     error_message: str | None = None,
+    log_output: str | None = None,
     started_at: datetime | None = None,
     completed_at: datetime | None = None,
     created_at: datetime | None = None,
@@ -659,6 +660,7 @@ def _seed_installation(
             release_name="my-release",
             status=status,
             error_message=error_message,
+            log_output=log_output,
             started_at=started_at,
             completed_at=completed_at,
             **({"created_at": created_at} if created_at is not None else {}),
@@ -690,6 +692,40 @@ def test_installation_status_not_found(api: SimpleNamespace) -> None:
     job_id = UUID("00000000-0000-0000-0000-000000000000")
     with api.client as client:
         response = _get_installation_status(client, job_id, cookie)
+    assert response.status_code == 404
+    assert response.json()["code"] == "installation_not_found"
+
+
+def test_installation_logs_require_authentication(api: SimpleNamespace) -> None:
+    job_id = _seed_installation(api, log_output="helm install complete")
+    with api.client as client:
+        response = client.get(f"/api/v1/marketplace/installations/{job_id}/logs")
+    assert response.status_code == 401
+
+
+def test_installation_logs_return_bounded_job_output(api: SimpleNamespace) -> None:
+    cookie = admin_cookie(api)
+    job_id = _seed_installation(api, log_output="helm install complete\nrelease deployed")
+    with api.client as client:
+        response = client.get(
+            f"/api/v1/marketplace/installations/{job_id}/logs",
+            headers=cookie_header(cookie),
+        )
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "job_id": str(job_id),
+        "log_output": "helm install complete\nrelease deployed",
+    }
+
+
+def test_installation_logs_not_found(api: SimpleNamespace) -> None:
+    cookie = admin_cookie(api)
+    job_id = UUID("00000000-0000-0000-0000-000000000000")
+    with api.client as client:
+        response = client.get(
+            f"/api/v1/marketplace/installations/{job_id}/logs",
+            headers=cookie_header(cookie),
+        )
     assert response.status_code == 404
     assert response.json()["code"] == "installation_not_found"
 

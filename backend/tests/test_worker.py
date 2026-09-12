@@ -144,6 +144,7 @@ def test_success_path_records_audit(
         job = database.get(InstallationJob, job_id)
         assert job.status == "succeeded"
         assert job.completed_at is not None
+        assert job.log_output == "install complete"
         audit = database.scalar(select(AuditAction).where(AuditAction.resource_id == str(job.id)))
         assert audit is not None
         assert audit.action == "marketplace.install_succeeded"
@@ -368,6 +369,7 @@ def test_rollback_success_records_audit(
         job = database.get(InstallationJob, job_id)
         assert job.status == "succeeded"
         assert job.completed_at is not None
+        assert job.log_output == "helm rollback complete"
         audit = database.scalar(select(AuditAction).where(AuditAction.resource_id == str(job.id)))
         assert audit is not None
         assert audit.action == "marketplace.rollback_succeeded"
@@ -404,6 +406,7 @@ def test_uninstall_success_records_audit(
     try:
         job = database.get(InstallationJob, job_id)
         assert job.status == "succeeded"
+        assert job.log_output == "helm uninstall complete"
         audit = database.scalar(select(AuditAction).where(AuditAction.resource_id == str(job.id)))
         assert audit.action == "marketplace.uninstall_succeeded"
         assert audit.result == "success"

@@ -37,7 +37,7 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const authenticated = await isAuthenticated(request);
 
-  if (pathname.startsWith("/dashboard") || pathname.startsWith("/settings")) {
+  if (pathname.startsWith("/dashboard") || pathname.startsWith("/settings") || pathname.startsWith("/background-jobs")) {
     if (!authenticated) {
       return NextResponse.redirect(new URL("/login", request.url));
     }
@@ -55,5 +55,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/settings/:path*", "/login"],
+  matcher: ["/dashboard/:path*", "/settings/:path*", "/background-jobs/:path*", "/login"],
 };

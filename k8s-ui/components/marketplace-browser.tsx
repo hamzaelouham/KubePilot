@@ -92,15 +92,19 @@ export function MarketplaceBrowser({
   cluster,
   clusters,
   onSelectCluster,
+  initialData,
 }: {
   cluster: string;
   clusters: string[];
   onSelectCluster: (cluster: string) => void;
+  initialData: MarketplaceResponse & { errorMessage: string | null };
 }) {
-  const [packages, setPackages] = useState<MarketplacePackage[]>([]);
-  const [total, setTotal] = useState(0);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [errorMessage, setErrorMessage] = useState("");
+  const [packages, setPackages] = useState<MarketplacePackage[]>(initialData.packages);
+  const [total, setTotal] = useState(initialData.total);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">(
+    initialData.errorMessage ? "error" : "ready",
+  );
+  const [errorMessage, setErrorMessage] = useState(initialData.errorMessage ?? "");
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [sort, setSort] = useState<Sort>("relevance");
@@ -108,6 +112,7 @@ export function MarketplaceBrowser({
   const [selectedPackage, setSelectedPackage] = useState<MarketplacePackage | null>(null);
   const [installTarget, setInstallTarget] = useState<MarketplacePackage | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const initialLoadRef = useRef(true);
 
   useEffect(() => {
     const trimmed = query.trim();
@@ -142,6 +147,10 @@ export function MarketplaceBrowser({
   );
 
   useEffect(() => {
+    if (initialLoadRef.current) {
+      initialLoadRef.current = false;
+      return () => abortRef.current?.abort();
+    }
     void Promise.resolve().then(() => fetchAt(0));
     return () => abortRef.current?.abort();
   }, [fetchAt]);

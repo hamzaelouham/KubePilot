@@ -22,6 +22,7 @@ from app.models.entities import ClusterConnection, InstallationJob
 
 from .marketplace_schemas import (
     MarketplaceInstallationListResponse,
+    MarketplaceInstallationLogsResponse,
     MarketplaceInstallRequest,
     MarketplaceInstallResponse,
     MarketplaceInstallationStatus,
@@ -444,6 +445,27 @@ async def get_installation_status(
         started_at=job.started_at,
         completed_at=job.completed_at,
     )
+
+
+@router.get(
+    "/marketplace/installations/{job_id}/logs",
+    response_model=MarketplaceInstallationLogsResponse,
+)
+async def get_installation_logs(
+    job_id: UUID,
+    _actor: Annotated[AuthenticatedActor, Depends(get_current_actor)],
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+) -> MarketplaceInstallationLogsResponse:
+    job = database.get(InstallationJob, job_id)
+    if job is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "installation_not_found",
+                "message": "Installation job was not found",
+            },
+        )
+    return MarketplaceInstallationLogsResponse(job_id=job.id, log_output=job.log_output)
 
 
 _RELEASE_ACTION_QUEUED_EVENT = {

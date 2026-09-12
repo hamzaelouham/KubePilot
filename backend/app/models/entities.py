@@ -218,6 +218,7 @@ class InstallationJob(Base):
     )
     revision: Mapped[int | None] = mapped_column(Integer())
     error_message: Mapped[str | None] = mapped_column(Text())
+    log_output: Mapped[str | None] = mapped_column(Text())
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[CreatedAt]

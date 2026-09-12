@@ -64,6 +64,7 @@ interface DataTableProps<TData extends RowData, TValue> {
     totalPages: number
     onPageChange: (page: number) => void
   }
+  onRowClick?: (row: TData) => void
   className?: string
 }
 
@@ -76,6 +77,7 @@ export function DataTable<TData extends RowData, TValue>({
   searchable = true,
   pageSize = 10,
   serverPagination,
+  onRowClick,
   className,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([])
@@ -196,7 +198,17 @@ const table = useTable<typeof features, TData, SelectedState>(
             rows.map((row) => (
               <TableRow
                 key={row.id}
-                className="border-t border-border text-foreground hover:bg-muted/50"
+                className={cn(
+                  "border-t border-border text-foreground hover:bg-muted/50",
+                  onRowClick && "cursor-pointer",
+                )}
+                onClick={() => onRowClick?.(row.original)}
+                onKeyDown={(event) => {
+                  if (!onRowClick || (event.key !== "Enter" && event.key !== " ")) return
+                  event.preventDefault()
+                  onRowClick(row.original)
+                }}
+                tabIndex={onRowClick ? 0 : undefined}
               >
                 {row.getAllCells().map((cell) => (
                   <TableCell key={cell.id} className="px-4 py-3 text-base">

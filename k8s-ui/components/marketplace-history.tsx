@@ -17,6 +17,7 @@ import {
   type ReleaseActionTarget,
 } from "@/components/release-action-dialog";
 import { apiErrorMessage } from "@/lib/api-error";
+import { BackgroundJobDialog } from "@/components/background-job-dialog";
 
 const PAGE_SIZE = 10;
 
@@ -118,11 +119,12 @@ const tableColumns: DataTableColumn<Installation>[] = [
   },
 ];
 
-export function MarketplaceHistory({ canManage }: { canManage: boolean }) {
+export function BackgroundJobsTable({ canManage }: { canManage: boolean }) {
   const [state, setState] = useState<HistoryState>({ status: "loading" });
   const [filter, setFilter] = useState<JobStatus | "all">("all");
   const [page, setPage] = useState(0);
   const [pending, setPending] = useState<PendingAction | null>(null);
+  const [selectedJob, setSelectedJob] = useState<Installation | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const openAction = useCallback(
@@ -155,14 +157,20 @@ export function MarketplaceHistory({ canManage }: { canManage: boolean }) {
                 <Button
                   variant="outline"
                   size="xs"
-                  onClick={() => openAction("rollback", job)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openAction("rollback", job);
+                  }}
                 >
                   Roll back
                 </Button>
                 <Button
                   variant="destructive"
                   size="xs"
-                  onClick={() => openAction("uninstall", job)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openAction("uninstall", job);
+                  }}
                 >
                   Uninstall
                 </Button>
@@ -189,13 +197,13 @@ export function MarketplaceHistory({ canManage }: { canManage: boolean }) {
         cache: "no-store",
       });
       const body = (await response.json()) as InstallationResponse;
-      if (!response.ok) throw new Error(apiErrorMessage(body, "Unable to load installation history"));
+      if (!response.ok) throw new Error(apiErrorMessage(body, "Unable to load background jobs"));
       setState({ status: "ready", items: body.items, total: body.total });
     } catch (error: unknown) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       setState({
         status: "error",
-        message: error instanceof Error ? error.message : "Unable to load installation history",
+        message: error instanceof Error ? error.message : "Unable to load background jobs",
       });
     }
   }, [filter, page]);
@@ -219,9 +227,12 @@ export function MarketplaceHistory({ canManage }: { canManage: boolean }) {
       <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
         <div>
           <p className="text-sm font-medium uppercase tracking-[0.2em] text-muted-foreground">
-            Marketplace
+            Operations
           </p>
-          <h2 className="text-xl font-semibold text-foreground">Installation history</h2>
+          <h2 className="text-xl font-semibold text-foreground">Background jobs</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Track Marketplace and Helm operations across your clusters.
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <Select value={filter} onValueChange={handleFilter}>
@@ -249,7 +260,7 @@ export function MarketplaceHistory({ canManage }: { canManage: boolean }) {
       <div className="mt-4">
         {state.status === "loading" ? (
           <p className="rounded-lg bg-muted p-5 text-sm text-muted-foreground">
-            Loading installation history…
+            Loading background jobs…
           </p>
         ) : state.status === "error" ? (
           <div
@@ -269,10 +280,11 @@ export function MarketplaceHistory({ canManage }: { canManage: boolean }) {
           <DataTable
             columns={columns}
             data={items}
-            placeholder="No installations yet."
-            searchPlaceholder="Filter installations…"
+            placeholder="No background jobs yet."
+            searchPlaceholder="Filter background jobs…"
             pageSize={PAGE_SIZE}
             serverPagination={{ page, totalPages, onPageChange: setPage }}
+            onRowClick={setSelectedJob}
           />
         )}
       </div>
@@ -285,6 +297,14 @@ export function MarketplaceHistory({ canManage }: { canManage: boolean }) {
           onResolved={() => void load()}
         />
       )}
+      <BackgroundJobDialog
+        job={selectedJob}
+        onOpenChange={(open) => {
+          if (!open) setSelectedJob(null);
+        }}
+      />
     </div>
   );
 }
+
+export { type Installation as BackgroundJob };

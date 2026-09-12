@@ -19,6 +19,7 @@ from app.models.entities import InstallationJob
 logger = logging.getLogger(__name__)
 
 _ERROR_CAP = 4096
+_LOG_CAP = 32768
 _DNS_1123_PATTERN = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
 _ALLOWED_REPOSITORY_SCHEMES = ("http", "https")
 
@@ -98,14 +99,27 @@ def claim_next_job(database) -> InstallationJob | None:
 def _run_single_command(command: list[str], timeout: int) -> str:
     try:
         completed = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
-    except subprocess.TimeoutExpired:
-        raise HelmInstallError(f"helm command timed out after {timeout}s")
+    except subprocess.TimeoutExpired as error:
+        message = f"helm command timed out after {timeout}s"
+        timeout_output = _trim(
+            "\n".join(
+                part.decode(errors="replace") if isinstance(part, bytes) else (part or "")
+                for part in (error.stdout, error.stderr)
+            )
+        )
+        failure = HelmInstallError(message)
+        failure.output = timeout_output
+        raise failure from error
     except OSError as error:
-        raise HelmInstallError(f"failed to run helm: {error}")
+        failure = HelmInstallError(f"failed to run helm: {error}")
+        failure.output = ""
+        raise failure from error
     combined = _trim("\n".join(part for part in (completed.stdout, completed.stderr) if part))
     if completed.returncode != 0:
         message = combined or f"helm exited with code {completed.returncode}"
-        raise HelmInstallError(message)
+        failure = HelmInstallError(message)
+        failure.output = combined
+        raise failure
     return combined
 
 
@@ -133,7 +147,13 @@ def _run_helm_install(settings: Settings, job, repository_url: str, kubeconfig_p
     if kubeconfig_path:
         commands[2] = [*commands[2], "--kubeconfig", kubeconfig_path]
 
-    output_parts = [_run_single_command(command, timeout) for command in commands]
+    output_parts: list[str] = []
+    for command in commands:
+        try:
+            output_parts.append(_run_single_command(command, timeout))
+        except HelmInstallError as error:
+            error.output = "\n".join(part for part in (*output_parts, getattr(error, "output", "")) if part)
+            raise
     return "\n".join(part for part in output_parts if part)
 
 
@@ -186,10 +206,18 @@ def _unlink_kubeconfig(kubeconfig_path: str | None) -> None:
             pass
 
 
-def _fail_job(database, job, message: str, event: str = AuditEvent.MARKETPLACE_INSTALL_FAILED) -> None:
+def _fail_job(
+    database,
+    job,
+    message: str,
+    event: str = AuditEvent.MARKETPLACE_INSTALL_FAILED,
+    log_output: str | None = None,
+) -> None:
     database.rollback()
     job.status = "failed"
     job.error_message = _trim(message)
+    if log_output:
+        job.log_output = _trim(log_output, _LOG_CAP)
     job.completed_at = datetime.now(timezone.utc)
     database.commit()
     record_audit(
@@ -221,7 +249,10 @@ def _process_install_job(database, job, settings: Settings) -> None:
     try:
         kubeconfig_path = _write_kubeconfig(job.cluster)
 
-        _run_helm_install(settings, job, job.chart_repository_url, kubeconfig_path)
+        job.log_output = _trim(
+            _run_helm_install(settings, job, job.chart_repository_url, kubeconfig_path),
+            _LOG_CAP,
+        )
         job.status = "succeeded"
         job.completed_at = datetime.now(timezone.utc)
         database.commit()
@@ -236,7 +267,7 @@ def _process_install_job(database, job, settings: Settings) -> None:
         database.commit()
     except Exception as error:  # noqa: BLE001
         logger.exception("Installation job %s failed: %s", job.id, type(error).__name__)
-        _fail_job(database, job, str(error))
+        _fail_job(database, job, str(error), log_output=getattr(error, "output", None))
     finally:
         _unlink_kubeconfig(kubeconfig_path)
 
@@ -257,9 +288,9 @@ def _process_release_job(database, job, settings: Settings) -> None:
         kubeconfig_path = _write_kubeconfig(job.cluster)
 
         if job.action == "rollback":
-            _run_helm_rollback(settings, job, kubeconfig_path)
+            job.log_output = _trim(_run_helm_rollback(settings, job, kubeconfig_path), _LOG_CAP)
         else:
-            _run_helm_uninstall(settings, job, kubeconfig_path)
+            job.log_output = _trim(_run_helm_uninstall(settings, job, kubeconfig_path), _LOG_CAP)
         job.status = "succeeded"
         job.completed_at = datetime.now(timezone.utc)
         database.commit()
@@ -274,7 +305,13 @@ def _process_release_job(database, job, settings: Settings) -> None:
         database.commit()
     except Exception as error:  # noqa: BLE001
         logger.exception("Release job %s failed: %s", job.id, type(error).__name__)
-        _fail_job(database, job, str(error), _FAILED_EVENTS[job.action])
+        _fail_job(
+            database,
+            job,
+            str(error),
+            _FAILED_EVENTS[job.action],
+            getattr(error, "output", None),
+        )
     finally:
         _unlink_kubeconfig(kubeconfig_path)
 
