@@ -10,6 +10,7 @@ from sqlalchemy import select
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.v1.marketplace import router as marketplace_router
+from app.api.v1.helm_releases import router as helm_releases_router
 from app.api.v1.resource_management import router as resource_management_router
 from app.kubernetes.resource_management import ResourceManagementError
 from app.api.v1.routes import router as v1_router
@@ -196,6 +197,7 @@ def create_app() -> FastAPI:
     app.include_router(v1_router, prefix="/api/v1")
     app.include_router(users_router, prefix="/api/v1")
     app.include_router(marketplace_router, prefix="/api/v1")
+    app.include_router(helm_releases_router, prefix="/api/v1")
     app.include_router(resource_management_router, prefix="/api/v1")
     return app
 

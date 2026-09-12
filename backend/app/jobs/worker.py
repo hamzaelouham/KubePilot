@@ -30,10 +30,20 @@ _SUCCESS_EVENTS = {
     "uninstall": AuditEvent.MARKETPLACE_UNINSTALL_SUCCEEDED,
 }
 
+_HELM_RELEASE_SUCCESS_EVENTS = {
+    "rollback": AuditEvent.HELM_RELEASE_ROLLBACK_SUCCEEDED,
+    "uninstall": AuditEvent.HELM_RELEASE_UNINSTALL_SUCCEEDED,
+}
+
 _FAILED_EVENTS = {
     "install": AuditEvent.MARKETPLACE_INSTALL_FAILED,
     "rollback": AuditEvent.MARKETPLACE_ROLLBACK_FAILED,
     "uninstall": AuditEvent.MARKETPLACE_UNINSTALL_FAILED,
+}
+
+_HELM_RELEASE_FAILED_EVENTS = {
+    "rollback": AuditEvent.HELM_RELEASE_ROLLBACK_FAILED,
+    "uninstall": AuditEvent.HELM_RELEASE_UNINSTALL_FAILED,
 }
 
 
@@ -227,6 +237,13 @@ def _fail_job(
         "installation_job",
         str(job.id),
         result="failure",
+        context={
+            "cluster_id": str(job.cluster_id),
+            "cluster": job.cluster.name,
+            "namespace": job.namespace,
+            "release": job.release_name,
+            "action": job.action,
+        },
     )
     database.commit()
 
@@ -273,13 +290,15 @@ def _process_install_job(database, job, settings: Settings) -> None:
 
 
 def _process_release_job(database, job, settings: Settings) -> None:
+    success_event = (_HELM_RELEASE_SUCCESS_EVENTS if job.package_id is None else _SUCCESS_EVENTS)[job.action]
+    failed_event = (_HELM_RELEASE_FAILED_EVENTS if job.package_id is None else _FAILED_EVENTS)[job.action]
     invalid_field = _invalid_release_target(job)
     if invalid_field is not None:
         _fail_job(
             database,
             job,
             f"refusing to run helm: invalid job field '{invalid_field}'",
-            _FAILED_EVENTS[job.action],
+            failed_event,
         )
         return
 
@@ -296,11 +315,18 @@ def _process_release_job(database, job, settings: Settings) -> None:
         database.commit()
         record_audit(
             database,
-            _SUCCESS_EVENTS[job.action],
+            success_event,
             None,
             "installation_job",
             str(job.id),
             result="success",
+            context={
+                "cluster_id": str(job.cluster_id),
+                "cluster": job.cluster.name,
+                "namespace": job.namespace,
+                "release": job.release_name,
+                "action": job.action,
+            },
         )
         database.commit()
     except Exception as error:  # noqa: BLE001
@@ -309,7 +335,7 @@ def _process_release_job(database, job, settings: Settings) -> None:
             database,
             job,
             str(error),
-            _FAILED_EVENTS[job.action],
+            failed_event,
             getattr(error, "output", None),
         )
     finally:
