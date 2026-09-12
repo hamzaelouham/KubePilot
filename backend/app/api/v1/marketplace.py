@@ -434,7 +434,7 @@ async def get_installation_status(
         )
     return MarketplaceInstallationStatus(
         job_id=job.id,
-        package_name=job.package_name,
+        package_name=job.package_name or job.release_name,
         cluster=job.cluster.name,
         namespace=job.namespace,
         release_name=job.release_name,
@@ -661,7 +661,7 @@ async def list_installations(
         items=[
             MarketplaceInstallationStatus(
                 job_id=job.id,
-                package_name=job.package_name,
+                package_name=job.package_name or job.release_name,
                 cluster=job.cluster.name,
                 namespace=job.namespace,
                 release_name=job.release_name,
