@@ -5,6 +5,7 @@ import { formatLastUpdated, usePolling } from "@/lib/use-polling";
 import { useCluster } from "@/lib/cluster-context";
 import { withCluster } from "@/lib/cluster-query";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
+import { Button } from "@/components/ui/button";
 
 type Namespace = { name: string; status: string };
 type NamespaceResponse = { items: Namespace[] };
@@ -58,24 +59,18 @@ export function NamespacesView() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
         <div>
-          <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-400">Live cluster data</p>
-          <h2 className="text-3xl font-semibold text-slate-700">Namespaces</h2>
+          <p className="text-sm font-medium uppercase tracking-[0.16em] text-muted-foreground">Live cluster data</p>
+          <h2 className="text-2xl font-semibold tracking-tight text-foreground">Namespaces</h2>
         </div>
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={refresh}
-            className="cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
-          >
-            Refresh
-          </button>
-          <span className="text-sm text-slate-500">Updated {formatLastUpdated(lastUpdated)}</span>
+          <Button type="button" variant="outline" onClick={refresh}>Refresh</Button>
+          <span className="text-sm text-muted-foreground">Updated {formatLastUpdated(lastUpdated)}</span>
         </div>
       </div>
 
-      {state.status === "loading" ? <p className="rounded-lg bg-slate-100 p-5 text-slate-500">Loading namespaces...</p> : null}
-      {state.status === "error" ? <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-5 text-red-700">{state.message}</p> : null}
-      {state.status === "ready" && state.items.length === 0 ? <p className="rounded-lg bg-slate-100 p-5 text-slate-500">No namespaces found.</p> : null}
+      {state.status === "loading" ? <p className="rounded-lg border border-border bg-muted p-5 text-sm text-muted-foreground">Loading namespaces…</p> : null}
+      {state.status === "error" ? <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-5 text-sm text-destructive">{state.message}</p> : null}
+      {state.status === "ready" && state.items.length === 0 ? <p className="rounded-lg border border-border bg-muted p-5 text-sm text-muted-foreground">No namespaces found.</p> : null}
       {state.status === "ready" && state.items.length > 0 ? (
         <DataTable
           columns={tableColumns}

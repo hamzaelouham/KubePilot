@@ -1,20 +1,22 @@
-import { redirect } from "next/navigation";
 import { signInAction } from "./actions";
+import { Boxes } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ error?: string }> | { error?: string };
+  searchParams?: Promise<{ error?: string }>;
 }) {
-  const resolvedParams = await Promise.resolve(searchParams ?? {});
+  const resolvedParams = searchParams ? await searchParams : {};
   const error = resolvedParams.error;
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-6 py-12 text-foreground">
-      <div className="w-full max-w-md rounded-3xl border border-border bg-card p-8 shadow-sm">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
         <div className="mb-8 flex items-center gap-3">
-          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-lg text-primary">
-            ☸
+          <span className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Boxes aria-hidden="true" className="size-5" />
           </span>
           <h1 className="text-2xl font-semibold text-foreground">KubePilot</h1>
         </div>
@@ -22,30 +24,28 @@ export default async function LoginPage({
         <h2 className="text-3xl font-semibold text-foreground">Sign in</h2>
 
         <form action={signInAction} className="mt-8 space-y-5">
-          <div>
-            <label htmlFor="email" className="mb-2 block text-sm text-muted-foreground">
+          <div className="flex flex-col gap-2">
+            <label htmlFor="email" className="text-sm font-medium">
               Email address
             </label>
-            <input
+            <Input
               id="email"
               name="email"
               type="email"
               placeholder="you@example.com"
-              className="w-full rounded-xl border border-input bg-background px-4 py-3 text-foreground outline-none placeholder:text-muted-foreground focus:border-primary"
               required
             />
           </div>
 
-          <div>
-            <label htmlFor="password" className="mb-2 block text-sm text-muted-foreground">
+          <div className="flex flex-col gap-2">
+            <label htmlFor="password" className="text-sm font-medium">
               Password
             </label>
-            <input
+            <Input
               id="password"
               name="password"
               type="password"
               placeholder="••••••••••"
-              className="w-full rounded-xl border border-input bg-background px-4 py-3 text-foreground outline-none placeholder:text-muted-foreground focus:border-primary"
               required
             />
           </div>
@@ -56,12 +56,7 @@ export default async function LoginPage({
             </div>
           ) : null}
 
-          <button
-            type="submit"
-            className="flex w-full cursor-pointer items-center justify-center rounded-xl bg-primary px-4 py-3 font-medium text-primary-foreground transition hover:bg-primary/90"
-          >
-            Sign in
-          </button>
+          <Button type="submit" className="w-full">Sign in</Button>
         </form>
       </div>
     </main>

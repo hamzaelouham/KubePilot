@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Field } from "@base-ui/react/field";
+import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,6 +24,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
+import { toast } from "@/components/ui/toast";
 import {
   Select,
   SelectContent,
@@ -72,7 +75,7 @@ function formatDateTime(value: string | null) {
 
 function UserManagementCallout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">{children}</div>
+    <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{children}</div>
   );
 }
 
@@ -85,6 +88,7 @@ async function fetchUsers(): Promise<{ items: ManagedUser[] } | "unauthorized" |
 }
 
 export function UsersManagement({ currentUserEmail }: { currentUserEmail: string }) {
+  const router = useRouter();
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -112,7 +116,7 @@ export function UsersManagement({ currentUserEmail }: { currentUserEmail: string
       const result = await fetchUsers();
       if (!mounted) return;
       if (result === "unauthorized") {
-        window.location.href = "/login";
+        router.push("/login");
         return;
       }
       if (result === "unavailable") {
@@ -134,11 +138,11 @@ export function UsersManagement({ currentUserEmail }: { currentUserEmail: string
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [router]);
 
   const extractError = async (response: Response): Promise<string | null> => {
     if (response.status === 401) {
-      window.location.href = "/login";
+      router.push("/login");
       return null;
     }
     if (response.status === 503 || response.status === 0) {
@@ -155,7 +159,7 @@ export function UsersManagement({ currentUserEmail }: { currentUserEmail: string
   const refresh = async (): Promise<void> => {
     const result = await fetchUsers();
     if (result === "unauthorized") {
-      window.location.href = "/login";
+      router.push("/login");
       return;
     }
     if (result === "unavailable") {
@@ -180,20 +184,34 @@ export function UsersManagement({ currentUserEmail }: { currentUserEmail: string
         cache: "no-store",
       });
       if (response.status === 401) {
-        window.location.href = "/login";
+        router.push("/login");
         return null;
       }
       if (response.status === 503) {
-        return "The user management service is currently unavailable.";
+        const message = "The user management service is currently unavailable.";
+        toast.add({ type: "error", title: "User operation failed", description: message });
+        return message;
       }
       if (!response.ok) {
-        return extractError(response);
+        const failure = await extractError(response);
+        if (failure) toast.add({ type: "error", title: "User operation failed", description: failure });
+        return failure;
       }
       await refresh();
+      const successTitles: Record<string, string> = {
+        create: "User created",
+        edit: "User updated",
+        reset: "Password reset",
+        force: "Password change required",
+        toggle: "User status updated",
+      };
+      toast.add({ type: "success", title: successTitles[verb] ?? "User operation complete", description: "The user list is up to date." });
       return null;
     } catch {
-      setError("An unexpected error occurred.");
-      return "An unexpected error occurred.";
+      const message = "An unexpected error occurred.";
+      toast.add({ type: "error", title: "User operation failed", description: message });
+      setError(message);
+      return message;
     } finally {
       setPending(null);
     }
@@ -258,22 +276,30 @@ export function UsersManagement({ currentUserEmail }: { currentUserEmail: string
     try {
       const response = await fetch(`/api/users/${deleteTarget.id}`, { method: "DELETE", cache: "no-store" });
       if (response.status === 401) {
-        window.location.href = "/login";
+        router.push("/login");
         return;
       }
       if (response.status === 503) {
-        setError("The user management service is currently unavailable.");
+        const message = "The user management service is currently unavailable.";
+        toast.add({ type: "error", title: "User deletion failed", description: message });
+        setError(message);
         return;
       }
       if (!response.ok) {
         const failure = await extractError(response);
-        if (failure) setError(failure);
+        if (failure) {
+          toast.add({ type: "error", title: "User deletion failed", description: failure });
+          setError(failure);
+        }
         return;
       }
+      toast.add({ type: "success", title: "User deleted", description: deleteTarget.email });
       setDeleteTarget(null);
       await refresh();
     } catch {
-      setError("An unexpected error occurred.");
+      const message = "An unexpected error occurred.";
+      toast.add({ type: "error", title: "User deletion failed", description: message });
+      setError(message);
     } finally {
       setPending(null);
     }
@@ -385,22 +411,22 @@ export function UsersManagement({ currentUserEmail }: { currentUserEmail: string
       </div>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg" showCloseButton={pending !== "create"}>
           <DialogHeader>
             <DialogTitle>New user</DialogTitle>
             <DialogDescription>Provision a new account. They sign in with this password immediately.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium" htmlFor="create-email">Email</label>
+          <form className="flex min-w-0 flex-col gap-5" onSubmit={(event) => { event.preventDefault(); void doCreate(); }}>
+            <Field.Root name="email" className="flex min-w-0 flex-col gap-2">
+              <Field.Label className="text-sm font-medium" htmlFor="create-email">Email</Field.Label>
               <Input id="create-email" type="email" value={createEmail} onChange={(event) => setCreateEmail(event.target.value)} placeholder="you@example.com" />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium" htmlFor="create-password">Initial password</label>
+            </Field.Root>
+            <Field.Root name="password" className="flex min-w-0 flex-col gap-2">
+              <Field.Label className="text-sm font-medium" htmlFor="create-password">Initial password</Field.Label>
               <Input id="create-password" type="text" value={createPassword} onChange={(event) => setCreatePassword(event.target.value)} placeholder="At least 10 characters" />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Role</label>
+            </Field.Root>
+            <Field.Root name="role" className="flex min-w-0 flex-col gap-2">
+              <Field.Label className="text-sm font-medium">Role</Field.Label>
               <Select value={createRole} onValueChange={(value) => setCreateRole(value as ManagedUser["role"])}>
                 <SelectTrigger className="w-full">
                   <SelectValue />
@@ -413,27 +439,26 @@ export function UsersManagement({ currentUserEmail }: { currentUserEmail: string
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <DialogCancelButton onClick={() => setCreateOpen(false)} />
-            <Button onClick={() => void doCreate()} disabled={!createEmail || createPassword.length < 6}>
-              Create user
-            </Button>
-          </DialogFooter>
+            </Field.Root>
+            <DialogFooter>
+              <DialogCancelButton onClick={() => setCreateOpen(false)} disabled={pending === "create"} />
+              <Button type="submit" disabled={!createEmail || createPassword.length < 6 || pending === "create"}>{pending === "create" ? "Creating…" : "Create user"}</Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
+      <Dialog open={editOpen} onOpenChange={(open) => { if (!open && pending !== "edit") setEditOpen(false); }}>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg" showCloseButton={pending !== "edit"}>
           <DialogHeader>
             <DialogTitle>Edit user</DialogTitle>
             <DialogDescription>
               Change {editTarget?.email ?? "this user"}&apos;s role. You cannot change your own role.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Role</label>
+          <form className="flex min-w-0 flex-col gap-5" onSubmit={(event) => { event.preventDefault(); void doEditRole(); }}>
+            <Field.Root name="role" className="flex min-w-0 flex-col gap-2">
+              <Field.Label className="text-sm font-medium">Role</Field.Label>
             <Select value={editRole} onValueChange={(value) => setEditRole(value as ManagedUser["role"])}>
               <SelectTrigger className="w-full">
                 <SelectValue />
@@ -446,32 +471,33 @@ export function UsersManagement({ currentUserEmail }: { currentUserEmail: string
                 ))}
               </SelectContent>
             </Select>
-          </div>
-          <DialogFooter>
-            <DialogCancelButton onClick={() => setEditOpen(false)} />
-            <Button onClick={() => void doEditRole()}>Save role</Button>
-          </DialogFooter>
+            </Field.Root>
+            <DialogFooter>
+              <DialogCancelButton onClick={() => setEditOpen(false)} disabled={pending === "edit"} />
+              <Button type="submit" disabled={pending === "edit"}>{pending === "edit" ? "Saving…" : "Save role"}</Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={resetOpen} onOpenChange={setResetOpen}>
-        <DialogContent>
+      <Dialog open={resetOpen} onOpenChange={(open) => { if (!open && pending !== "reset") setResetOpen(false); }}>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg" showCloseButton={pending !== "reset"}>
           <DialogHeader>
             <DialogTitle>Reset password</DialogTitle>
             <DialogDescription>
               Set a new temporary password for {resetTarget?.email ?? "this user"}. They will be asked to change it on next sign-in and all existing sessions are ended.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium" htmlFor="reset-password">Temporary password</label>
-            <Input id="reset-password" type="text" value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} placeholder="At least 10 characters" />
-          </div>
-          <DialogFooter>
-            <DialogCancelButton onClick={() => setResetOpen(false)} />
-            <Button onClick={() => void doResetPassword()} disabled={resetPassword.length < 6}>
-              Reset password
-            </Button>
-          </DialogFooter>
+          <form className="flex min-w-0 flex-col gap-5" onSubmit={(event) => { event.preventDefault(); void doResetPassword(); }}>
+            <Field.Root name="password" className="flex min-w-0 flex-col gap-2">
+              <Field.Label className="text-sm font-medium" htmlFor="reset-password">Temporary password</Field.Label>
+              <Input id="reset-password" type="text" value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} placeholder="At least 10 characters" />
+            </Field.Root>
+            <DialogFooter>
+              <DialogCancelButton onClick={() => setResetOpen(false)} disabled={pending === "reset"} />
+              <Button type="submit" disabled={resetPassword.length < 6 || pending === "reset"}>{pending === "reset" ? "Resetting…" : "Reset password"}</Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -510,9 +536,9 @@ export function UsersManagement({ currentUserEmail }: { currentUserEmail: string
   );
 }
 
-function DialogCancelButton({ onClick }: { onClick: () => void }) {
+function DialogCancelButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
   return (
-    <Button variant="outline" onClick={onClick}>
+    <Button type="button" variant="outline" onClick={onClick} disabled={disabled}>
       Cancel
     </Button>
   );

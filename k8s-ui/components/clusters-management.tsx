@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Field } from "@base-ui/react/field";
+import { useRouter } from "next/navigation";
 import { CalendarDays, Link, Server, Wifi } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,6 +25,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
+import { toast } from "@/components/ui/toast";
 import {
   Table,
   TableBody,
@@ -85,7 +88,7 @@ function statusBadge(cluster: ManagedCluster, connectionStatus?: ClusterConnecti
 
 function ClusterManagementCallout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">{children}</div>
+    <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{children}</div>
   );
 }
 
@@ -98,6 +101,7 @@ async function fetchClusters(): Promise<{ items: ManagedCluster[] } | "unauthori
 }
 
 export function ClustersManagement({ canManage, canDelete }: { canManage: boolean; canDelete?: boolean }) {
+  const router = useRouter();
   const [clusters, setClusters] = useState<ManagedCluster[]>([]);
   const [healthByCluster, setHealthByCluster] = useState<Record<string, ClusterConnectionStatus>>({});
   const [loading, setLoading] = useState(true);
@@ -143,7 +147,7 @@ export function ClustersManagement({ canManage, canDelete }: { canManage: boolea
       const result = await fetchClusters();
       if (!mounted) return;
       if (result === "unauthorized") {
-        window.location.href = "/login";
+        router.push("/login");
         return;
       }
       if (result === "unavailable") {
@@ -166,11 +170,11 @@ export function ClustersManagement({ canManage, canDelete }: { canManage: boolea
     return () => {
       mounted = false;
     };
-  }, [refreshHealth]);
+  }, [refreshHealth, router]);
 
   const extractError = async (response: Response): Promise<string | null> => {
     if (response.status === 401) {
-      window.location.href = "/login";
+      router.push("/login");
       return null;
     }
     if (response.status === 503 || response.status === 0) {
@@ -184,10 +188,15 @@ export function ClustersManagement({ canManage, canDelete }: { canManage: boolea
     }
   };
 
+  const showOperationError = (message: string) => {
+    setError(message);
+    toast.add({ type: "error", title: "Cluster operation failed", description: message });
+  };
+
   const refresh = async (): Promise<void> => {
     const result = await fetchClusters();
     if (result === "unauthorized") {
-      window.location.href = "/login";
+      router.push("/login");
       return;
     }
     if (result === "unavailable") {
@@ -213,24 +222,25 @@ export function ClustersManagement({ canManage, canDelete }: { canManage: boolea
         cache: "no-store",
       });
       if (response.status === 401) {
-        window.location.href = "/login";
+        router.push("/login");
         return;
       }
       if (response.status === 503) {
-        setError("The cluster management service is currently unavailable.");
+        showOperationError("The cluster management service is currently unavailable.");
         return;
       }
       if (!response.ok) {
         const failure = await extractError(response);
-        if (failure) setError(failure);
+        if (failure) showOperationError(failure);
         return;
       }
+      toast.add({ type: "success", title: "Cluster registered", description: `${createName} is now available.` });
       setCreateOpen(false);
       setCreateName("");
       setCreateKubeconfig("");
       await refresh();
     } catch {
-      setError("An unexpected error occurred.");
+      showOperationError("An unexpected error occurred.");
     } finally {
       setPending(null);
     }
@@ -247,21 +257,23 @@ export function ClustersManagement({ canManage, canDelete }: { canManage: boolea
         cache: "no-store",
       });
       if (response.status === 401) {
-        window.location.href = "/login";
+        router.push("/login");
         return;
       }
       if (response.status === 503) {
-        setError("The cluster management service is currently unavailable.");
+        showOperationError("The cluster management service is currently unavailable.");
         return;
       }
       if (!response.ok) {
         const failure = await extractError(response);
-        if (failure) setError(failure);
+        if (failure) showOperationError(failure);
         return;
       }
+      const nextStatus = cluster.status === "active" ? "deactivated" : "reactivated";
+      toast.add({ type: "success", title: `Cluster ${nextStatus}`, description: cluster.name });
       await refresh();
     } catch {
-      setError("An unexpected error occurred.");
+      showOperationError("An unexpected error occurred.");
     } finally {
       setToggleId(null);
     }
@@ -288,24 +300,25 @@ export function ClustersManagement({ canManage, canDelete }: { canManage: boolea
         cache: "no-store",
       });
       if (response.status === 401) {
-        window.location.href = "/login";
+        router.push("/login");
         return;
       }
       if (response.status === 503) {
-        setError("The cluster management service is currently unavailable.");
+        showOperationError("The cluster management service is currently unavailable.");
         return;
       }
       if (!response.ok) {
         const failure = await extractError(response);
-        if (failure) setError(failure);
+        if (failure) showOperationError(failure);
         return;
       }
+      toast.add({ type: "success", title: "Cluster updated", description: `${editName} was saved.` });
       setEditTarget(null);
       setEditName("");
       setEditKubeconfig("");
       await refresh();
     } catch {
-      setError("An unexpected error occurred.");
+      showOperationError("An unexpected error occurred.");
     } finally {
       setPending(null);
     }
@@ -318,22 +331,23 @@ export function ClustersManagement({ canManage, canDelete }: { canManage: boolea
     try {
       const response = await fetch(`/api/clusters/${deleteTarget.id}`, { method: "DELETE", cache: "no-store" });
       if (response.status === 401) {
-        window.location.href = "/login";
+        router.push("/login");
         return;
       }
       if (response.status === 503) {
-        setError("The cluster management service is currently unavailable.");
+        showOperationError("The cluster management service is currently unavailable.");
         return;
       }
       if (!response.ok) {
         const failure = await extractError(response);
-        if (failure) setError(failure);
+        if (failure) showOperationError(failure);
         return;
       }
+      toast.add({ type: "success", title: "Cluster deleted", description: deleteTarget.name });
       setDeleteTarget(null);
       await refresh();
     } catch {
-      setError("An unexpected error occurred.");
+      showOperationError("An unexpected error occurred.");
     } finally {
       setPending(null);
     }
@@ -448,7 +462,7 @@ export function ClustersManagement({ canManage, canDelete }: { canManage: boolea
       </div>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl" showCloseButton={pending !== "create"}>
           <DialogHeader>
             <DialogTitle>New cluster</DialogTitle>
             <DialogDescription>
@@ -456,9 +470,9 @@ export function ClustersManagement({ canManage, canDelete }: { canManage: boolea
               immediately.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium" htmlFor="create-cluster-name">Name</label>
+          <form className="flex min-w-0 flex-col gap-5" onSubmit={(event) => { event.preventDefault(); void doCreate(); }}>
+            <Field.Root name="cluster-name" className="flex min-w-0 flex-col gap-2">
+              <Field.Label className="text-sm font-medium" htmlFor="create-cluster-name">Name</Field.Label>
               <Input
                 id="create-cluster-name"
                 type="text"
@@ -466,9 +480,10 @@ export function ClustersManagement({ canManage, canDelete }: { canManage: boolea
                 onChange={(event) => setCreateName(event.target.value)}
                 placeholder="staging"
               />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium" htmlFor="create-cluster-kubeconfig">kubeconfig</label>
+            </Field.Root>
+            <Field.Root name="kubeconfig" className="flex min-w-0 flex-col gap-2">
+              <Field.Label className="text-sm font-medium" htmlFor="create-cluster-kubeconfig">Kubeconfig</Field.Label>
+              <Field.Description className="text-sm text-muted-foreground">Paste the kubeconfig used to connect to this cluster.</Field.Description>
               <textarea
                 id="create-cluster-kubeconfig"
                 value={createKubeconfig}
@@ -476,34 +491,30 @@ export function ClustersManagement({ canManage, canDelete }: { canManage: boolea
                 rows={10}
                 spellCheck={false}
                 placeholder="Paste the contents of the cluster's kubeconfig file"
-                className="w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 font-mono text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                className="min-h-64 w-full resize-y rounded-lg border border-input bg-background px-3 py-2 font-mono text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
               />
-            </div>
-          </div>
-          <DialogFooter>
-            <div className="flex w-full justify-end gap-2">
-              <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={pending === "create"}>
-                Cancel
+            </Field.Root>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCreateOpen(false)} disabled={pending === "create"}>Cancel</Button>
+              <Button type="submit" disabled={!createName.trim() || !createKubeconfig.trim() || pending === "create"}>
+                {pending === "create" ? "Registering…" : "Register cluster"}
               </Button>
-              <Button onClick={() => void doCreate()} disabled={!createName.trim() || !createKubeconfig.trim()}>
-                Register cluster
-              </Button>
-            </div>
-          </DialogFooter>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={editTarget !== null} onOpenChange={(open) => { if (!open) setEditTarget(null); }}>
-        <DialogContent>
+      <Dialog open={editTarget !== null} onOpenChange={(open) => { if (!open && pending !== "edit") setEditTarget(null); }}>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl" showCloseButton={pending !== "edit"}>
           <DialogHeader>
             <DialogTitle>Edit cluster</DialogTitle>
             <DialogDescription>
               Rename the cluster or replace its kubeconfig to change the endpoint.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium" htmlFor="edit-cluster-name">Name</label>
+          <form className="flex min-w-0 flex-col gap-5" onSubmit={(event) => { event.preventDefault(); void doEdit(); }}>
+            <Field.Root name="cluster-name" className="flex min-w-0 flex-col gap-2">
+              <Field.Label className="text-sm font-medium" htmlFor="edit-cluster-name">Name</Field.Label>
               <Input
                 id="edit-cluster-name"
                 type="text"
@@ -511,9 +522,10 @@ export function ClustersManagement({ canManage, canDelete }: { canManage: boolea
                 onChange={(event) => setEditName(event.target.value)}
                 placeholder="staging"
               />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium" htmlFor="edit-cluster-kubeconfig">kubeconfig (optional)</label>
+            </Field.Root>
+            <Field.Root name="kubeconfig" className="flex min-w-0 flex-col gap-2">
+              <Field.Label className="text-sm font-medium" htmlFor="edit-cluster-kubeconfig">Kubeconfig (optional)</Field.Label>
+              <Field.Description className="text-sm text-muted-foreground">Leave this empty to keep the current connection.</Field.Description>
               <textarea
                 id="edit-cluster-kubeconfig"
                 value={editKubeconfig}
@@ -521,21 +533,15 @@ export function ClustersManagement({ canManage, canDelete }: { canManage: boolea
                 rows={10}
                 spellCheck={false}
                 placeholder="Paste a new kubeconfig to change the endpoint; leave empty to keep it"
-                className="w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 font-mono text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                className="min-h-64 w-full resize-y rounded-lg border border-input bg-background px-3 py-2 font-mono text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
               />
-            </div>
+            </Field.Root>
             <p className="text-xs text-muted-foreground">Current endpoint: {editTarget?.endpoint ?? "—"}</p>
-          </div>
-          <DialogFooter>
-            <div className="flex w-full justify-end gap-2">
-              <Button variant="outline" onClick={() => setEditTarget(null)} disabled={pending === "edit"}>
-                Cancel
-              </Button>
-              <Button onClick={() => void doEdit()} disabled={!editName.trim() || pending === "edit"}>
-                Save changes
-              </Button>
-            </div>
-          </DialogFooter>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditTarget(null)} disabled={pending === "edit"}>Cancel</Button>
+              <Button type="submit" disabled={!editName.trim() || pending === "edit"}>{pending === "edit" ? "Saving…" : "Save changes"}</Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 

@@ -1,6 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { Field } from "@base-ui/react/field";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { toast } from "@/components/ui/toast";
 
 type ChangePasswordFormProps = {
   forced: boolean;
@@ -11,8 +16,8 @@ export function ChangePasswordForm({ forced }: ChangePasswordFormProps) {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const router = useRouter();
 
   const reset = () => {
     setCurrentPassword("");
@@ -24,10 +29,11 @@ export function ChangePasswordForm({ forced }: ChangePasswordFormProps) {
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
-    setSuccess(false);
 
     if (newPassword !== confirmPassword) {
-      setError("The new passwords do not match.");
+      const message = "The new passwords do not match.";
+      setError(message);
+      toast.add({ type: "error", title: "Password change failed", description: message });
       return;
     }
 
@@ -41,80 +47,77 @@ export function ChangePasswordForm({ forced }: ChangePasswordFormProps) {
       });
 
       if (response.status === 401) {
-        window.location.href = "/login";
+        router.push("/login");
         return;
       }
       if (response.status === 503) {
-        setError("The authentication service is currently unavailable. Please try again.");
+        const message = "The authentication service is currently unavailable. Please try again.";
+        setError(message);
+        toast.add({ type: "error", title: "Password change failed", description: message });
         return;
       }
       if (!response.ok) {
         const body = (await response.json()) as { message?: string };
-        setError(body.message ?? "The password could not be changed.");
+        const message = body.message ?? "The password could not be changed.";
+        setError(message);
+        toast.add({ type: "error", title: "Password change failed", description: message });
         return;
       }
 
-      setSuccess(true);
+      toast.add({ type: "success", title: "Password updated", description: "Your password has been changed." });
       reset();
       if (forced) {
-        window.location.href = "/dashboard";
+        router.push("/dashboard");
       }
     } catch {
-      setError("The authentication service is currently unavailable. Please try again.");
+      const message = "The authentication service is currently unavailable. Please try again.";
+      setError(message);
+      toast.add({ type: "error", title: "Password change failed", description: message });
     } finally {
       setSubmitting(false);
     }
   };
 
-  const inputClass =
-    "w-full rounded-xl border border-input bg-background px-4 py-3 text-foreground outline-none placeholder:text-muted-foreground focus:border-primary";
-
   return (
-    <form onSubmit={submit} className="space-y-5">
-      <div>
-        <label htmlFor="current-password" className="mb-2 block text-sm text-muted-foreground">
-          Current password
-        </label>
-        <input
+    <form onSubmit={submit} aria-busy={submitting} className="flex min-w-0 flex-col gap-5">
+      <Field.Root name="current-password" className="flex min-w-0 flex-col gap-2">
+        <Field.Label className="text-sm font-medium" htmlFor="current-password">Current password</Field.Label>
+        <Input
           id="current-password"
           name="current-password"
           type="password"
           value={currentPassword}
           onChange={(event) => setCurrentPassword(event.target.value)}
-          className={inputClass}
+          autoComplete="current-password"
           required
         />
-      </div>
+      </Field.Root>
 
-      <div>
-        <label htmlFor="new-password" className="mb-2 block text-sm text-muted-foreground">
-          New password
-        </label>
-        <input
+      <Field.Root name="new-password" className="flex min-w-0 flex-col gap-2">
+        <Field.Label className="text-sm font-medium" htmlFor="new-password">New password</Field.Label>
+        <Input
           id="new-password"
           name="new-password"
           type="password"
           value={newPassword}
           onChange={(event) => setNewPassword(event.target.value)}
-          className={inputClass}
+          autoComplete="new-password"
           required
         />
-      </div>
+      </Field.Root>
 
-      <div>
-        <label htmlFor="confirm-password" className="mb-2 block text-sm text-muted-foreground">
-          Confirm new password
-        </label>
-        <input
+      <Field.Root name="confirm-password" className="flex min-w-0 flex-col gap-2">
+        <Field.Label className="text-sm font-medium" htmlFor="confirm-password">Confirm new password</Field.Label>
+        <Input
           id="confirm-password"
           name="confirm-password"
           type="password"
           value={confirmPassword}
           onChange={(event) => setConfirmPassword(event.target.value)}
-          className={inputClass}
+          autoComplete="new-password"
           required
         />
-      </div>
+      </Field.Root>
 
       {error ? (
         <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -122,19 +125,7 @@ export function ChangePasswordForm({ forced }: ChangePasswordFormProps) {
         </div>
       ) : null}
 
-      {success ? (
-        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700">
-          Your password has been updated.
-        </div>
-      ) : null}
-
-      <button
-        type="submit"
-        disabled={submitting}
-        className="flex w-full cursor-pointer items-center justify-center rounded-xl bg-primary px-4 py-3 font-medium text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {submitting ? "Updating…" : "Update password"}
-      </button>
+      <Button type="submit" disabled={submitting}>{submitting ? "Updating…" : "Update password"}</Button>
     </form>
   );
 }

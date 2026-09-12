@@ -184,7 +184,7 @@ export function ClusterView() {
   const { refresh, lastUpdated } = usePolling(load);
 
   if (state.status === "loading") return <p className="rounded-lg bg-muted p-5 text-muted-foreground">Loading cluster data...</p>;
-  if (state.status === "error") return <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-5 text-red-700">{state.message}</p>;
+  if (state.status === "error") return <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-5 text-destructive">{state.message}</p>;
 
   const { namespaces, nodes, storageClasses, persistentVolumes, nodeMetrics, storageMetrics, metricsAvailable } = state;
   const nodeMetricsByName = new Map(nodeMetrics.map((n) => [n.name, n]));

@@ -111,16 +111,16 @@ body {
   --chart-5: #8b5cf6;
   --radius: 0.75rem;
   --sidebar: #f8f9fb;
-  --sidebar-foreground: #1e293b;
+  --sidebar-foreground: #334155;
   --sidebar-primary: #0891b2;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #eceef3;
-  --sidebar-accent-foreground: #334155;
+  --sidebar-accent: #e0f2fe;
+  --sidebar-accent-foreground: #0f172a;
   --sidebar-border: #e2e8f0;
   --sidebar-ring: #06b6d4;
 
-  --header-control: #f3f4f6;
-  --header-control-foreground: #64748b;
+  --header-control: #f8fafc;
+  --header-control-foreground: #475569;
 
   --surface: #f5f7f9;
   --surface-elevated: #f9fafb;
@@ -172,7 +172,7 @@ body {
   }
   body {
     @apply bg-background text-foreground;
-    font-family: Arial, Helvetica, sans-serif;
+    font-family: var(--font-geist-sans), sans-serif;
   }
   html {
     @apply font-sans;

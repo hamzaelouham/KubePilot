@@ -63,15 +63,15 @@ const STATUS_FILTERS: { value: JobStatus | "all"; label: string }[] = [
 function statusTone(status: JobStatus): string {
   switch (status) {
     case "queued":
-      return "bg-slate-200 text-slate-600";
+      return "bg-muted text-muted-foreground";
     case "running":
-      return "bg-cyan-100 text-cyan-700";
+      return "bg-primary/10 text-primary";
     case "succeeded":
-      return "bg-green-100 text-green-700";
+      return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
     case "failed":
-      return "bg-red-100 text-red-700";
+      return "bg-destructive/10 text-destructive";
     case "cancelled":
-      return "bg-amber-100 text-amber-700";
+      return "bg-amber-500/10 text-amber-700 dark:text-amber-300";
   }
 }
 
@@ -254,13 +254,13 @@ export function MarketplaceHistory({ canManage }: { canManage: boolean }) {
         ) : state.status === "error" ? (
           <div
             role="alert"
-            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-5 text-sm text-red-700"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-5 text-sm text-destructive"
           >
             <p>{state.message}</p>
             <button
               type="button"
               onClick={() => void load()}
-              className="cursor-pointer rounded-xl border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-700 transition hover:bg-red-100"
+              className="cursor-pointer rounded-lg border border-destructive/40 bg-background px-3 py-2 text-sm font-medium text-destructive transition hover:bg-destructive/10"
             >
               Retry
             </button>

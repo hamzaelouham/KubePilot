@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ChevronDown,
+  Boxes,
   Database,
   KeyRound,
   Layers,
@@ -225,14 +226,14 @@ export function DashboardShell({
         <div className="border-b border-border bg-card">
           <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
             <Link href="/" className="flex min-w-0 items-center gap-2.5">
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-lg text-primary">
-                ☸
+              <span className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Boxes aria-hidden="true" className="size-5" />
               </span>
               <span className="text-xl font-semibold tracking-tight text-foreground">KubePilot</span>
             </Link>
 
             <div className="ml-auto flex items-center gap-2">
-              <div className="flex min-w-0 items-center gap-2 rounded-xl border border-border bg-header-control px-3 py-1">
+              <div className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-header-control px-2.5 py-1.5">
                 <Server className="size-4 shrink-0 text-muted-foreground" />
                 <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Cluster</span>
                 {activeCluster ? (
@@ -245,7 +246,7 @@ export function DashboardShell({
                 >
                     <SelectTrigger
                       aria-label="Active cluster"
-                      className="h-10 gap-1.5 border-0 bg-transparent p-0 pr-1 text-sm font-medium text-foreground shadow-none data-[size=default]:h-10"
+                      className="h-8 min-w-28 gap-1.5 border-0 bg-transparent px-1 text-sm font-medium text-foreground shadow-none hover:bg-transparent data-[size=default]:h-8"
                     >
                       <SelectValue placeholder="Select cluster" />
                     </SelectTrigger>
@@ -270,10 +271,7 @@ export function DashboardShell({
                 ) : (
                   <span className="text-sm text-muted-foreground">Cluster unavailable</span>
                 )}
-              </div>
-            <button className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border border-border bg-header-control text-xl text-muted-foreground">
-              +
-            </button>
+            </div>
             <NotificationPopover />
             {user ? <UserMenu user={user} /> : null}
           </div>
@@ -282,7 +280,7 @@ export function DashboardShell({
 
       <div className="bg-primary text-primary-foreground">
         <div className="mx-auto flex max-w-[1600px] items-center gap-3 px-4 py-3 text-lg font-medium">
-          <span className="text-xl">☰</span>
+          <LayoutDashboard aria-hidden="true" className="size-5" />
           <span>{headerLabel}</span>
         </div>
       </div>
@@ -297,7 +295,7 @@ export function DashboardShell({
                 className={`flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-base transition ${
                   isActive("overview")
                     ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 }`}
               >
                 <LayoutDashboard className="h-4 w-4 shrink-0" />
@@ -309,7 +307,7 @@ export function DashboardShell({
                 className={`flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-base transition ${
                   isActive("marketplace")
                     ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 }`}
               >
                 <Store className="h-4 w-4 shrink-0" />
@@ -322,7 +320,7 @@ export function DashboardShell({
                 className={`flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-base transition ${
                   isActive("manage-resources")
                     ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 }`}
               >
                 <SquarePen className="size-4 shrink-0" />
@@ -334,11 +332,11 @@ export function DashboardShell({
                 const GroupIcon = group.icon;
                 return (
                   <Collapsible key={group.label} open={open} onOpenChange={() => toggleGroup(group.label)}>
-                    <CollapsibleTrigger className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-base font-medium text-sidebar-foreground transition hover:bg-sidebar-accent">
-                      <GroupIcon className="h-4 w-4 shrink-0 text-sidebar-foreground/70" />
+                    <CollapsibleTrigger className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-base font-medium text-sidebar-foreground transition hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
+                      <GroupIcon className="h-4 w-4 shrink-0 text-sidebar-foreground" />
                       <span>{group.label}</span>
                       <ChevronDown
-                        className={`ml-auto h-4 w-4 shrink-0 text-sidebar-foreground/70 transition-transform duration-200 ${
+                        className={`ml-auto h-4 w-4 shrink-0 text-sidebar-foreground transition-transform duration-200 ${
                           open ? "rotate-180" : ""
                         }`}
                       />
@@ -352,7 +350,7 @@ export function DashboardShell({
                           className={`block w-full cursor-pointer rounded-md px-3 py-2 pl-10 text-left text-base transition ${
                             isActive(item.id)
                               ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                              : "text-sidebar-foreground/70 hover:bg-sidebar-accent"
+                              : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                           }`}
                         >
                           {item.label}
@@ -365,23 +363,28 @@ export function DashboardShell({
             </nav>
 
             <div className="mt-6">
-              <label className="mb-2 block text-sidebar-foreground/70">Namespace</label>
-              <select
-                aria-label="Namespace"
-                value={activeNamespace}
+              <label className="mb-2 block text-sm font-medium text-sidebar-foreground">Namespace</label>
+              <Select
+                value={activeNamespace || "__all__"}
+                onValueChange={(value) => {
+                  if (value) onNavigate(activeResource, value === "__all__" ? "" : value);
+                }}
                 disabled={namespaceDisabled}
-                onChange={(event) => onNavigate(activeResource, event.target.value)}
-                className="h-11 w-full rounded-xl border border-border/70 bg-card px-3.5 text-sm font-medium text-foreground shadow-sm outline-none transition-all hover:border-border focus:border-ring focus:ring-2 focus:ring-ring/20"
               >
-                {suppliedNamespaces !== undefined ? <option value="">All namespaces</option> : null}
-                {suppliedNamespaces !== undefined && activeNamespace && !namespaceOptions.includes(activeNamespace)
-                  ? <option value={activeNamespace}>{activeNamespace} (unavailable)</option> : null}
-                {namespaceOptions.map((namespace) => (
-                  <option key={namespace} value={namespace}>
-                    {namespace}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger aria-label="Namespace" className="h-10 w-full border-sidebar-border bg-sidebar px-3 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
+                  <SelectValue placeholder="Select namespace" />
+                </SelectTrigger>
+                <SelectContent align="start">
+                  <SelectGroup>
+                    {suppliedNamespaces !== undefined ? <SelectItem value="__all__">All namespaces</SelectItem> : null}
+                    {suppliedNamespaces !== undefined && activeNamespace && !namespaceOptions.includes(activeNamespace)
+                      ? <SelectItem value={activeNamespace}>{activeNamespace} (unavailable)</SelectItem> : null}
+                    {namespaceOptions.map((namespace) => (
+                      <SelectItem key={namespace} value={namespace}>{namespace}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             </div>
 
             {user ? (
@@ -390,11 +393,11 @@ export function DashboardShell({
                 open={isGroupOpen(ADMIN_GROUP)}
                 onOpenChange={() => toggleGroup(ADMIN_GROUP)}
               >
-                <CollapsibleTrigger className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-base font-medium text-sidebar-foreground transition hover:bg-sidebar-accent">
-                  <ShieldCog className="h-4 w-4 shrink-0 text-sidebar-foreground/70" />
+                <CollapsibleTrigger className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-base font-medium text-sidebar-foreground transition hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
+                  <ShieldCog className="h-4 w-4 shrink-0 text-sidebar-foreground" />
                   <span>{ADMIN_GROUP}</span>
                   <ChevronDown
-                    className={`ml-auto h-4 w-4 shrink-0 text-sidebar-foreground/70 transition-transform duration-200 ${
+                    className={`ml-auto h-4 w-4 shrink-0 text-sidebar-foreground transition-transform duration-200 ${
                       isGroupOpen(ADMIN_GROUP) ? "rotate-180" : ""
                     }`}
                   />
@@ -407,9 +410,9 @@ export function DashboardShell({
                         key={item.id}
                         href={item.href}
                         className={`flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 pl-10 text-left text-base transition ${
-                          isActive(item.id)
-                            ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent"
+                            isActive(item.id)
+                              ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                            : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                         }`}
                       >
                         <item.icon className="size-4 shrink-0" />

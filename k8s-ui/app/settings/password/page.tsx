@@ -1,22 +1,23 @@
 import { ChangePasswordForm } from "@/components/change-password-form";
 import { requireBackendUser } from "@/lib/auth";
+import { Boxes } from "lucide-react";
 import Link from "next/link";
 
 export default async function PasswordSettingsPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ forced?: string }> | { forced?: string };
+  searchParams?: Promise<{ forced?: string }>;
 }) {
   const user = await requireBackendUser();
-  const resolvedParams = await Promise.resolve(searchParams ?? {});
+  const resolvedParams = searchParams ? await searchParams : {};
   const forced = resolvedParams.forced === "1";
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-6 py-12 text-foreground">
-      <div className="w-full max-w-md rounded-3xl border border-border bg-card p-8 shadow-sm">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
         <div className="mb-8 flex items-center gap-3">
-          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-lg text-primary">
-            ☸
+          <span className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Boxes aria-hidden="true" className="size-5" />
           </span>
           <h1 className="text-2xl font-semibold text-foreground">KubePilot</h1>
         </div>

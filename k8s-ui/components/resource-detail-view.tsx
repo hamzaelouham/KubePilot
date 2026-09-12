@@ -221,13 +221,13 @@ function StatusPanel({
                   label="CPU"
                   value={`${formatMillicores(m.cpu_usage_millicores)} / ${m.cpu_allocatable_millicores !== null ? formatMillicores(m.cpu_allocatable_millicores) : "—"}${cpuPct !== null ? ` (${cpuPct}%)` : ""}`}
                   percent={cpuPct}
-                  toneClass={cpuPct !== null && cpuPct >= 90 ? "text-red-600 font-medium" : cpuPct !== null && cpuPct >= 70 ? "text-amber-600 font-medium" : "text-foreground"}
+                  toneClass={cpuPct !== null && cpuPct >= 90 ? "text-destructive font-medium" : cpuPct !== null && cpuPct >= 70 ? "text-amber-600 font-medium" : "text-foreground"}
                 />
                 <MetricBar
                   label="Memory"
                   value={`${formatBytes(m.memory_usage_bytes)} / ${m.memory_allocatable_bytes !== null ? formatBytes(m.memory_allocatable_bytes) : "—"}${memPct !== null ? ` (${memPct}%)` : ""}`}
                   percent={memPct}
-                  toneClass={memPct !== null && memPct >= 90 ? "text-red-600 font-medium" : memPct !== null && memPct >= 70 ? "text-amber-600 font-medium" : "text-foreground"}
+                  toneClass={memPct !== null && memPct >= 90 ? "text-destructive font-medium" : memPct !== null && memPct >= 70 ? "text-amber-600 font-medium" : "text-foreground"}
                 />
               </div>
             );
@@ -275,7 +275,7 @@ function YamlPanel({ state }: { state: YamlState }) {
     return <p className="rounded-lg bg-muted p-5 text-muted-foreground">Loading YAML...</p>;
   }
   if (state.status === "error") {
-    return <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-5 text-red-700">{state.message}</p>;
+    return <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-5 text-destructive">{state.message}</p>;
   }
   return (
     <div className="space-y-4">
@@ -296,7 +296,7 @@ function LogsPanel({ state }: { state: LogState }) {
     return <p className="rounded-lg bg-muted p-5 text-muted-foreground">Loading logs...</p>;
   }
   if (state.status === "error") {
-    return <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-5 text-red-700">{state.message}</p>;
+    return <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-5 text-destructive">{state.message}</p>;
   }
   if (state.data.lines.length === 0) {
     return <p className="rounded-lg bg-muted p-5 text-muted-foreground">No logs available for this resource.</p>;
@@ -325,7 +325,7 @@ function EventsPanel({ state }: { state: EventState }) {
     return <p className="rounded-lg bg-muted p-5 text-muted-foreground">Loading events...</p>;
   }
   if (state.status === "error") {
-    return <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-5 text-red-700">{state.message}</p>;
+    return <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-5 text-destructive">{state.message}</p>;
   }
   if (state.data.items.length === 0) {
     return <p className="rounded-lg bg-muted p-5 text-muted-foreground">No events found for this resource.</p>;
@@ -510,7 +510,7 @@ export default function ResourceDetailView({
           <Link href="/dashboard?resource=pods" className="text-sm text-cyan-600 hover:underline">
             ← Back to resources
           </Link>
-          <p className="rounded-lg border border-red-200 bg-red-50 p-5 text-red-700">
+          <p className="rounded-lg border border-destructive/40 bg-destructive/10 p-5 text-destructive">
             No resource name provided. Please select a resource from the list.
           </p>
         </div>
@@ -571,7 +571,7 @@ export default function ResourceDetailView({
           detailState.status === "loading" ? (
             <p className="rounded-lg bg-muted p-5 text-muted-foreground">Loading status...</p>
           ) : detailState.status === "error" ? (
-            <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-5 text-red-700">{detailState.message}</p>
+            <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-5 text-destructive">{detailState.message}</p>
           ) : (
             <StatusPanel data={detailState.data} resourceType={resourceType} name={name} namespace={namespace} />
           )

@@ -14,7 +14,7 @@ export function MetricBar({ label, value, percent, toneClass }: MetricBarProps) 
       </div>
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
         <div
-          className={`h-full rounded-full ${percent === null ? "bg-slate-300" : "bg-slate-600"}`}
+          className={`h-full rounded-full ${percent === null ? "bg-muted-foreground/30" : "bg-primary"}`}
           style={{
             width: percent === null ? "0%" : `${Math.min(100, Math.max(0, percent))}%`,
             backgroundColor: percent === null ? undefined : toneFill(percent),

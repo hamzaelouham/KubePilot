@@ -208,7 +208,7 @@ export function MarketplaceBrowser({
         {status === "error" && (
           <div
             role="alert"
-            className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+            className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive"
           >
             <span>{errorMessage || "Unable to load packages."}</span>
             <Button variant="outline" size="xs" onClick={retry}>

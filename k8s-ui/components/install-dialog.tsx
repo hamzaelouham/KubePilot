@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,6 +22,7 @@ import { withCluster } from "@/lib/cluster-query";
 import { publisherOf, type MarketplacePackage } from "@/components/package-card";
 import { cachedFetch, invalidateCache } from "@/lib/marketplace-cache";
 import { apiErrorMessage } from "@/lib/api-error";
+import { toast } from "@/components/ui/toast";
 
 type VersionsState =
   | { status: "loading" }
@@ -126,6 +127,7 @@ function JobProgress({
     message: null,
   });
   const [attempt, setAttempt] = useState(0);
+  const reportedRef = useRef(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -146,6 +148,14 @@ function JobProgress({
         const stage = body.status ?? "";
         if (isJobStatus(stage)) {
           setPoll({ phase: "status", stage, message: body.error_message ?? null });
+          if (TERMINAL_JOB_STAGES.has(stage) && !reportedRef.current) {
+            reportedRef.current = true;
+            if (stage === "succeeded") {
+              toast.add({ type: "success", title: "Installation complete", description: `${packageName} is ready.` });
+            } else {
+              toast.add({ type: "error", title: "Installation failed", description: body.error_message ?? "Review the installation status and try again." });
+            }
+          }
           if (!TERMINAL_JOB_STAGES.has(stage)) {
             timer = window.setTimeout(pollOnce, POLL_MS);
           }
@@ -171,7 +181,7 @@ function JobProgress({
       controller.abort();
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [jobId, attempt]);
+  }, [attempt, jobId, packageName]);
 
   const stage = poll.phase === "status" ? poll.stage : undefined;
   const terminal = stage !== undefined && TERMINAL_JOB_STAGES.has(stage);
@@ -209,7 +219,7 @@ function JobProgress({
         {stage === "failed" && poll.phase === "status" && poll.message && (
           <div
             role="alert"
-            className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+            className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
           >
             {poll.message}
           </div>
@@ -217,7 +227,7 @@ function JobProgress({
         {poll.phase === "error" && (
           <div
             role="alert"
-            className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+            className="flex items-center justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
           >
             <span>{poll.message}</span>
             <Button variant="outline" size="xs" onClick={() => setAttempt((current) => current + 1)}>
@@ -251,7 +261,7 @@ export function InstallDialog({
   return (
     <Dialog open={pkg !== null} onOpenChange={onOpenChange}>
       {pkg && (
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
           <InstallDialogBody
             key={pkg.package_id}
             pkg={pkg}
@@ -401,11 +411,12 @@ function InstallDialogBody({
         if (!response.ok) throw new Error(apiErrorMessage(body, "Installation request failed"));
         invalidateCache("/api/marketplace/packages");
         setQueuedJobId(body.job_id ?? null);
+        toast.add({ type: "success", title: "Installation queued", description: `${pkg.name} will be installed in ${namespaces.selected}.` });
       })
       .catch((error) => {
-        setInstallError(
-          error instanceof Error ? error.message : "Installation request failed",
-        );
+        const message = error instanceof Error ? error.message : "Installation request failed";
+        setInstallError(message);
+        toast.add({ type: "error", title: "Installation failed", description: message });
       })
       .finally(() => setPosting(false));
   };
@@ -435,7 +446,7 @@ function InstallDialogBody({
       {installError && (
         <div
           role="alert"
-          className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+          className="flex items-center justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
         >
           <span>{installError}</span>
         </div>
@@ -448,7 +459,7 @@ function InstallDialogBody({
           {versions.status === "error" ? (
             <div
               role="alert"
-              className="mt-1 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+              className="mt-1 flex items-center justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
             >
               <span>{versions.message}</span>
               <Button variant="outline" size="xs" onClick={retryVersions}>
@@ -523,7 +534,7 @@ function InstallDialogBody({
           ) : namespaces.status === "error" ? (
             <div
               role="alert"
-              className="mt-1 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+              className="mt-1 flex items-center justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
             >
               <span>{namespaces.message}</span>
               <Button variant="outline" size="xs" onClick={retryNamespaces}>
@@ -577,7 +588,7 @@ function InstallDialogBody({
             aria-describedby={releaseError ? "install-release-name-error" : undefined}
           />
           {releaseError && (
-            <p id="install-release-name-error" role="alert" className="mt-1 text-sm text-red-600">
+            <p id="install-release-name-error" role="alert" className="mt-1 text-sm text-destructive">
               {releaseError}
             </p>
           )}

@@ -145,6 +145,12 @@ function JobProgress({
                   type: "success",
                 });
                 onClose();
+              } else {
+                toast.add({
+                  title: kind === "rollback" ? "Rollback failed" : "Uninstall failed",
+                  description: body.error_message ?? "Review the release status and try again.",
+                  type: "error",
+                });
               }
             }
           } else {
@@ -221,7 +227,7 @@ function JobProgress({
         {stage === "failed" && poll.phase === "status" && poll.message && (
           <div
             role="alert"
-            className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+            className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
           >
             {poll.message}
           </div>
@@ -229,7 +235,7 @@ function JobProgress({
         {poll.phase === "error" && (
           <div
             role="alert"
-            className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+            className="flex items-center justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
           >
             <span>{poll.message}</span>
             <Button variant="outline" size="xs" onClick={() => setAttempt((current) => current + 1)}>
@@ -278,9 +284,9 @@ export function ReleaseActionDialog({
         setQueuedJobId(body.job_id ?? null);
       })
       .catch((error) => {
-        setActionError(
-          error instanceof Error ? error.message : `Unable to ${kind} the release`,
-        );
+        const message = error instanceof Error ? error.message : `Unable to ${kind} the release`;
+        setActionError(message);
+        toast.add({ type: "error", title: kind === "rollback" ? "Rollback failed" : "Uninstall failed", description: message });
       })
       .finally(() => setPosting(false));
   };
@@ -294,7 +300,7 @@ export function ReleaseActionDialog({
     <Dialog open onOpenChange={(open) => {
       if (!open) handleClose();
     }}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         {queuedJobId ? (
           <JobProgress
             jobId={queuedJobId}
@@ -317,7 +323,7 @@ export function ReleaseActionDialog({
             {actionError && (
               <div
                 role="alert"
-                className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+                className="flex items-center justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
               >
                 <span>{actionError}</span>
               </div>
