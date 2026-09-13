@@ -45,6 +45,8 @@ services:
     restart: unless-stopped
     environment:
       KUBEPILOT_BACKEND_URL: ${KUBEPILOT_BACKEND_URL:-http://backend:8000}
+      KUBEPILOT_AI_MODEL: ${KUBEPILOT_AI_MODEL:-}
+      AI_GATEWAY_API_KEY: ${AI_GATEWAY_API_KEY:-}
       KUBEPILOT_CLUSTER_NAME: ${KUBEPILOT_CLUSTER_NAME:-primary}
       KUBEPILOT_AUTH_SECRET: ${KUBEPILOT_AUTH_SECRET:?KUBEPILOT_AUTH_SECRET is required (at least 32 chars)}
     depends_on:

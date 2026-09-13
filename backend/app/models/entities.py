@@ -8,6 +8,21 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base, CreatedAt, PrimaryKey
 
 
+class AssistantProposal(Base):
+    __tablename__ = "assistant_proposals"
+
+    id: Mapped[PrimaryKey]
+    actor_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("user_accounts.id", ondelete="CASCADE"), index=True)
+    session_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    cluster_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    arguments: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    precondition: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="pending", nullable=False)
+    created_at: Mapped[CreatedAt]
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+
+
 class UserAccount(Base):
     __tablename__ = "user_accounts"
 

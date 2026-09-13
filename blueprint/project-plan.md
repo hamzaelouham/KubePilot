@@ -24,7 +24,7 @@ Secondary users may include engineering managers and technical operators who nee
 - Local authentication and protected operating views
 - Basic resource actions such as scale and restart
 - Event-driven or refreshable data updates for operational clarity
-- AI-assisted investigation as a later expansion, not the initial delivery
+- AI-Powered SRE/DevOps Assistant (post-MVP, feature 14): native streaming investigations, typed tools wrapping existing APIs, evidence-based diagnosis, and human-approved resource/Helm lifecycle operations using Vercel AI SDK and AI Elements.
 - KubePilot Marketplace (post-MVP) for discovering, installing, and tracking Kubernetes Helm packages from Artifact Hub
 - Manage resources (post-MVP, feature 19) for Kubernetes create/delete operations and Helm release/repository management in the selected cluster
 
@@ -48,6 +48,7 @@ All four items live under the "Manage resources" sidebar entry. Admins and opera
 - Log references or cached log excerpts for troubleshooting
 - User-defined settings such as default namespace and view preferences
 - Audit records for admin actions and resource operations
+- Assistant action proposals: UUID, actor/session identifiers, immutable validated action arguments and target cluster, expiration, one-use execution/denial state and sanitized result. Conversations remain in the active browser view for V1; prompts and raw tool data are not persisted in audit records.
 - Application-level session and RBAC metadata for local access control
 - Marketplace installation and release-action jobs (package and chart metadata, target cluster, namespace, release name, action, revision where applicable, status, error message, timestamps) and resolved Artifact Hub package metadata; feature 19 extends release management to externally installed releases and upgrades
 - KubePilot-managed global public Helm chart repository configuration (name and URL); 19c does not support credentials, and 19d requires explicit repository/chart/version selection for each upgrade without a persisted release-to-chart-source association
@@ -62,7 +63,7 @@ Kubernetes remains the source of truth for live resources and Helm releases. Man
 - Kubernetes integration: Kubernetes Python client and Kubernetes API access through FastAPI only
 - Authentication: local admin account with a shared, signed, HTTP-only session cookie validated by Next.js and FastAPI against PostgreSQL
 - Architecture: a modern UI backed by structured API endpoints, with Kubernetes as the operational system of record and credentials kept exclusively in FastAPI
-- Future direction: AI Copilot integration for investigation and guided action support
+- AI integration: installed Vercel AI SDK ToolLoopAgent and AI Elements; a server-configured tool-capable model via AI Gateway, with backend-only safe observations and durable human approval. No additional agent framework.
 - Marketplace integration: Artifact Hub package search API (read-only, public search, no API key for basic search) and Helm execution inside the FastAPI backend (repo add/update/install) with a simple background job mechanism for V1; do not introduce Celery/RQ unless the existing architecture already needs it
 - Resource management: Kubernetes resource creation/deletion through the Kubernetes Python client in FastAPI; live Helm release discovery, history, rollback, uninstall, repository configuration, and upgrades through backend Helm integration, using validated command arguments and the existing job mechanism for release mutations
 

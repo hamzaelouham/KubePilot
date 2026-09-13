@@ -548,6 +548,7 @@ export default function ResourceDetailView({
           {name}
           {namespace && <span className="ml-2 text-lg text-muted-foreground">({namespace})</span>}
         </h2>
+        <Link className="mt-3 inline-flex text-sm font-medium text-primary hover:underline" href={`/assistant?${new URLSearchParams({ cluster: activeCluster, resource: resourceType, name, ...(namespace ? { namespace } : {}) })}`}>Investigate with AI Assistant</Link>
       </div>
 
       <div className="flex gap-1 rounded-lg border border-border bg-muted p-1">

@@ -16,6 +16,7 @@ import {
   SlidersHorizontal,
   Store,
   SquarePen,
+  Sparkles,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -105,6 +106,7 @@ const adminResourceIds = new Set(adminNavItems.map((item) => item.id));
 
 const resourceTitles: Record<string, string> = {
   overview: "Overview",
+  assistant: "AI Assistant",
   workloads: "Workloads",
   marketplace: "Marketplace",
   "background-jobs": "Background jobs",
@@ -303,6 +305,11 @@ export function DashboardShell({
                 <LayoutDashboard className="h-4 w-4 shrink-0" />
                 Dashboard
               </button>
+
+              <Link
+                href={withCluster(`/assistant?namespace=${encodeURIComponent(activeNamespace)}`, activeCluster)}
+                className={`flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-base transition ${isActive("assistant") ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"}`}
+              ><Sparkles className="size-4 shrink-0" />AI Assistant</Link>
 
               <Link
                 href="/marketplace"

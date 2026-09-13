@@ -166,6 +166,7 @@ class ManagementClient:
             "core": client.CoreV1Api(api_client),
             "apps": client.AppsV1Api(api_client),
             "batch": client.BatchV1Api(api_client),
+            "networking": client.NetworkingV1Api(api_client),
         }
 
     def _call(self, kind: ResourceKind, method: str, operation: str, **kwargs):
@@ -199,6 +200,19 @@ class ManagementClient:
         if kind.namespaced:
             arguments["namespace"] = namespace
         return self._call(kind, f"read_{'namespaced_' if kind.namespaced else ''}{kind.singular}", "read", **arguments)
+
+    def bounded_resources(self, kind: ResourceKind, namespace: str | None, limit: int):
+        arguments = {"limit": limit}
+        if kind.namespaced and namespace:
+            method = f"list_namespaced_{kind.singular}"
+            arguments["namespace"] = namespace
+        else:
+            method = f"list_{kind.singular}" + ("_for_all_namespaces" if kind.namespaced else "")
+        response = self._call(kind, method, "read", **arguments)
+        return response.items[:limit], bool(getattr(getattr(response, "metadata", None), "_continue", None))
+
+    def patch_deployment(self, namespace: str, name: str, body: dict):
+        return self._call(RESOURCE_KINDS["deployments"], "patch_namespaced_deployment", "update", name=name, namespace=namespace, body=body)
 
     def create(self, kind: ResourceKind, namespace: str | None, manifest: dict[str, Any]):
         arguments = {"body": manifest, "field_validation": "Strict"}
