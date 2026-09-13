@@ -7,11 +7,13 @@ import subprocess
 import tempfile
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit
 
 from app.core.config import Settings
 
 _CAP = 4096
 _DNS_LABEL = re.compile(r"^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$")
+_VERSION = re.compile(r"^[^\s\x00-\x1f\x7f]{1,64}$")
 
 
 class HelmError(RuntimeError):
@@ -45,6 +47,12 @@ class HelmHistoryRecord:
 def validate_target_name(value: str, label: str) -> str:
     if not value or len(value) > 253 or not _DNS_LABEL.fullmatch(value):
         raise ValueError(f"Invalid {label}.")
+    return value
+
+
+def validate_chart_version(value: str) -> str:
+    if not _VERSION.fullmatch(value):
+        raise ValueError("Invalid chart version.")
     return value
 
 
@@ -98,6 +106,61 @@ def _run_json(settings: Settings, args: list[str], kubeconfig_path: str | None) 
         return json.loads(result.stdout)
     except (TypeError, ValueError) as error:
         raise HelmError("helm_error", "Helm returned an unreadable release response.") from error
+
+
+def _run_source_command(settings: Settings, args: list[str]) -> str:
+    try:
+        result = subprocess.run(
+            [settings.helm_binary, *args],
+            capture_output=True,
+            text=True,
+            timeout=settings.helm_install_timeout_seconds,
+            check=False,
+            shell=False,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise HelmError("chart_source_unavailable", "Helm could not resolve the selected chart source in time.") from error
+    except OSError as error:
+        raise HelmError("helm_unavailable", "The Helm binary is unavailable.") from error
+    if result.returncode != 0:
+        raise HelmError("chart_source_unavailable", "The selected chart and version could not be resolved.")
+    output = (result.stdout or "").strip()
+    if len(output) > _CAP:
+        output = output[:_CAP] + "..."
+    return output
+
+
+def resolve_chart_source(
+    settings: Settings,
+    repository_name: str,
+    repository_url: str,
+    chart_name: str,
+    version: str,
+) -> None:
+    """Verify an explicit global repository/chart/version before queueing."""
+    try:
+        validate_target_name(repository_name, "repository name")
+        validate_target_name(chart_name, "chart name")
+        validate_chart_version(version)
+        parsed = urlsplit(repository_url)
+        hostname = parsed.hostname
+    except (TypeError, ValueError) as error:
+        raise HelmError("invalid_chart_source", "The selected chart source is invalid.") from error
+    if (
+        parsed.scheme not in ("http", "https")
+        or not hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise HelmError("invalid_chart_source", "The selected chart source is invalid.")
+
+    _run_source_command(settings, ["repo", "add", repository_name, repository_url, "--force-update"])
+    _run_source_command(settings, ["repo", "update", repository_name])
+    chart = f"{repository_name}/{chart_name}"
+    if not _run_source_command(settings, ["show", "chart", chart, "--version", version]):
+        raise HelmError("chart_source_unavailable", "The selected chart and version could not be resolved.")
 
 
 def _kubeconfig(cluster) -> str | None:

@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 _ERROR_CAP = 4096
 _LOG_CAP = 32768
 _DNS_1123_PATTERN = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
+_VERSION_PATTERN = re.compile(r"^[^\s\x00-\x1f\x7f]{1,64}$")
 _ALLOWED_REPOSITORY_SCHEMES = ("http", "https")
 
 
@@ -33,6 +34,7 @@ _SUCCESS_EVENTS = {
 _HELM_RELEASE_SUCCESS_EVENTS = {
     "rollback": AuditEvent.HELM_RELEASE_ROLLBACK_SUCCEEDED,
     "uninstall": AuditEvent.HELM_RELEASE_UNINSTALL_SUCCEEDED,
+    "upgrade": AuditEvent.HELM_RELEASE_UPGRADE_SUCCEEDED,
 }
 
 _FAILED_EVENTS = {
@@ -44,6 +46,7 @@ _FAILED_EVENTS = {
 _HELM_RELEASE_FAILED_EVENTS = {
     "rollback": AuditEvent.HELM_RELEASE_ROLLBACK_FAILED,
     "uninstall": AuditEvent.HELM_RELEASE_UNINSTALL_FAILED,
+    "upgrade": AuditEvent.HELM_RELEASE_UPGRADE_FAILED,
 }
 
 
@@ -51,7 +54,22 @@ def _invalid_job_field(job) -> str | None:
     for field in ("chart_name", "chart_repository", "namespace", "release_name"):
         if not _DNS_1123_PATTERN.fullmatch(getattr(job, field) or ""):
             return field
-    if urlsplit(job.chart_repository_url or "").scheme not in _ALLOWED_REPOSITORY_SCHEMES:
+    if not _VERSION_PATTERN.fullmatch(getattr(job, "chart_version", "") or ""):
+        return "chart_version"
+    try:
+        parsed_url = urlsplit(job.chart_repository_url or "")
+        hostname = parsed_url.hostname
+    except ValueError:
+        return "chart_repository_url"
+    if (
+        parsed_url.scheme not in _ALLOWED_REPOSITORY_SCHEMES
+        or not parsed_url.netloc
+        or not hostname
+        or parsed_url.username is not None
+        or parsed_url.password is not None
+        or parsed_url.query
+        or parsed_url.fragment
+    ):
         return "chart_repository_url"
     return None
 
@@ -108,7 +126,7 @@ def claim_next_job(database) -> InstallationJob | None:
 
 def _run_single_command(command: list[str], timeout: int) -> str:
     try:
-        completed = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=timeout, shell=False)
     except subprocess.TimeoutExpired as error:
         message = f"helm command timed out after {timeout}s"
         timeout_output = _trim(
@@ -149,6 +167,40 @@ def _run_helm_install(settings: Settings, job, repository_url: str, kubeconfig_p
             job.chart_version,
             "--namespace",
             job.namespace,
+            "--wait",
+            "--timeout",
+            seconds,
+        ],
+    ]
+    if kubeconfig_path:
+        commands[2] = [*commands[2], "--kubeconfig", kubeconfig_path]
+
+    output_parts: list[str] = []
+    for command in commands:
+        try:
+            output_parts.append(_run_single_command(command, timeout))
+        except HelmInstallError as error:
+            error.output = "\n".join(part for part in (*output_parts, getattr(error, "output", "")) if part)
+            raise
+    return "\n".join(part for part in output_parts if part)
+
+
+def _run_helm_upgrade(settings: Settings, job, kubeconfig_path: str | None) -> str:
+    timeout = settings.helm_install_timeout_seconds
+    seconds = f"{timeout}s"
+    commands = [
+        [settings.helm_binary, "repo", "add", job.chart_repository, job.chart_repository_url, "--force-update"],
+        [settings.helm_binary, "repo", "update", job.chart_repository],
+        [
+            settings.helm_binary,
+            "upgrade",
+            job.release_name,
+            f"{job.chart_repository}/{job.chart_name}",
+            "--version",
+            job.chart_version,
+            "--namespace",
+            job.namespace,
+            "--reuse-values",
             "--wait",
             "--timeout",
             seconds,
@@ -243,6 +295,9 @@ def _fail_job(
             "namespace": job.namespace,
             "release": job.release_name,
             "action": job.action,
+            "repository": job.chart_repository,
+            "chart": job.chart_name,
+            "version": job.chart_version,
         },
     )
     database.commit()
@@ -290,9 +345,17 @@ def _process_install_job(database, job, settings: Settings) -> None:
 
 
 def _process_release_job(database, job, settings: Settings) -> None:
-    success_event = (_HELM_RELEASE_SUCCESS_EVENTS if job.package_id is None else _SUCCESS_EVENTS)[job.action]
-    failed_event = (_HELM_RELEASE_FAILED_EVENTS if job.package_id is None else _FAILED_EVENTS)[job.action]
-    invalid_field = _invalid_release_target(job)
+    success_events = _HELM_RELEASE_SUCCESS_EVENTS if job.package_id is None else _SUCCESS_EVENTS
+    failed_events = _HELM_RELEASE_FAILED_EVENTS if job.package_id is None else _FAILED_EVENTS
+    if job.action not in success_events or job.action not in failed_events:
+        _fail_job(database, job, f"unknown job action '{job.action}'")
+        return
+    if job.action == "upgrade" and job.package_id is not None:
+        _fail_job(database, job, "refusing to run helm: upgrade jobs cannot include a package id", failed_events[job.action])
+        return
+    success_event = success_events[job.action]
+    failed_event = failed_events[job.action]
+    invalid_field = _invalid_job_field(job) if job.action == "upgrade" else _invalid_release_target(job)
     if invalid_field is not None:
         _fail_job(
             database,
@@ -308,8 +371,10 @@ def _process_release_job(database, job, settings: Settings) -> None:
 
         if job.action == "rollback":
             job.log_output = _trim(_run_helm_rollback(settings, job, kubeconfig_path), _LOG_CAP)
-        else:
+        elif job.action == "uninstall":
             job.log_output = _trim(_run_helm_uninstall(settings, job, kubeconfig_path), _LOG_CAP)
+        else:
+            job.log_output = _trim(_run_helm_upgrade(settings, job, kubeconfig_path), _LOG_CAP)
         job.status = "succeeded"
         job.completed_at = datetime.now(timezone.utc)
         database.commit()
@@ -326,6 +391,9 @@ def _process_release_job(database, job, settings: Settings) -> None:
                 "namespace": job.namespace,
                 "release": job.release_name,
                 "action": job.action,
+                "repository": job.chart_repository,
+                "chart": job.chart_name,
+                "version": job.chart_version,
             },
         )
         database.commit()
@@ -346,7 +414,7 @@ def _process_claimed_job(database, job, settings: Settings) -> None:
     if job.action == "install":
         _process_install_job(database, job, settings)
         return
-    if job.action in ("rollback", "uninstall"):
+    if job.action in ("rollback", "uninstall", "upgrade"):
         _process_release_job(database, job, settings)
         return
     _fail_job(database, job, f"unknown job action '{job.action}'")

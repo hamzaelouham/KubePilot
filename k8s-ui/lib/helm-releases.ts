@@ -20,6 +20,8 @@ export type HelmReleaseRevision = {
   description: string | null;
 };
 
+export type HelmReleaseAction = "rollback" | "uninstall" | "upgrade";
+
 export function helmUrl(cluster: string, path = "", namespace?: string) {
   if (!cluster.trim()) throw new Error("Helm release management requires an explicit cluster.");
   const query = new URLSearchParams({ cluster });

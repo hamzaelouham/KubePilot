@@ -414,6 +414,40 @@ def test_uninstall_success_records_audit(
         database.close()
 
 
+def test_upgrade_success_reuses_values_and_records_audit(
+    api: SimpleNamespace, seed: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple] = []
+    _capture_helm_call(monkeypatch, calls)
+    job_id = _add_job(api, seed.cluster, package_id=None, package_name="my-release", action="upgrade")
+    database = create_session_factory(api.settings)()
+    try:
+        run_pending_installations(database, api.settings)
+    finally:
+        database.close()
+
+    assert len(calls) == 3
+    command, timeout = calls[2]
+    assert command[:4] == ["helm", "upgrade", "my-release", "bitnami/redis"]
+    assert "--version" in command and command[command.index("--version") + 1] == "2.0.0"
+    assert "--reuse-values" in command
+    assert "--wait" in command
+    assert command[command.index("--timeout") + 1] == f"{api.settings.helm_install_timeout_seconds}s"
+    assert timeout == api.settings.helm_install_timeout_seconds
+    assert "--kubeconfig" in command
+    kubeconfig = command[command.index("--kubeconfig") + 1]
+    assert os.path.exists(kubeconfig) is False
+
+    database = create_session_factory(api.settings)()
+    try:
+        job = database.get(InstallationJob, job_id)
+        assert job.status == "succeeded"
+        audit = database.scalar(select(AuditAction).where(AuditAction.resource_id == str(job.id)))
+        assert audit.action == "helm.release_upgrade_succeeded"
+        assert audit.result == "success"
+    finally:
+        database.close()
+
 def test_rollback_failure_records_audit(
     api: SimpleNamespace, seed: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -478,7 +512,7 @@ def test_unknown_action_fails_job(
         raise AssertionError("helm must not run")
 
     monkeypatch.setattr(worker, "_run_single_command", boom)
-    job_id = _add_job(api, seed.cluster, action="upgrade")
+    job_id = _add_job(api, seed.cluster, action="unknown")
     database = create_session_factory(api.settings)()
     try:
         run_pending_installations(database, api.settings)
@@ -490,7 +524,7 @@ def test_unknown_action_fails_job(
     try:
         job = database.get(InstallationJob, job_id)
         assert job.status == "failed"
-        assert "unknown job action 'upgrade'" in job.error_message
+        assert "unknown job action 'unknown'" in job.error_message
         audit = database.scalar(select(AuditAction).where(AuditAction.resource_id == str(job.id)))
         assert audit.action == "marketplace.install_failed"
     finally:

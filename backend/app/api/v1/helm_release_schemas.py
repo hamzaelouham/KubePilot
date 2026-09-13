@@ -48,6 +48,15 @@ class HelmReleaseActionRequest(BaseModel):
     confirm_name: str = Field(min_length=1, max_length=253)
 
 
+class HelmReleaseUpgradeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    repository_id: UUID
+    chart_name: str = Field(min_length=1, max_length=253)
+    version: str = Field(min_length=1, max_length=64)
+    confirm_name: str = Field(min_length=1, max_length=253)
+
+
 class HelmReleaseActionResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

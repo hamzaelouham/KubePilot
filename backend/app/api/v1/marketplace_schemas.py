@@ -80,7 +80,7 @@ class MarketplaceInstallationStatus(BaseModel):
     cluster: str
     namespace: str
     release_name: str
-    action: Literal["install", "rollback", "uninstall"] = "install"
+    action: Literal["install", "rollback", "uninstall", "upgrade"] = "install"
     status: Literal["queued", "running", "succeeded", "failed", "cancelled"]
     error_message: Optional[str] = None
     created_at: datetime

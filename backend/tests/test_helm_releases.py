@@ -10,11 +10,12 @@ from sqlalchemy.orm import sessionmaker
 from app.core.config import Settings
 from app.core.dependencies import AuthenticatedActor
 from app.api.v1 import helm_releases
-from app.api.v1.helm_release_schemas import HelmReleaseActionRequest
+from app.api.v1.helm_release_schemas import HelmReleaseActionRequest, HelmReleaseUpgradeRequest
 from app.jobs import worker
 from app.kubernetes import helm
+from app.kubernetes.helm import HelmError
 from app.models.base import Base
-from app.models.entities import AuditAction, ClusterConnection, InstallationJob
+from app.models.entities import AuditAction, ClusterConnection, HelmRepository, InstallationJob
 
 
 def release(**values):
@@ -83,6 +84,27 @@ def test_adapter_rejects_invalid_inventory(monkeypatch, payload):
     assert "unsafe" not in str(caught.value)
 
 
+def test_adapter_resolves_explicit_chart_source(monkeypatch):
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append(command)
+        return SimpleNamespace(returncode=0, stdout="name: payments\nversion: 2.0.0\n", stderr="")
+
+    monkeypatch.setattr(helm.subprocess, "run", run)
+    helm.resolve_chart_source(
+        Settings("x" * 32, "sqlite://", helm_install_timeout_seconds=7),
+        "global-charts", "https://charts.example.test", "payments", "2.0.0",
+    )
+
+    assert calls == [
+        ["helm", "repo", "add", "global-charts", "https://charts.example.test", "--force-update"],
+        ["helm", "repo", "update", "global-charts"],
+        ["helm", "show", "chart", "global-charts/payments", "--version", "2.0.0"],
+    ]
+    assert all(call for call in calls)
+
+
 def test_external_release_job_uses_worker_and_distinct_audit(database, monkeypatch):
     with database.factory() as session:
         job = InstallationJob(
@@ -146,3 +168,64 @@ def test_queue_action_rejects_wrong_confirmation_before_helm(database, monkeypat
             )
         assert getattr(caught.value, "status_code", None) == 422
         assert called == []
+
+
+def test_queue_upgrade_resolves_global_source_and_snapshots_job(database, monkeypatch):
+    with database.factory() as session:
+        repository = HelmRepository(name="global-charts", url="https://charts.example.test")
+        session.add(repository)
+        session.commit()
+        repository_id = repository.id
+
+    monkeypatch.setattr(helm_releases, "list_releases", lambda settings, cluster: [release()])
+    resolved = []
+    monkeypatch.setattr(
+        helm_releases,
+        "resolve_chart_source",
+        lambda settings, name, url, chart, version: resolved.append((name, url, chart, version)),
+    )
+    actor = AuthenticatedActor("helm@example.test", "admin")
+    with database.factory() as session:
+        queued = helm_releases._queue_upgrade(
+            "payments", request_for("cluster=production&namespace=production"),
+            HelmReleaseUpgradeRequest(
+                repository_id=repository_id, chart_name="payments", version="2.0.0", confirm_name="payments"
+            ), actor, session, database.settings,
+        )
+        stored = session.get(InstallationJob, queued.job_id)
+        assert stored.package_id is None
+        assert stored.action == "upgrade"
+        assert stored.chart_repository == "global-charts"
+        assert stored.chart_repository_url == "https://charts.example.test"
+        assert stored.chart_name == "payments"
+        assert stored.chart_version == "2.0.0"
+        audit = session.scalar(select(AuditAction).where(AuditAction.resource_id == "production/production/payments"))
+        assert audit.action == "helm.release_upgrade_queued"
+        assert json.loads(audit.context)["version"] == "2.0.0"
+    assert resolved == [("global-charts", "https://charts.example.test", "payments", "2.0.0")]
+
+
+def test_queue_upgrade_does_not_create_job_when_source_resolution_fails(database, monkeypatch):
+    with database.factory() as session:
+        repository = HelmRepository(name="global-charts", url="https://charts.example.test")
+        session.add(repository)
+        session.commit()
+        repository_id = repository.id
+        before = session.scalar(select(InstallationJob))
+
+    monkeypatch.setattr(helm_releases, "list_releases", lambda settings, cluster: [release()])
+    monkeypatch.setattr(
+        helm_releases,
+        "resolve_chart_source",
+        lambda *args: (_ for _ in ()).throw(HelmError("chart_source_unavailable", "source unavailable")),
+    )
+    with database.factory() as session:
+        with pytest.raises(HTTPException) as caught:
+            helm_releases._queue_upgrade(
+                "payments", request_for("cluster=production&namespace=production"),
+                HelmReleaseUpgradeRequest(
+                    repository_id=repository_id, chart_name="payments", version="2.0.0", confirm_name="payments"
+                ), AuthenticatedActor("helm@example.test", "admin"), session, database.settings,
+            )
+        assert caught.value.status_code == 503
+        assert session.scalar(select(InstallationJob)) is before
