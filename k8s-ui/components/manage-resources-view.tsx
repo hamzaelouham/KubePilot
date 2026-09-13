@@ -10,6 +10,7 @@ import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { CreateResourceDialog } from "@/components/create-resource-dialog";
 import { DeleteResourceDialog } from "@/components/delete-resource-dialog";
 import { HelmReleasesView } from "@/components/helm-releases-view";
+import { HelmRepositoriesView } from "@/components/helm-repositories-view";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
@@ -101,6 +102,7 @@ function ClusterWorkspace({ user, selection, initialNamespace }: {
           <Tabs.List className="mb-5 flex border-b border-border" aria-label="Resource management">
             <Tabs.Tab value="kubernetes" className="border-b-2 border-transparent px-3 py-2 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring data-active:border-primary data-active:text-primary">Kubernetes resources</Tabs.Tab>
             <Tabs.Tab value="helm" className="border-b-2 border-transparent px-3 py-2 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring data-active:border-primary data-active:text-primary">Helm releases</Tabs.Tab>
+            <Tabs.Tab value="repositories" className="border-b-2 border-transparent px-3 py-2 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring data-active:border-primary data-active:text-primary">Repositories</Tabs.Tab>
           </Tabs.List>
           <Tabs.Panel value="kubernetes" className="flex min-w-0 flex-col gap-4">
             {!active ? <InventoryMessage title={selection.loading ? "Loading clusters…" : selection.error ? "Cluster access unavailable" : !clusters.length ? "No active clusters" : "Selected cluster unavailable"}
@@ -122,6 +124,9 @@ function ClusterWorkspace({ user, selection, initialNamespace }: {
           </Tabs.Panel>
           <Tabs.Panel value="helm" className="flex min-w-0 flex-col gap-4">
             <HelmReleasesView user={user} cluster={cluster} active={active} />
+          </Tabs.Panel>
+          <Tabs.Panel value="repositories" className="flex min-w-0 flex-col gap-4">
+            <HelmRepositoriesView user={user} />
           </Tabs.Panel>
         </Tabs.Root>
       </div>

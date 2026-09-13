@@ -1,6 +1,6 @@
 # KubePilot - Project Overview
 
-<!-- blueprint:source-hash f43d2e6f8c1c2be38a803fe0f439b897920db8bd9b009ff93f945244ed843d2b -->
+<!-- blueprint:source-hash 1f52ec1edf5a439450d825e7636bd8e4bff5f39cba101b2333c36f73153a9cea -->
 
 > A self-hosted Kubernetes operations platform for cluster visibility, troubleshooting, and resource management, with FastAPI as the only application component that talks to Kubernetes.
 
@@ -40,7 +40,8 @@ Features are listed in build-plan order. MVP covers 1–9; later items are post-
 
     - **19a — Kubernetes resource management:** `/manage-resources` and Kubernetes resources tab; list, create through validated YAML, and delete pods, deployments, namespaces, services, and other explicitly supported common types.
     - **19b — Installed Helm release management:** Helm releases tab; discover releases directly from the selected cluster across namespaces, including installations outside KubePilot; show status and revision history; support confirmed rollback/uninstall using the existing job, progress, and audit pipeline.
-    - **19c — Helm repositories and upgrades:** list/add/update/remove KubePilot-managed chart repository connections and upgrade installed releases using an explicitly resolved chart source and version, with review and background job progress.
+    - **19c — Helm repository configuration:** list/add/update/remove global KubePilot-managed public URL-only chart repository connections.
+    - **19d — Helm release upgrades:** upgrade installed releases using an explicitly selected repository, chart, and version, with review and background job progress; do not infer or persist release source associations.
 
 Feature 19 reuses cluster selection, namespace controls, application layout, and backend permissions. Admins/operators receive management controls; viewers remain read-only. Destructive actions require confirmation and audit records. Cluster changes refresh the displayed scope and prevent actions from using a stale target. Repository connections are Helm client configuration, not resources automatically discoverable from a cluster.
 
@@ -60,8 +61,8 @@ Existing application records use UUID identifiers and creation timestamps; clust
 - **Event**: cluster_id, namespace (nullable), kind, name, message.
 - **AuditAction** (`audit_actions`): actor_id (nullable foreign key), action, resource_type, resource_id, target_user_id (nullable foreign key), result, context (nullable). Feature 19 records resource and Helm management actions with their target scope.
 - **UserPreference**: user_id (unique foreign key), default_namespace, view_settings (JSON).
-- **InstallationJob** (`installation_jobs`): package/chart metadata, cluster_id (foreign key), namespace, release_name, action (`install`/`rollback`/`uninstall`), revision where applicable, status (`queued`/`running`/`succeeded`/`failed`/`cancelled`), error_message (nullable), started_at, completed_at. Feature 19b must support release actions without requiring a Marketplace install record; 19c adds upgrade job metadata and behavior through a compatible extension.
-- **Helm repository configuration** (planned, 19c): repository name and URL managed by KubePilot. Storage scope, credential support, and release-to-chart-source associations must be specified before implementation.
+- **InstallationJob** (`installation_jobs`): package/chart metadata, cluster_id (foreign key), namespace, release_name, action (`install`/`rollback`/`uninstall`), revision where applicable, status (`queued`/`running`/`succeeded`/`failed`/`cancelled`), error_message (nullable), started_at, completed_at. Feature 19b must support release actions without requiring a Marketplace install record; 19d adds upgrade job metadata and behavior through a compatible extension.
+- **Helm repository configuration** (`helm_repositories`, planned 19c): global public URL-only repository name and URL, created/updated actor metadata, and timestamps; no credential fields.
 
 Kubernetes remains the source of truth for live resources and Helm releases. Marketplace job history is not a complete inventory of installed releases. Feature 19 persists application configuration, action/job metadata, and audit records needed for management and progress reporting; it reads current inventory from the selected cluster.
 
@@ -72,7 +73,7 @@ Kubernetes remains the source of truth for live resources and Helm releases. Mar
 - **PostgreSQL** — users, sessions, settings, cluster configuration, audit records, and operational jobs.
 - **Kubernetes Python client** — live cluster discovery and planned resource creation/deletion through FastAPI only.
 - **Artifact Hub search API** — public Helm package discovery; no API key for basic public search.
-- **Helm in the backend** — repository setup and installs, rollback/uninstall, and planned release discovery/history, repository management, and upgrades. Use validated argument lists, never arbitrary user-provided commands.
+- **Helm in the backend** — repository setup and installs, rollback/uninstall, and planned release discovery/history, repository management, and upgrades. Use validated argument lists, never arbitrary user-provided commands; 19d resolves an explicitly selected chart source and version.
 - **Existing background job mechanism** — installation and release mutation progress; no new Celery/RQ requirement.
 - **Signed HTTP-only session cookie** — shared Next.js/FastAPI authentication contract.
 - **Alembic** — compatible PostgreSQL schema migrations when persisted job/configuration contracts change.
@@ -107,7 +108,7 @@ Self-hosted Next.js frontend, FastAPI backend, and PostgreSQL, with completed co
 - Kubernetes: backend ServiceAccount/RBAC for in-cluster access and registered cluster connections for multi-cluster routing. API credentials remain exclusively in the backend.
 - Runtime configuration includes `KUBEPILOT_AUTH_SECRET`, `KUBEPILOT_DATABASE_URL`, `KUBEPILOT_CLUSTER_NAME`, `KUBEPILOT_ADMIN_EMAIL`, `KUBEPILOT_ADMIN_PASSWORD`, and `KUBEPILOT_BACKEND_URL`.
 - Health endpoint: `GET /api/v1/health`.
-- Deployment needs secure secret handling, worker execution, health checks, and logs. Repository configuration persistence/credentials for feature 19c must be specified before implementation.
+- Deployment needs secure secret handling, worker execution, health checks, and logs. Feature 19c stores only global public repository configuration; repository credentials are out of scope.
 
 The project plan's topology text still describes multi-cluster support as future work; the completed feature 13 checklist defines the current delivery state.
 
@@ -123,7 +124,7 @@ The project plan's topology text still describes multi-cluster support as future
 ## Open questions
 
 - **Resource scope for 19a:** the exact additional common resource types, YAML validation contract, and protected-resource/namespace policy must be defined in its spec. Pods, deployments, namespaces, and services are explicit requirements.
-- **Helm contracts for 19b/19c:** define rollback targeting, repository storage scope and credential support, chart-source association for external releases, and upgrade values handling. Do not infer repository connections from live release inventory.
+- **Helm contracts for 19b/19d:** define rollback targeting and upgrade values handling. 19c uses global public URL-only repositories; 19d requires explicit repository/chart/version selection and does not infer repository connections from live release inventory.
 - **Scale/restart gap:** project-plan §3 lists basic scale/restart actions, but the build plan has no dedicated item. Feature 19 approves create/delete, Helm management, and upgrades; it does not silently add scale/restart.
 - **UI direction mismatch:** project-plan §7 describes a dark-first aesthetic, while completed feature 17 establishes a light palette and shared shell. Preserve the existing UI for feature 19.
 - **Outdated milestone text:** project-plan §8 and its assumptions still describe single-cluster operation and backend integration as future work; completed build-plan items record multi-cluster/backend delivery. Earlier MVP feature summaries also omit later shipped items.

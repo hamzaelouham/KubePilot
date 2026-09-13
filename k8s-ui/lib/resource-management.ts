@@ -45,7 +45,7 @@ export class ResourceApiError extends Error {
 }
 
 export async function managementRequest<T>(url: string, init?: RequestInit): Promise<T> {
-  const mutation = init?.method === "POST" || init?.method === "DELETE";
+  const mutation = ["POST", "PATCH", "DELETE"].includes(init?.method ?? "");
   let response: Response;
   try {
     response = await fetch(url, { ...init, cache: "no-store" });

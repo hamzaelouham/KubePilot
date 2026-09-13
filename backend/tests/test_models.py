@@ -18,6 +18,7 @@ EXPECTED_TABLES = {
 	"audit_actions",
 	"user_preferences",
 	"installation_jobs",
+	"helm_repositories",
 }
 
 

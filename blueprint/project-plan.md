@@ -28,13 +28,14 @@ Secondary users may include engineering managers and technical operators who nee
 - KubePilot Marketplace (post-MVP) for discovering, installing, and tracking Kubernetes Helm packages from Artifact Hub
 - Manage resources (post-MVP, feature 19) for Kubernetes create/delete operations and Helm release/repository management in the selected cluster
 
-Manage resources is delivered in three ordered items:
+Manage resources is delivered in four ordered items:
 
 - **19a - Kubernetes resources:** list, create through validated YAML, and delete pods, deployments, namespaces, services, and other common resource types explicitly identified in the implementation spec.
 - **19b - Installed Helm releases:** discover releases directly from the selected cluster, including installations outside KubePilot; show release status and revision history, and support rollback and uninstall.
-- **19c - Helm repositories and upgrades:** list, add, update, and remove chart repository connections managed by KubePilot, and upgrade installed releases using an explicitly resolved chart source and version. Helm repositories are client configuration and cannot be automatically discovered from a cluster in the same way as installed releases.
+- **19c - Helm repository configuration:** list, add, update, and remove global KubePilot-managed public URL-only chart repository connections. Helm repositories are client configuration and cannot be automatically discovered from a cluster in the same way as installed releases.
+- **19d - Helm release upgrades:** upgrade installed releases using an explicitly selected KubePilot-managed repository, chart, and version. The source and version are selected for each upgrade rather than inferred from the cluster or persisted as a release association.
 
-All three items live under the "Manage resources" sidebar entry. Admins and operators have management controls; viewers remain read-only. Every resource operation and release action targets the selected registered cluster and applicable namespace, with FastAPI enforcing permissions. Destructive actions require confirmation of the target and produce audit records. Helm mutations use the existing background job/progress pattern, and credentials stay in the backend.
+All four items live under the "Manage resources" sidebar entry. Admins and operators have management controls; viewers remain read-only. Every resource operation and release action targets the selected registered cluster and applicable namespace, with FastAPI enforcing permissions. Destructive actions require confirmation of the target and produce audit records. Helm mutations use the existing background job/progress pattern, and repository credentials are out of scope for 19c.
 
 ## 4. Data - What are we storing?
 
@@ -49,7 +50,7 @@ All three items live under the "Manage resources" sidebar entry. Admins and oper
 - Audit records for admin actions and resource operations
 - Application-level session and RBAC metadata for local access control
 - Marketplace installation and release-action jobs (package and chart metadata, target cluster, namespace, release name, action, revision where applicable, status, error message, timestamps) and resolved Artifact Hub package metadata; feature 19 extends release management to externally installed releases and upgrades
-- KubePilot-managed Helm chart repository configuration (name and URL); storage scope, credential support, and release-to-chart-source associations are to be specified in 19c
+- KubePilot-managed global public Helm chart repository configuration (name and URL); 19c does not support credentials, and 19d requires explicit repository/chart/version selection for each upgrade without a persisted release-to-chart-source association
 
 Kubernetes remains the source of truth for live resources and Helm releases. Manage resources reads current cluster state; Marketplace installation history is not an inventory of every installed release. Persist only the application configuration, action/job metadata, and audit records needed to support management and progress reporting.
 

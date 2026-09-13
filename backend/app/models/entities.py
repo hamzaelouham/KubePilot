@@ -65,6 +65,33 @@ class ClusterConnection(Base):
     __table_args__ = (Index("ix_cluster_connections_status", "status"),)
 
 
+class HelmRepository(Base):
+    __tablename__ = "helm_repositories"
+
+    id: Mapped[PrimaryKey]
+    name: Mapped[str] = mapped_column(String(63), nullable=False)
+    url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("user_accounts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    updated_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("user_accounts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    created_at: Mapped[CreatedAt]
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now().astimezone(),
+        server_default=text("now()"),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("name", name="uq_helm_repositories_name"),
+        UniqueConstraint("url", name="uq_helm_repositories_url"),
+        Index("ix_helm_repositories_name", "name"),
+    )
+
+
 class Namespace(Base):
     __tablename__ = "namespaces"
 
