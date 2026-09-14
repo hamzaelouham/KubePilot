@@ -17,6 +17,12 @@ from app.services.application_settings import (
     replace_credential,
     upsert_application_setting,
 )
+from app.services.ai_providers import (
+    ProviderServiceError,
+    list_providers,
+    save_provider,
+    test_provider as run_provider_test,
+)
 
 from .settings_schemas import (
     SettingsAccessResponse,
@@ -28,6 +34,10 @@ from .settings_schemas import (
     CredentialMetadata,
     CredentialValueRequest,
     CredentialsResponse,
+    ProviderSaveRequest,
+    ProviderSummary,
+    ProviderTestResponse,
+    ProvidersResponse,
 )
 
 router = APIRouter()
@@ -129,3 +139,53 @@ def remove_credential(
         return delete_credential(database, actor.user_id, credential_key)
     except SettingsServiceError as error:
         raise _settings_service_error(error) from error
+
+
+def _provider_service_error(error: ProviderServiceError) -> HTTPException:
+    return HTTPException(
+        status_code=error.status_code,
+        detail={"code": error.code, "message": str(error)},
+    )
+
+
+@router.get("/settings/providers", response_model=ProvidersResponse)
+def providers(
+    _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.SETTINGS_READ))],
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+) -> ProvidersResponse:
+    return ProvidersResponse(providers=list_providers(database))
+
+
+@router.put("/settings/providers/{provider_id}", response_model=ProviderSummary)
+def update_provider(
+    provider_id: str,
+    changes: ProviderSaveRequest,
+    actor: Annotated[AuthenticatedActor, Depends(require_permission(Permission.SETTINGS_WRITE))],
+    settings: Annotated[Settings, Depends(get_settings)],
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+) -> ProviderSummary:
+    try:
+        return save_provider(
+            database,
+            settings,
+            actor.user_id,
+            provider_id,
+            changes.base_url,
+            changes.api_key_action,
+            changes.api_key,
+        )
+    except ProviderServiceError as error:
+        raise _provider_service_error(error) from error
+
+
+@router.post("/settings/providers/{provider_id}/test", response_model=ProviderTestResponse)
+def test_configured_provider(
+    provider_id: str,
+    _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.SETTINGS_WRITE))],
+    settings: Annotated[Settings, Depends(get_settings)],
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+) -> ProviderTestResponse:
+    try:
+        return run_provider_test(database, settings, provider_id)
+    except ProviderServiceError as error:
+        raise _provider_service_error(error) from error

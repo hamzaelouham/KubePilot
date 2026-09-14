@@ -10,10 +10,10 @@ import type { BackendUser } from "@/lib/auth-client";
 const sections = [
   { label: "General", href: "/settings/general" },
   { label: "Appearance", href: "/settings/appearance" },
+  { label: "AI Providers", href: "/settings/providers" },
 ] as const;
 
 const plannedSections = [
-  "AI Providers",
   "Models",
   "Integrations",
   "Secrets & Credentials",

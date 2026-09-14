@@ -20,6 +20,8 @@ EXPECTED_TABLES = {
 	"installation_jobs",
 	"helm_repositories",
 	"assistant_proposals",
+	"application_settings",
+	"application_credentials",
 }
 
 
