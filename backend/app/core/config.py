@@ -11,6 +11,8 @@ class ConfigurationError(RuntimeError):
 class Settings:
     auth_secret: str
     database_url: str
+    encryption_key: str | None = None
+    provider_allowed_hosts: tuple[str, ...] = ()
     service_name: str = "kubepilot-api"
     cluster_name: str = "primary"
     admin_email: str = "ops@kubepilot.io"
@@ -45,6 +47,13 @@ class Settings:
         helm_install_timeout_seconds = cls._positive_int(
             "KUBEPILOT_HELM_INSTALL_TIMEOUT_SECONDS", 600
         )
+        raw_encryption_key = os.getenv("KUBEPILOT_ENCRYPTION_KEY")
+        encryption_key = raw_encryption_key.strip() if raw_encryption_key else None
+        provider_allowed_hosts = tuple(
+            host.strip().lower().rstrip(".")
+            for host in os.getenv("KUBEPILOT_PROVIDER_ALLOWED_HOSTS", "").split(",")
+            if host.strip()
+        )
 
         missing = [
             name
@@ -70,6 +79,8 @@ class Settings:
         return cls(
             auth_secret=auth_secret,
             database_url=database_url,
+            encryption_key=encryption_key,
+            provider_allowed_hosts=provider_allowed_hosts,
             service_name=service_name,
             cluster_name=cluster_name,
             admin_email=admin_email,

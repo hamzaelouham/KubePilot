@@ -8,3 +8,5 @@ data:
   KUBEPILOT_SERVICE_NAME: kubepilot-api
   KUBEPILOT_ADMIN_EMAIL: ops@kubepilot.io
   KUBEPILOT_BACKEND_URL: http://backend:8000
+  # Comma-separated exact internal provider hostnames; empty means public hosts only.
+  KUBEPILOT_PROVIDER_ALLOWED_HOSTS: ""

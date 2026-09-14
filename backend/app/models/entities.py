@@ -237,6 +237,48 @@ class UserPreference(Base):
     user: Mapped[UserAccount] = relationship(back_populates="preferences")
 
 
+class ApplicationSetting(Base):
+    __tablename__ = "application_settings"
+
+    id: Mapped[PrimaryKey]
+    key: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    value_json: Mapped[Any] = mapped_column(JSON, nullable=False)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("user_accounts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    updated_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("user_accounts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    created_at: Mapped[CreatedAt]
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now().astimezone(),
+        server_default=text("now()"),
+    )
+
+
+class ApplicationCredential(Base):
+    __tablename__ = "application_credentials"
+
+    id: Mapped[PrimaryKey]
+    credential_key: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("user_accounts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    updated_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("user_accounts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    created_at: Mapped[CreatedAt]
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now().astimezone(),
+        server_default=text("now()"),
+    )
+
+
 class InstallationJob(Base):
     __tablename__ = "installation_jobs"
 

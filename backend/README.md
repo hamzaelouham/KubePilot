@@ -83,6 +83,8 @@ Required environment variables (with local-safe defaults for Compose):
 | --- | --- | --- |
 | `KUBEPILOT_AUTH_SECRET` | required | At least 32 characters; shared by backend and frontend |
 | `KUBEPILOT_DATABASE_URL` | composed | `postgresql+psycopg://<user>:<password>@db:5432/<db>` (psycopg 3 driver) |
+| `KUBEPILOT_ENCRYPTION_KEY` | optional at startup | A unique `cryptography.fernet.Fernet.generate_key()` value kept in Kubernetes Secret; credential operations fail closed when absent or invalid |
+| `KUBEPILOT_PROVIDER_ALLOWED_HOSTS` | empty | Comma-separated exact hostnames allowed for private/internal provider endpoints; never editable through Settings |
 | `KUBEPILOT_DB_USER` / `KUBEPILOT_DB_PASSWORD` / `KUBEPILOT_DB_NAME` | `kubepilot` / `change-me` / `kubepilot` | Sets the PostgreSQL image and the backend URL |
 | `KUBEPILOT_CLUSTER_NAME` | `primary` | Cluster identity used by the frontend and backend |
 | `KUBEPILOT_SERVICE_NAME` | `kubepilot-api` | Backend service name |

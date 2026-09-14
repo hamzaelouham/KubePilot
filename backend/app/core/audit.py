@@ -8,6 +8,12 @@ from app.models.entities import AuditAction
 
 
 class AuditEvent:
+    SETTING_CREATED = "settings.create"
+    SETTING_UPDATED = "settings.update"
+    SETTING_DELETED = "settings.delete"
+    CREDENTIAL_CREATED = "credential.create"
+    CREDENTIAL_REPLACED = "credential.replace"
+    CREDENTIAL_DELETED = "credential.delete"
     USER_CREATED = "USER_CREATED"
     USER_UPDATED = "USER_UPDATED"
     USER_DEACTIVATED = "USER_DEACTIVATED"

@@ -1,5 +1,7 @@
 from .entities import (
     AuditAction,
+    ApplicationCredential,
+    ApplicationSetting,
     ClusterConnection,
     Deployment,
     Event,
@@ -17,6 +19,8 @@ from .entities import (
 
 __all__ = [
     "AuditAction",
+    "ApplicationCredential",
+    "ApplicationSetting",
     "ClusterConnection",
     "Deployment",
     "Event",

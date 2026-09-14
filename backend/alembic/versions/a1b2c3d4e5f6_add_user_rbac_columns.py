@@ -50,7 +50,12 @@ def _audit_actions_after_table() -> sa.Table:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id"),
         sa.ForeignKeyConstraint(["actor_id"], ["user_accounts.id"], ondelete="RESTRICT"),
-        sa.ForeignKeyConstraint(["target_user_id"], ["user_accounts.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["target_user_id"],
+            ["user_accounts.id"],
+            name="fk_audit_actions_target_user",
+            ondelete="RESTRICT",
+        ),
         sa.Index("ix_audit_actions_actor_id", "actor_id"),
         sa.Index("ix_audit_actions_target_user_id", "target_user_id"),
         sa.Index("ix_audit_actions_created", "created_at"),

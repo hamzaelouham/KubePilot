@@ -28,6 +28,7 @@ class Permission:
     USERS_RESET_PASSWORD = "users:reset_password"
     USERS_FORCE_PASSWORD_CHANGE = "users:force_password_change"
     SETTINGS_READ = "settings:read"
+    SETTINGS_WRITE = "settings:write"
     MARKETPLACE_INSTALL = "marketplace:install"
     MARKETPLACE_RELEASE = "marketplace:release"
     HELM_REPOSITORIES_MANAGE = "helm_repositories:manage"

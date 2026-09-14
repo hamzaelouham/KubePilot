@@ -45,6 +45,11 @@ spec:
                 secretKeyRef:
                   name: kubepilot-secret
                   key: KUBEPILOT_ADMIN_PASSWORD
+            - name: KUBEPILOT_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kubepilot-secret
+                  key: KUBEPILOT_ENCRYPTION_KEY
           readinessProbe:
             httpGet:
               path: /api/v1/health
