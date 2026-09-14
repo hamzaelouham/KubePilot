@@ -114,3 +114,34 @@ export async function requireUsableBackendUser(): Promise<BackendUser> {
   }
   return user;
 }
+
+export async function requireAdminSettingsUser(): Promise<BackendUser> {
+  const user = await requireUsableBackendUser();
+  if (user.role !== ADMIN_ROLE) {
+    redirect("/dashboard");
+  }
+
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+  if (!sessionCookie) {
+    redirect("/login");
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${backendUrl()}/api/v1/settings/access`, {
+      headers: { cookie: `${SESSION_COOKIE_NAME}=${sessionCookie}` },
+      cache: "no-store",
+    });
+  } catch {
+    throw new Error("The Settings authorization service is unavailable");
+  }
+
+  if (response.status === 401) redirect("/login");
+  if (response.status === 403) redirect("/dashboard");
+  if (!response.ok) throw new Error("The Settings authorization service failed");
+
+  const body = (await response.json()) as { allowed?: boolean };
+  if (body.allowed !== true) redirect("/dashboard");
+  return user;
+}

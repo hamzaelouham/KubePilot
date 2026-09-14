@@ -34,8 +34,9 @@ def api(tmp_path, monkeypatch):
         db.add(session); db.commit()
     app = create_app()
     app.state.settings = settings
-    client = TestClient(app)  # No lifespan/worker; real dependencies resolve the signed session.
-    client.cookies.set("kubepilot_session", cookie)
+    monkeypatch.setenv("KUBEPILOT_AUTH_SECRET", settings.auth_secret)
+    monkeypatch.setenv("KUBEPILOT_DATABASE_URL", settings.database_url)
+    monkeypatch.setenv("KUBEPILOT_WORKER_ENABLED", "false")
     effects = []
     current = SimpleNamespace(uid="object-uid", resource_version="12", deletion_timestamp=None)
 
@@ -65,8 +66,10 @@ def api(tmp_path, monkeypatch):
 
     for module in ("app.assistant.actions", "app.assistant.observations", "app.api.v1.resource_management"):
         monkeypatch.setattr(f"{module}.management_client", management)
-    yield SimpleNamespace(client=client, db=factory, user=user, session=session, cluster=cluster, effects=effects, current=current, settings=settings)
-    client.close(); engine.dispose()
+    with TestClient(app) as client:
+        client.cookies.set("kubepilot_session", cookie)
+        yield SimpleNamespace(client=client, db=factory, user=user, session=session, cluster=cluster, effects=effects, current=current, settings=settings)
+    engine.dispose()
 
 
 def proposal(api, **extra):

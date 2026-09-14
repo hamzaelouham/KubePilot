@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   Network,
   Server,
+  Settings,
   ShieldCog,
   SlidersHorizontal,
   Store,
@@ -97,6 +98,7 @@ const adminNavItems: {
 }[] = [
   { id: "clusters", label: "Clusters", href: "/settings/clusters", adminOnly: false, icon: Server },
   { id: "users", label: "Users", href: "/settings/users", adminOnly: true, icon: Users },
+  { id: "settings", label: "Settings", href: "/settings", adminOnly: true, icon: Settings },
   { id: "password", label: "Password", href: "/settings/password", adminOnly: false, icon: KeyRound },
 ];
 
@@ -129,6 +131,7 @@ const resourceTitles: Record<string, string> = {
   "persistent-volumes": "Persistent Volumes",
   "storage-classes": "Storage Classes",
   password: "Password",
+  settings: "Settings",
 };
 
 type DashboardShellProps = {
