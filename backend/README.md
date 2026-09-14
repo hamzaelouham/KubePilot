@@ -48,7 +48,7 @@ docker build -t kubepilot-backend ./backend && docker build -t kubepilot-ui ./k8
 # 2. Load them into Minikube's own daemon (not a registry)
 minikube image load kubepilot-backend:latest kubepilot-ui:latest
 
-# 3. Apply all workloads and RBAC
+# 3. Apply all workloads and RBAC (or use `./deploy.sh` from the repository root)
 minikube kubectl -- apply -f deploy/kubernetes/
 
 # 4. Open the UI (NodePort 30080) in the browser
@@ -61,6 +61,7 @@ minikube kubectl -- delete -f deploy/kubernetes/
 - Postgres (`postgres-deploy`, PVC `postgres-data`, `db` Service on 5432), the FastAPI backend (`backend` Service on 8000), and the Next.js frontend (NodePort `kubepilot-ui` on 30080) are defined under `deploy/kubernetes/`.
 - `deploy/kubernetes/service-account.yaml` grants the backend ServiceAccount `kubepilot-api` only `get`, `list`, and `watch` access to namespaces, pods, services, endpoints, nodes, and deployments (enforced by `tests/test_rbac.py`). The backend must run in a cluster so the Kubernetes client can use its in-cluster ServiceAccount; it does not accept kubeconfig uploads or request-supplied tokens.
 - Non-secret env comes from the `kubepilot-config` ConfigMap; secrets (`KUBEPILOT_AUTH_SECRET`, DB credentials, admin password) from the `kubepilot-secret` Secret. The committed Secret holds local Minikube dev placeholder values and must be overridden for any non-local deployment.
+- `./deploy.sh` preserves an existing valid `KUBEPILOT_ENCRYPTION_KEY`, accepts one supplied in the shell, or generates a local Fernet-compatible key when the committed placeholder is still present. It never prints the key and refuses to replace a different or invalid existing key automatically.
 
 Protected discovery endpoints are `/api/v1/cluster/status`, `/api/v1/cluster/namespaces`, and `/api/v1/cluster/resources/{resource_type}`. The browser and AI integrations reach these through the Next.js `/api` proxy and FastAPI, and never contact Kubernetes directly.
 

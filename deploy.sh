@@ -4,6 +4,8 @@ set -euo pipefail
 # Pull prebuilt KubePilot images from Docker Hub and deploy to a local Minikube cluster.
 # Images are built and pushed by the GitHub Actions workflow .github/workflows/docker-build-push.yml.
 # Usage: ./deploy.sh [--no-build] [--teardown]
+# Set KUBEPILOT_ENCRYPTION_KEY to supply a key; otherwise a missing/placeholder
+# local Minikube key is generated and preserved in the kubepilot Secret.
 
 NAMESPACE="kubepilot"
 BACKEND_IMAGE="kubepilot-backend"
@@ -15,6 +17,9 @@ UI_IMAGE_HUB="hamzaelouham/kubepilot-ui"
 BACKEND_DEPLOYMENT="backend"
 FRONTEND_DEPLOYMENT="frontend"
 UI_SERVICE="${UI_IMAGE}"
+SECRET_NAME="kubepilot-secret"
+MANIFEST_DIR="backend/deploy/kubernetes"
+PLACEHOLDER_ENCRYPTION_KEY="replace-with-generated-fernet-key"
 
 info()  { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 error() { printf '\033[1;31m==> %s\033[0m\n' "$*" >&2; }
@@ -25,6 +30,80 @@ if ! command -v minikube >/dev/null 2>&1; then
 fi
 
 k () { minikube kubectl -- "$@"; }
+
+is_valid_fernet_key() {
+  python3 - "$1" <<'PY'
+import base64
+import sys
+
+try:
+    value = sys.argv[1]
+    decoded = base64.urlsafe_b64decode(value.encode("ascii"))
+    valid = len(decoded) == 32 and base64.urlsafe_b64encode(decoded).decode("ascii") == value
+except (UnicodeDecodeError, ValueError, TypeError):
+    valid = False
+sys.exit(0 if valid else 1)
+PY
+}
+
+generate_fernet_key() {
+  python3 - <<'PY'
+import base64
+import os
+
+print(base64.urlsafe_b64encode(os.urandom(32)).decode("ascii"))
+PY
+}
+
+ensure_encryption_key() {
+  local encoded_key existing_key requested_key encryption_key
+
+  if ! k get secret "$SECRET_NAME" -n "$NAMESPACE" >/dev/null 2>&1; then
+    k apply -f "$MANIFEST_DIR/secret.yaml" >/dev/null
+  fi
+  encoded_key="$(k get secret "$SECRET_NAME" -n "$NAMESPACE" -o 'jsonpath={.data.KUBEPILOT_ENCRYPTION_KEY}' 2>/dev/null || true)"
+  existing_key=""
+  if [ -n "$encoded_key" ]; then
+    if ! existing_key="$(printf '%s' "$encoded_key" | base64 --decode 2>/dev/null)"; then
+      error "The cluster Secret contains an unreadable encryption key; refusing to replace it automatically."
+      exit 1
+    fi
+  fi
+  requested_key="${KUBEPILOT_ENCRYPTION_KEY:-}"
+
+  if [ -n "$requested_key" ] && ! is_valid_fernet_key "$requested_key"; then
+    error "KUBEPILOT_ENCRYPTION_KEY is not a valid Fernet key. Generate one with:"
+    error "python3 -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())'"
+    exit 1
+  fi
+
+  if [ -n "$existing_key" ] && is_valid_fernet_key "$existing_key"; then
+    if [ -n "$requested_key" ] && [ "$requested_key" != "$existing_key" ]; then
+      error "The cluster already has a different encryption key; refusing an unsafe key rotation."
+      exit 1
+    fi
+    info "Preserving existing encryption key in $SECRET_NAME"
+    return 0
+  fi
+
+  if [ -n "$existing_key" ] && [ "$existing_key" != "$PLACEHOLDER_ENCRYPTION_KEY" ]; then
+    error "The cluster Secret contains an invalid encryption key; refusing to replace it automatically."
+    exit 1
+  fi
+
+  encryption_key="$requested_key"
+  if [ -z "$encryption_key" ]; then
+    encryption_key="$(generate_fernet_key)"
+    info "Generating a local Fernet encryption key"
+  else
+    info "Installing the supplied Fernet encryption key"
+  fi
+
+  k create secret generic "$SECRET_NAME" \
+    -n "$NAMESPACE" \
+    --from-literal="KUBEPILOT_ENCRYPTION_KEY=$encryption_key" \
+    --dry-run=client -o yaml | k apply -f - >/dev/null
+}
 
 case "${1:-}" in
   --teardown)
@@ -47,8 +126,17 @@ if [ "${1:-}" != "--no-build" ]; then
   minikube image load "$BACKEND_IMAGE_HUB:latest" "$UI_IMAGE_HUB:latest"
 fi
 
-info "Applying all workloads"
-k apply -f backend/deploy/kubernetes/
+info "Applying namespace and shared configuration"
+for manifest in namespace.yaml service-account.yaml configmap.yaml; do
+  k apply -f "$MANIFEST_DIR/$manifest"
+done
+
+ensure_encryption_key
+
+info "Applying database and application workloads"
+for manifest in postgres.yaml backend.yaml frontend.yaml; do
+  k apply -f "$MANIFEST_DIR/$manifest"
+done
 
 info "Restarting deployments to pick up new images"
 k rollout restart "deployment/$BACKEND_DEPLOYMENT" -n "$NAMESPACE" || true
