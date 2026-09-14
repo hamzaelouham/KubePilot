@@ -15,12 +15,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ADMIN_ROLE, ROLE_LABELS, type BackendUser } from "@/lib/auth-client";
+import { themeOptions as preferenceThemeOptions, updateUserPreferences } from "@/lib/settings-preferences";
 
-const themeOptions = [
-  { value: "light", label: "Light", icon: Sun },
-  { value: "dark", label: "Dark", icon: Moon },
-  { value: "system", label: "System", icon: Monitor },
-] as const;
+const themeIcons = { light: Sun, dark: Moon, system: Monitor } as const;
 
 async function signOut() {
   await fetch("/api/logout", { method: "POST" });
@@ -68,16 +65,22 @@ export function UserMenu({ user }: UserMenuProps) {
 
         <DropdownMenuGroup>
           <DropdownMenuLabel>Theme</DropdownMenuLabel>
-          {themeOptions.map(({ value, label, icon: Icon }) => (
-            <DropdownMenuItem
-              key={value}
-              onClick={() => setTheme(value)}
-              className={theme === value ? "bg-accent text-accent-foreground" : undefined}
-            >
-              <Icon data-icon="inline-start" />
-              {label}
-            </DropdownMenuItem>
-          ))}
+          {preferenceThemeOptions.map(({ value, label }) => {
+            const Icon = themeIcons[value];
+            return (
+              <DropdownMenuItem
+                key={value}
+                onClick={() => {
+                  setTheme(value);
+                  void updateUserPreferences({ theme: value }).catch(() => undefined);
+                }}
+                className={theme === value ? "bg-accent text-accent-foreground" : undefined}
+              >
+                <Icon data-icon="inline-start" />
+                {label}
+              </DropdownMenuItem>
+            );
+          })}
         </DropdownMenuGroup>
 
         <DropdownMenuSeparator />

@@ -1,14 +1,18 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { useClusterSelection } from "@/lib/use-cluster-selection";
 import type { BackendUser } from "@/lib/auth-client";
 
 const sections = [
-  "General",
-  "Appearance",
+  { label: "General", href: "/settings/general" },
+  { label: "Appearance", href: "/settings/appearance" },
+] as const;
+
+const plannedSections = [
   "AI Providers",
   "Models",
   "Integrations",
@@ -19,6 +23,7 @@ const sections = [
 
 export function SettingsShell({ user, children }: { user: BackendUser; children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { cluster, clusters, selectCluster } = useClusterSelection();
 
   const handleNav = (resource: string, namespace: string) => {
@@ -47,13 +52,24 @@ export function SettingsShell({ user, children }: { user: BackendUser; children:
         </div>
 
         <nav aria-label="Settings sections" className="flex flex-wrap gap-2 border-b border-border pb-3">
-          <span
-            aria-current="page"
-            className="rounded-md bg-sidebar-accent px-3 py-2 text-sm font-medium text-sidebar-accent-foreground"
+          <Link
+            href="/settings"
+            aria-current={pathname === "/settings" ? "page" : undefined}
+            className={`rounded-md px-3 py-2 text-sm font-medium ${pathname === "/settings" ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
           >
             Overview
-          </span>
+          </Link>
           {sections.map((section) => (
+            <Link
+              key={section.href}
+              href={section.href}
+              aria-current={pathname === section.href ? "page" : undefined}
+              className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm ${pathname === section.href ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+            >
+              {section.label}
+            </Link>
+          ))}
+          {plannedSections.map((section) => (
             <span
               key={section}
               aria-disabled="true"
