@@ -14,7 +14,12 @@ const user = { id: "actor", role: "operator", must_change_password: false, passw
 const scope = { cluster: "primary", namespace: "default" };
 const selectedModelId = "11111111-1111-4111-8111-111111111111";
 const usage = { inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined }, outputTokens: { total: 10, text: 10, reasoning: undefined } };
-const request = (body, origin = "http://localhost:3000") => new Request("http://localhost:3000/api/assistant", { method: "POST", headers: { origin, cookie: "kubepilot_session=signed; unrelated=private", "content-type": "application/json" }, body: JSON.stringify(body) });
+const request = (body, origin = "http://localhost:3000", host = "localhost:3000", url = "http://localhost:3000/api/assistant") => {
+  const headers = new Headers({ cookie: "kubepilot_session=signed; unrelated=private", "content-type": "application/json" });
+  if (origin !== null) headers.set("origin", origin);
+  if (host !== null) headers.set("host", host);
+  return new Request(url, { method: "POST", headers, body: JSON.stringify(body) });
+};
 
 test("auth uses the real snake_case backend contract and excludes unrelated cookies", async t => {
   const cookie = sessionCookie(request({}));
@@ -26,7 +31,18 @@ test("auth uses the real snake_case backend contract and excludes unrelated cook
 });
 
 test("same-origin and body-size checks fail before provider access", async () => {
+  assert.doesNotThrow(() => sameOrigin(request({})));
+  assert.doesNotThrow(() => sameOrigin(request({}, "http://127.0.0.1:37047", "127.0.0.1:37047", "http://frontend:3000/api/assistant")));
   assert.throws(() => sameOrigin(request({}, "https://attacker.test")), error => error.status === 403);
+  for (const invalidRequest of [
+    request({}, null),
+    request({}, "not-an-origin"),
+    request({}, "http://localhost:3000/path"),
+    request({}, "http://localhost:3000, https://attacker.test"),
+    request({}, "http://localhost:3000", null),
+    request({}, "http://localhost:3000", "localhost:3000/path"),
+    request({}, "http://localhost:3000", "localhost:3000,attacker.test"),
+  ]) assert.throws(() => sameOrigin(invalidRequest), error => error.status === 403 && error.code === "invalid_origin");
   await assert.rejects(boundedBody(request({ text: "x".repeat(256001) })), error => error.status === 413);
   assert.equal((await POST(request({}, "https://attacker.test"))).status, 403);
 });

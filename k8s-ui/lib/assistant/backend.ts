@@ -39,7 +39,21 @@ export async function authenticate(cookie: string) {
 
 export function sameOrigin(request: Request) {
   const origin = request.headers.get("origin");
-  if (!origin || origin !== new URL(request.url).origin) throw new AssistantError(403, "invalid_origin", "This request must originate from KubePilot.");
+  const host = request.headers.get("host");
+  let valid = false;
+  try {
+    const requestUrl = new URL(request.url);
+    if (!origin || !host || host.includes(",") || (requestUrl.protocol !== "http:" && requestUrl.protocol !== "https:")) throw new Error();
+    const originUrl = new URL(origin);
+    const publicUrl = new URL(`${requestUrl.protocol}//${host}`);
+    valid = (originUrl.protocol === "http:" || originUrl.protocol === "https:")
+      && !originUrl.username && !originUrl.password && originUrl.pathname === "/" && !originUrl.search && !originUrl.hash
+      && !publicUrl.username && !publicUrl.password && publicUrl.pathname === "/" && !publicUrl.search && !publicUrl.hash
+      && originUrl.origin === publicUrl.origin;
+  } catch {
+    valid = false;
+  }
+  if (!valid) throw new AssistantError(403, "invalid_origin", "This request must originate from KubePilot.");
 }
 
 export async function boundedBody(request: Request) {
