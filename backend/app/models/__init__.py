@@ -1,5 +1,6 @@
 from .entities import (
     AuditAction,
+    AIModelConfig,
     ApplicationCredential,
     ApplicationSetting,
     ClusterConnection,
@@ -19,6 +20,7 @@ from .entities import (
 
 __all__ = [
     "AuditAction",
+    "AIModelConfig",
     "ApplicationCredential",
     "ApplicationSetting",
     "ClusterConnection",

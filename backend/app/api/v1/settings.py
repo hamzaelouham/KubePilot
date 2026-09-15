@@ -1,4 +1,5 @@
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session as SQLAlchemySession
@@ -23,6 +24,15 @@ from app.services.ai_providers import (
     save_provider,
     test_provider as run_provider_test,
 )
+from app.services.ai_models import (
+    AIModelServiceError,
+    check_model_availability,
+    create_model,
+    delete_model,
+    list_models,
+    set_default_model,
+    update_model,
+)
 
 from .settings_schemas import (
     SettingsAccessResponse,
@@ -38,6 +48,9 @@ from .settings_schemas import (
     ProviderSummary,
     ProviderTestResponse,
     ProvidersResponse,
+    ModelSummary,
+    ModelsResponse,
+    ModelWriteRequest,
 )
 
 router = APIRouter()
@@ -189,3 +202,80 @@ def test_configured_provider(
         return run_provider_test(database, settings, provider_id)
     except ProviderServiceError as error:
         raise _provider_service_error(error) from error
+
+
+def _model_service_error(error: AIModelServiceError) -> HTTPException:
+    return HTTPException(
+        status_code=error.status_code,
+        detail={"code": error.code, "message": str(error)},
+    )
+
+
+@router.get("/settings/models", response_model=ModelsResponse)
+def models(
+    _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.SETTINGS_READ))],
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+) -> ModelsResponse:
+    return ModelsResponse(models=list_models(database))
+
+
+@router.post("/settings/models", response_model=ModelSummary, status_code=201)
+def add_model(
+    changes: ModelWriteRequest,
+    actor: Annotated[AuthenticatedActor, Depends(require_permission(Permission.SETTINGS_WRITE))],
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+) -> ModelSummary:
+    try:
+        return create_model(database, actor.user_id, **changes.model_dump())
+    except AIModelServiceError as error:
+        raise _model_service_error(error) from error
+
+
+@router.put("/settings/models/{model_id}", response_model=ModelSummary)
+def put_model(
+    model_id: UUID,
+    changes: ModelWriteRequest,
+    actor: Annotated[AuthenticatedActor, Depends(require_permission(Permission.SETTINGS_WRITE))],
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+) -> ModelSummary:
+    try:
+        return update_model(database, actor.user_id, model_id, **changes.model_dump())
+    except AIModelServiceError as error:
+        raise _model_service_error(error) from error
+
+
+@router.delete("/settings/models/{model_id}", response_model=ModelSummary)
+def remove_model(
+    model_id: UUID,
+    actor: Annotated[AuthenticatedActor, Depends(require_permission(Permission.SETTINGS_WRITE))],
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+) -> ModelSummary:
+    try:
+        return delete_model(database, actor.user_id, model_id)
+    except AIModelServiceError as error:
+        raise _model_service_error(error) from error
+
+
+@router.post("/settings/models/{model_id}/check", response_model=ModelSummary)
+def check_model(
+    model_id: UUID,
+    actor: Annotated[AuthenticatedActor, Depends(require_permission(Permission.SETTINGS_WRITE))],
+    settings: Annotated[Settings, Depends(get_settings)],
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+) -> ModelSummary:
+    try:
+        return check_model_availability(database, settings, actor.user_id, model_id)
+    except AIModelServiceError as error:
+        raise _model_service_error(error) from error
+
+
+@router.post("/settings/models/{model_id}/default", response_model=ModelSummary)
+def make_default_model(
+    model_id: UUID,
+    actor: Annotated[AuthenticatedActor, Depends(require_permission(Permission.SETTINGS_WRITE))],
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+) -> ModelSummary:
+    try:
+        return set_default_model(database, actor.user_id, model_id)
+    except AIModelServiceError as error:
+        raise _model_service_error(error) from error

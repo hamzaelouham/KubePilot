@@ -8,6 +8,11 @@ from app.models.entities import AuditAction
 
 
 class AuditEvent:
+    AI_MODEL_CREATED = "ai_model.create"
+    AI_MODEL_UPDATED = "ai_model.update"
+    AI_MODEL_DELETED = "ai_model.delete"
+    AI_MODEL_DEFAULT_CHANGED = "ai_model.default_change"
+    AI_MODEL_AVAILABILITY_CHECKED = "ai_model.availability_check"
     SETTING_CREATED = "settings.create"
     SETTING_UPDATED = "settings.update"
     SETTING_DELETED = "settings.delete"

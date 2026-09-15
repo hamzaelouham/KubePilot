@@ -12,15 +12,18 @@ from app.assistant.observations import observe
 from app.assistant.schemas import Decision, Observation, Proposal, ReadTool
 from app.core.audit import record_audit
 from app.core.config import Settings
-from app.core.dependencies import AuthenticatedActor, get_database_session, get_settings
+from app.core.dependencies import AuthenticatedActor, get_current_actor, get_database_session, get_settings
 from app.core.rbac import Permission, require_permission
 from app.kubernetes.resource_management import ResourceManagementError
 from app.models.entities import AssistantProposal
+from app.services.ai_models import list_eligible_models
+from app.api.v1.settings_schemas import EligibleModelsResponse
 
 router = APIRouter(prefix="/assistant", tags=["assistant"])
 Actor = Annotated[AuthenticatedActor, Depends(require_permission(Permission.RESOURCES_READ))]
 Database = Annotated[Session, Depends(get_database_session)]
 Configuration = Annotated[Settings, Depends(get_settings)]
+Authenticated = Annotated[AuthenticatedActor, Depends(get_current_actor)]
 
 
 async def audited(database, actor, tool, cluster, operation):
@@ -61,3 +64,8 @@ def get_proposal(proposal_id: UUID, actor: Actor, database: Database):
     if proposal is None or proposal.actor_id != actor.user_id or proposal.session_id != actor.session_id:
         raise ResourceManagementError(404, "proposal_not_found", "Proposal not found for this session")
     return summary(proposal)
+
+
+@router.get("/models", response_model=EligibleModelsResponse)
+def eligible_models(_actor: Authenticated, database: Database) -> EligibleModelsResponse:
+    return EligibleModelsResponse(models=list_eligible_models(database))

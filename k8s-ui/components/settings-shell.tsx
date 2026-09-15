@@ -11,10 +11,10 @@ const sections = [
   { label: "General", href: "/settings/general" },
   { label: "Appearance", href: "/settings/appearance" },
   { label: "AI Providers", href: "/settings/providers" },
+  { label: "Models", href: "/settings/models" },
 ] as const;
 
 const plannedSections = [
-  "Models",
   "Integrations",
   "Secrets & Credentials",
   "Audit Logs",

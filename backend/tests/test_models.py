@@ -22,6 +22,7 @@ EXPECTED_TABLES = {
 	"assistant_proposals",
 	"application_settings",
 	"application_credentials",
+	"ai_model_configs",
 }
 
 
@@ -38,6 +39,12 @@ def test_metadata_contains_expected_tables_and_ownership_constraints() -> None:
 		foreign_key.target_fullname == "cluster_connections.id"
 		for foreign_key in Base.metadata.tables["namespaces"].c.cluster_id.foreign_keys
 	)
+	assert {constraint.name for constraint in Base.metadata.tables["ai_model_configs"].constraints} >= {
+		"uq_ai_model_configs_provider_external"
+	}
+	assert {index.name for index in Base.metadata.tables["ai_model_configs"].indexes} >= {
+		"uq_ai_model_configs_global_default"
+	}
 
 
 def test_sensitive_values_are_hash_or_reference_fields() -> None:

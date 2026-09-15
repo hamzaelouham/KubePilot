@@ -279,6 +279,51 @@ class ApplicationCredential(Base):
     )
 
 
+class AIModelConfig(Base):
+    __tablename__ = "ai_model_configs"
+
+    id: Mapped[PrimaryKey]
+    provider_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    external_model_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    friendly_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    supports_streaming: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    supports_tools: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    supports_reasoning: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    supports_vision: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    supports_large_context: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    availability: Mapped[str] = mapped_column(String(32), nullable=False, default="unknown", server_default="unknown")
+    availability_message: Mapped[str | None] = mapped_column(String(512))
+    availability_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("user_accounts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    updated_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("user_accounts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    created_at: Mapped[CreatedAt]
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now().astimezone(),
+        server_default=text("now()"),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("provider_id", "external_model_id", name="uq_ai_model_configs_provider_external"),
+        Index(
+            "uq_ai_model_configs_global_default",
+            "is_default",
+            unique=True,
+            postgresql_where=text("is_default"),
+            sqlite_where=text("is_default = 1"),
+        ),
+        Index("ix_ai_model_configs_provider", "provider_id"),
+        Index("ix_ai_model_configs_eligibility", "enabled", "availability"),
+    )
+
+
 class InstallationJob(Base):
     __tablename__ = "installation_jobs"
 

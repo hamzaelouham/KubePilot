@@ -96,6 +96,14 @@ class ConnectionTestResult:
     message: str
 
 
+@dataclass(frozen=True)
+class ProviderCatalogResult:
+    provider_id: str
+    status: ConnectionTestStatus
+    message: str
+    model_ids: frozenset[str] = frozenset()
+
+
 def get_provider(provider_id: str) -> ProviderDefinition:
     definition = PROVIDER_DEFINITIONS.get(provider_id)
     if definition is None:
@@ -291,6 +299,125 @@ def test_provider(
             )
     except (httpx.HTTPError, OSError, TimeoutError):
         return ConnectionTestResult(provider_id, "failed", "The provider could not be reached.")
+
+
+def fetch_provider_model_ids(
+    database: SQLAlchemySession,
+    settings: Settings,
+    provider_id: str,
+    *,
+    client_factory: HTTPClientFactory | None = None,
+) -> ProviderCatalogResult:
+    """Fetch a bounded provider catalog without exposing credentials or payloads."""
+    definition = get_provider(provider_id)
+    setting = database.scalar(
+        select(ApplicationSetting).where(ApplicationSetting.key == definition.setting_key)
+    )
+    credential = None
+    if definition.credential_key:
+        credential = database.scalar(
+            select(ApplicationCredential).where(
+                ApplicationCredential.credential_key == definition.credential_key
+            )
+        )
+    if not _is_configured(definition, setting, credential):
+        return ProviderCatalogResult(
+            provider_id,
+            "not_configured",
+            "Save the provider configuration before checking model availability.",
+        )
+
+    base_url = setting.value_json.get("base_url") if isinstance(setting.value_json, dict) else None
+    try:
+        base_url = _validate_base_url(settings, base_url)
+    except InvalidProviderConfigurationError:
+        return ProviderCatalogResult(provider_id, "blocked", "The saved provider URL is not allowed.")
+
+    api_key = None
+    if credential is not None:
+        try:
+            api_key = CredentialEncryption.from_settings(settings).decrypt(credential.ciphertext)
+        except Exception:
+            return ProviderCatalogResult(
+                provider_id,
+                "failed",
+                "The saved provider credential is unavailable.",
+            )
+
+    headers = {"accept": "application/json"}
+    if api_key:
+        headers["authorization"] = f"Bearer {api_key}"
+    factory = client_factory or httpx.Client
+    try:
+        with factory(follow_redirects=False, timeout=_REQUEST_TIMEOUT_SECONDS) as client:
+            return _run_catalog_query(
+                client,
+                definition,
+                base_url,
+                headers,
+                ProviderURLPolicy.from_settings(settings),
+            )
+    except (httpx.HTTPError, OSError, TimeoutError):
+        return ProviderCatalogResult(provider_id, "failed", "The provider could not be reached.")
+
+
+def _run_catalog_query(
+    client: ProviderHTTPClient,
+    definition: ProviderDefinition,
+    base_url: str,
+    headers: dict[str, str],
+    policy: ProviderURLPolicy,
+) -> ProviderCatalogResult:
+    url = urljoin(base_url.rstrip("/") + "/", definition.capability_path)
+    for _ in range(_MAX_REDIRECTS + 1):
+        with client.stream("GET", url, headers=headers) as response:
+            content = b"".join(_bounded_chunks(response))
+            status_code = response.status_code
+            response_headers = response.headers
+
+        if len(content) > _MAX_RESPONSE_BYTES:
+            return ProviderCatalogResult(definition.provider_id, "failed", "The provider returned an oversized response.")
+        if 300 <= status_code < 400:
+            location = response_headers.get("location")
+            if not location:
+                return ProviderCatalogResult(definition.provider_id, "failed", "The provider returned an invalid redirect.")
+            next_url = urljoin(url, location)
+            try:
+                policy.validate_redirect(next_url)
+            except ProviderURLPolicyError:
+                return ProviderCatalogResult(definition.provider_id, "blocked", "The provider redirect is not allowed.")
+            url = next_url
+            continue
+        if not 200 <= status_code < 300:
+            return ProviderCatalogResult(definition.provider_id, "failed", "The provider rejected the model catalog request.")
+        try:
+            payload = json.loads(content.decode("utf-8"))
+        except (UnicodeDecodeError, TypeError, ValueError):
+            return ProviderCatalogResult(definition.provider_id, "failed", "The provider returned an invalid response.")
+        items = payload.get(definition.capability_field) if isinstance(payload, dict) else None
+        if not isinstance(items, list):
+            return ProviderCatalogResult(definition.provider_id, "failed", "The provider returned an invalid response.")
+
+        model_ids: set[str] = set()
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            keys = ("model", "name") if definition.provider_id == "ollama" else ("id",)
+            for key in keys:
+                value = item.get(key)
+                if isinstance(value, str) and value.strip():
+                    model_ids.add(value.strip())
+                    break
+        if items and not model_ids:
+            return ProviderCatalogResult(definition.provider_id, "failed", "The provider returned an invalid response.")
+        return ProviderCatalogResult(
+            definition.provider_id,
+            "connected",
+            "The provider model catalog was retrieved.",
+            frozenset(model_ids),
+        )
+
+    return ProviderCatalogResult(definition.provider_id, "failed", "The provider returned too many redirects.")
 
 
 def _run_capability_test(

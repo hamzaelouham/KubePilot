@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import Any, Literal
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 ThemePreference = Literal["system", "light", "dark"]
@@ -112,3 +113,76 @@ class ProviderTestResponse(BaseModel):
     provider_id: ProviderId
     status: ConnectionTestStatus
     message: str
+
+
+ModelAvailability = Literal["unknown", "available", "unavailable"]
+
+
+class ModelCapabilities(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    streaming: bool
+    tools: bool
+    reasoning: bool
+    vision: bool
+    large_context: bool
+
+
+class ModelWriteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider_id: ProviderId
+    external_model_id: str = Field(min_length=1, max_length=255)
+    friendly_name: str = Field(min_length=1, max_length=128)
+    enabled: bool = False
+    capabilities: ModelCapabilities
+
+    @field_validator("external_model_id", "friendly_name")
+    @classmethod
+    def reject_blank_values(cls, value: str) -> str:
+        clean = value.strip()
+        if not clean:
+            raise ValueError("Value must not be blank")
+        return clean
+
+
+class ModelSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    provider_id: ProviderId
+    provider_name: str
+    external_model_id: str
+    friendly_name: str
+    enabled: bool
+    is_default: bool
+    capabilities: ModelCapabilities
+    availability: ModelAvailability
+    availability_message: str | None
+    availability_checked_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ModelsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    models: list[ModelSummary]
+
+
+class EligibleModelSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    provider_id: ProviderId
+    provider_name: str
+    external_model_id: str
+    friendly_name: str
+    capabilities: ModelCapabilities
+    is_default: bool
+
+
+class EligibleModelsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    models: list[EligibleModelSummary]
