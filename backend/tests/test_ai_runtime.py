@@ -8,10 +8,12 @@ from cryptography.fernet import Fernet
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import Settings
+from app.assistant.schemas import ChatCompletionsRequest
 from app.db.session import create_session_factory
 from app.models.base import Base
 from app.models.entities import AIModelConfig, ApplicationCredential, ApplicationSetting, UserAccount
@@ -115,6 +117,15 @@ async def _consume(stream):
     return b"".join([chunk async for chunk in stream])
 
 
+def test_inference_schema_accepts_internal_model_id_and_rejects_external_identity() -> None:
+    model_id = uuid4()
+    parsed = ChatCompletionsRequest.model_validate(_payload(model=str(model_id)))
+    assert parsed.model == model_id
+
+    with pytest.raises(ValidationError):
+        ChatCompletionsRequest.model_validate(_payload(model="provider/external-model"))
+
+
 def test_runtime_model_requires_eligible_configured_default(runtime_store) -> None:
     with runtime_store.factory() as database:
         with pytest.raises(AINotConfiguredError):
@@ -127,6 +138,92 @@ def test_runtime_model_requires_eligible_configured_default(runtime_store) -> No
         database.commit()
         with pytest.raises(AIModelUnavailableError):
             resolve_runtime_model(database, runtime_store.settings)
+
+
+def test_runtime_model_resolves_only_eligible_internal_model_id(runtime_store) -> None:
+    _configure(runtime_store)
+    with runtime_store.factory() as database:
+        selected = AIModelConfig(
+            provider_id="ollama",
+            external_model_id="qwen-test:latest",
+            friendly_name="Selected model",
+            enabled=True,
+            supports_streaming=True,
+            supports_tools=True,
+            availability="available",
+        )
+        database.add(selected)
+        database.commit()
+        selected_id = selected.id
+
+        resolved = resolve_runtime_model(database, runtime_store.settings, selected_id)
+        assert resolved.external_model_id == "qwen-test:latest"
+
+        selected.enabled = False
+        database.commit()
+        with pytest.raises(AIModelUnavailableError, match="selected AI model"):
+            resolve_runtime_model(database, runtime_store.settings, selected_id)
+
+        selected.enabled = True
+        selected.availability = "unavailable"
+        database.commit()
+        with pytest.raises(AIModelUnavailableError, match="selected AI model"):
+            resolve_runtime_model(database, runtime_store.settings, selected_id)
+
+        selected.availability = "available"
+        selected.supports_tools = False
+        database.commit()
+        with pytest.raises(AIModelUnavailableError, match="current Assistant runtime"):
+            resolve_runtime_model(database, runtime_store.settings, selected_id)
+
+        selected.supports_tools = True
+        database.query(ApplicationSetting).delete()
+        database.commit()
+        with pytest.raises(AINotConfiguredError, match="selected model's provider"):
+            resolve_runtime_model(database, runtime_store.settings, selected_id)
+
+        with pytest.raises(AIModelUnavailableError, match="selected AI model"):
+            resolve_runtime_model(database, runtime_store.settings, uuid4())
+
+
+def test_selected_model_external_identity_replaces_internal_id(runtime_store) -> None:
+    _configure(runtime_store)
+    seen = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            content=b'data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n',
+        )
+
+    factory = lambda **kwargs: httpx.AsyncClient(transport=httpx.MockTransport(handler), **kwargs)
+    with runtime_store.factory() as database:
+        selected = AIModelConfig(
+            provider_id="ollama",
+            external_model_id="qwen-test:latest",
+            friendly_name="Selected model",
+            enabled=True,
+            supports_streaming=True,
+            supports_tools=True,
+            availability="available",
+        )
+        database.add(selected)
+        database.commit()
+        selected_id = selected.id
+        stream, _content_type = _run(
+            open_chat_stream(
+                database,
+                runtime_store.settings,
+                _payload(model=selected_id),
+                client_factory=factory,
+            )
+        )
+        _run(_consume(stream))
+
+    assert seen["body"]["model"] == "qwen-test:latest"
+    assert str(selected_id) not in json.dumps(seen["body"])
 
 
 @pytest.mark.parametrize(

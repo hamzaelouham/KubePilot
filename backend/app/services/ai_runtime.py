@@ -3,8 +3,9 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 import json
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urljoin
+from uuid import UUID
 
 import httpx
 from sqlalchemy import select
@@ -104,19 +105,31 @@ class ProviderStream(AsyncIterator[bytes]):
         await self._client.aclose()
 
 
-def resolve_runtime_model(database: Session, settings: Settings) -> RuntimeModel:
-    model = database.scalar(select(AIModelConfig).where(AIModelConfig.is_default.is_(True)))
+def resolve_runtime_model(
+    database: Session,
+    settings: Settings,
+    model_id: Literal["default"] | UUID = "default",
+) -> RuntimeModel:
+    selecting_default = model_id == "default"
+    model = (
+        database.scalar(select(AIModelConfig).where(AIModelConfig.is_default.is_(True)))
+        if selecting_default
+        else database.get(AIModelConfig, model_id)
+    )
     if model is None:
-        raise AINotConfiguredError("Configure an eligible default AI model in Settings.")
+        if selecting_default:
+            raise AINotConfiguredError("Configure an eligible default AI model in Settings.")
+        raise AIModelUnavailableError("The selected AI model is not currently available.")
+    label = "default" if selecting_default else "selected"
     if not model.enabled or model.availability != "available":
-        raise AIModelUnavailableError("The default AI model is not currently available.")
+        raise AIModelUnavailableError(f"The {label} AI model is not currently available.")
     if not model.supports_streaming or not model.supports_tools:
-        raise AIModelUnavailableError("The default AI model does not support the current Assistant runtime.")
+        raise AIModelUnavailableError(f"The {label} AI model does not support the current Assistant runtime.")
 
     try:
         provider = get_provider(model.provider_id)
     except UnknownProviderError as error:
-        raise AIModelUnavailableError("The default AI model uses an unsupported provider.") from error
+        raise AIModelUnavailableError(f"The {label} AI model uses an unsupported provider.") from error
 
     provider_setting = database.scalar(
         select(ApplicationSetting).where(ApplicationSetting.key == provider.setting_key)
@@ -124,11 +137,11 @@ def resolve_runtime_model(database: Session, settings: Settings) -> RuntimeModel
     raw_setting = provider_setting.value_json if provider_setting is not None else None
     raw_base_url = raw_setting.get("base_url") if isinstance(raw_setting, dict) else None
     if not isinstance(raw_base_url, str) or not raw_base_url.strip():
-        raise AINotConfiguredError("Configure the default model's provider in Settings.")
+        raise AINotConfiguredError(f"Configure the {label} model's provider in Settings.")
     try:
         base_url = ProviderURLPolicy.from_settings(settings).validate(raw_base_url.strip())
     except ProviderURLPolicyError as error:
-        raise AINotConfiguredError("The default model's provider URL is not allowed.") from error
+        raise AINotConfiguredError(f"The {label} model's provider URL is not allowed.") from error
 
     api_key = None
     if provider.credential_key is not None:
@@ -138,11 +151,11 @@ def resolve_runtime_model(database: Session, settings: Settings) -> RuntimeModel
             )
         )
         if credential is None:
-            raise AINotConfiguredError("Configure the default model's provider credential in Settings.")
+            raise AINotConfiguredError(f"Configure the {label} model's provider credential in Settings.")
         try:
             api_key = CredentialEncryption.from_settings(settings).decrypt(credential.ciphertext)
         except (ConfigurationError, TypeError, ValueError) as error:
-            raise AINotConfiguredError("The default model's provider credential is unavailable.") from error
+            raise AINotConfiguredError(f"The {label} model's provider credential is unavailable.") from error
 
     return RuntimeModel(provider, model.external_model_id, base_url, api_key)
 
@@ -154,7 +167,10 @@ async def open_chat_stream(
     *,
     client_factory: AsyncClientFactory | None = None,
 ) -> tuple[ProviderStream, str]:
-    runtime = resolve_runtime_model(database, settings)
+    model_id = payload.get("model", "default")
+    if model_id != "default" and not isinstance(model_id, UUID):
+        raise AIModelUnavailableError("The selected AI model is not currently available.")
+    runtime = resolve_runtime_model(database, settings, model_id)
     outbound = dict(payload)
     outbound["model"] = runtime.external_model_id
     outbound["stream"] = True

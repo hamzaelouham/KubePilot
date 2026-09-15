@@ -9,7 +9,14 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 
 const messageSchema = z.object({ id: z.string().max(100), role: z.enum(["user", "assistant"]), parts: z.array(z.record(z.string(), z.unknown())).max(100) });
-const requestSchema = z.object({ context: contextSchema, messages: z.array(messageSchema).min(1).max(60) });
+const requestSchema = z.object({
+  context: contextSchema,
+  modelId: z.string().uuid().optional(),
+  id: z.string().max(100).optional(),
+  trigger: z.enum(["submit-message", "regenerate-message"]).optional(),
+  messageId: z.string().max(100).optional(),
+  messages: z.array(messageSchema).min(1).max(60),
+}).strict();
 
 export async function POST(request: Request) {
   try {
@@ -24,7 +31,7 @@ export async function POST(request: Request) {
       }
     }
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(110000)]);
-    const model = resolveAssistantModel(cookie);
+    const model = resolveAssistantModel(cookie, body.modelId);
     const agent = createAssistant(model, cookie, body.context, user.role, signal);
     return await createAgentUIStreamResponse({ agent, uiMessages: body.messages.map(scrubHistory), abortSignal: signal, sendReasoning: false, sendSources: false,
       onError: () => "The AI provider could not complete the response. Check model availability or try a new conversation. No proposed action was approved by this error.",

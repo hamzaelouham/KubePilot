@@ -4,7 +4,11 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
 import { backendUrl } from "@/lib/backend";
 
-export function resolveAssistantModel(cookie: string, fetchImplementation: typeof fetch = fetch): LanguageModel {
+export function resolveAssistantModel(
+  cookie: string,
+  modelId = "default",
+  fetchImplementation: typeof fetch = fetch,
+): LanguageModel {
   const provider = createOpenAICompatible({
     name: "kubepilot",
     baseURL: `${backendUrl()}/api/v1/assistant/inference`,
@@ -12,5 +16,5 @@ export function resolveAssistantModel(cookie: string, fetchImplementation: typeo
     fetch: fetchImplementation,
     includeUsage: true,
   });
-  return provider.chatModel("default");
+  return provider.chatModel(modelId);
 }

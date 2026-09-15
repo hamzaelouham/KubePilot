@@ -1,7 +1,8 @@
 import json
 from typing import Any, Literal
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 ResourceType = Literal[
     "pods", "deployments", "stateful-sets", "daemon-sets", "services", "nodes",
@@ -56,7 +57,7 @@ class InferenceTool(StrictModel):
 
 
 class ChatCompletionsRequest(StrictModel):
-    model: Literal["default"]
+    model: Literal["default"] | UUID
     messages: list[InferenceMessage] = Field(min_length=1, max_length=60)
     stream: Literal[True]
     stream_options: dict[str, bool] | None = None
@@ -72,6 +73,18 @@ class ChatCompletionsRequest(StrictModel):
     seed: int | None = None
     response_format: dict[str, Any] | None = None
     parallel_tool_calls: bool | None = None
+
+    @field_validator("model", mode="before")
+    @classmethod
+    def internal_model_id(cls, value: Any) -> Literal["default"] | UUID:
+        if value == "default":
+            return "default"
+        if not isinstance(value, str):
+            raise ValueError("Model must be default or an internal model ID")
+        try:
+            return UUID(value)
+        except ValueError as error:
+            raise ValueError("Model must be default or an internal model ID") from error
 
     @model_validator(mode="after")
     def bounded_optional_values(self):

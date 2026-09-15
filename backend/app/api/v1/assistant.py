@@ -17,7 +17,7 @@ from app.assistant.observations import observe
 from app.assistant.schemas import ChatCompletionsRequest, Decision, Observation, Proposal, ReadTool
 from app.core.audit import record_audit
 from app.core.config import Settings
-from app.core.dependencies import AuthenticatedActor, get_current_actor, get_database_session, get_settings
+from app.core.dependencies import AuthenticatedActor, get_database_session, get_settings
 from app.core.rbac import Permission, require_permission
 from app.kubernetes.resource_management import ResourceManagementError
 from app.models.entities import AssistantProposal
@@ -29,7 +29,6 @@ router = APIRouter(prefix="/assistant", tags=["assistant"])
 Actor = Annotated[AuthenticatedActor, Depends(require_permission(Permission.RESOURCES_READ))]
 Database = Annotated[Session, Depends(get_database_session)]
 Configuration = Annotated[Settings, Depends(get_settings)]
-Authenticated = Annotated[AuthenticatedActor, Depends(get_current_actor)]
 
 
 async def audited(database, actor, tool, cluster, operation):
@@ -73,7 +72,7 @@ def get_proposal(proposal_id: UUID, actor: Actor, database: Database):
 
 
 @router.get("/models", response_model=EligibleModelsResponse)
-def eligible_models(_actor: Authenticated, database: Database) -> EligibleModelsResponse:
+def eligible_models(_actor: Actor, database: Database) -> EligibleModelsResponse:
     return EligibleModelsResponse(models=list_eligible_models(database))
 
 

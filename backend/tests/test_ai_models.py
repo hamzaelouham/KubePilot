@@ -287,6 +287,17 @@ def test_selector_excludes_available_model_when_provider_is_not_configured(model
         assert ai_models.list_eligible_models(database) == []
 
 
+def test_selector_excludes_models_incompatible_with_current_assistant(model_store) -> None:
+    with model_store.factory() as database:
+        _configure_ollama(database, model_store)
+        created = _create(database, model_store, enabled=True)
+        model = database.get(AIModelConfig, created["id"])
+        model.availability = "available"
+        model.supports_tools = False
+        database.commit()
+        assert ai_models.list_eligible_models(database) == []
+
+
 @pytest.fixture()
 def model_api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     database_url = f"sqlite:///{tmp_path / 'models-api.db'}"
