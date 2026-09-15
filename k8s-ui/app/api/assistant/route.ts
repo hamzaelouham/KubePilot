@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createAssistant } from "@/lib/assistant/agent";
 import { AssistantError, authenticate, boundedBody, errorResponse, sameOrigin, sessionCookie } from "@/lib/assistant/backend";
 import { contextSchema, scrubHistory } from "@/lib/assistant/schemas";
+import { resolveAssistantModel } from "@/lib/assistant/model-resolver";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -22,9 +23,8 @@ export async function POST(request: Request) {
         throw new AssistantError(422, "invalid_message", "Only text and KubePilot tool results are supported.");
       }
     }
-    const model = process.env.KUBEPILOT_AI_MODEL;
-    if (!model || !process.env.AI_GATEWAY_API_KEY) throw new AssistantError(503, "ai_not_configured", "The AI assistant is not configured. Ask your administrator to configure its model and AI Gateway credentials.");
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(110000)]);
+    const model = resolveAssistantModel(cookie);
     const agent = createAssistant(model, cookie, body.context, user.role, signal);
     return await createAgentUIStreamResponse({ agent, uiMessages: body.messages.map(scrubHistory), abortSignal: signal, sendReasoning: false, sendSources: false,
       onError: () => "The AI provider could not complete the response. Check model availability or try a new conversation. No proposed action was approved by this error.",

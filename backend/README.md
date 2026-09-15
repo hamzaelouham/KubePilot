@@ -91,20 +91,22 @@ Required environment variables (with local-safe defaults for Compose):
 | `KUBEPILOT_SERVICE_NAME` | `kubepilot-api` | Backend service name |
 | `KUBEPILOT_ADMIN_EMAIL` / `KUBEPILOT_ADMIN_PASSWORD` | `ops@kubepilot.io` / `kubepilot` | Local admin login |
 | `KUBEPILOT_BACKEND_URL` | `http://backend:8000` | Frontend-only; where the frontend proxies `/api` calls |
-| `KUBEPILOT_AI_MODEL` / `AI_GATEWAY_API_KEY` | (empty) | Optional: enables the AI Assistant (Next.js runtime only). Set a tool-capable model identifier enabled in your AI Gateway account; the key stays server-side and is never exposed to the browser. |
 
 ## AI Assistant (optional)
 
-When `KUBEPILOT_AI_MODEL` and `AI_GATEWAY_API_KEY` are set in the frontend runtime,
-the sidebar **AI Assistant** route is available to signed-in users with resource
-read access. It stream-responds with a tool-capable model through the AI SDK:
+The sidebar **AI Assistant** route is available to signed-in users with resource
+read access. To enable responses, configure and test OpenAI, OpenRouter, or Ollama
+under **Settings → AI Providers**; create and check a streaming- and tool-capable
+model under **Settings → Models**; enable it and set it as the default. The
+Assistant stream-responds through the AI SDK while FastAPI keeps the provider
+credential encrypted at rest and uses it only for the outbound provider request:
 read tools inspect the selected cluster/namespace, and every write action
 (scale, restart, delete, install, upgrade, rollback, uninstall) is staged as an
 immutable 10-minute proposal that the user must type-confirm in the review card
 before the backend dispatches it. The model never receives Secret/ConfigMap
 data, raw manifests, or environment values, and never touches Kubernetes
-directly. Without these two variables the assistant returns a clear
-"not configured" error and changes nothing.
+directly. Without an eligible configured default model, the Assistant returns a
+clear "not configured" error and changes nothing.
 
 ## Checks
 

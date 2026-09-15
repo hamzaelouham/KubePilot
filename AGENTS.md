@@ -199,20 +199,24 @@ a workflow failure.
 ## Automatic verification
 
 Automatic GitHub checks are a separate explicit setup. `/onboard` and `/adopt`
-only report existing checks and point to `/ci` or `$ci` when none exist. Running
-`/ci` inspects the real project and defines one `Verify` command from checks that
-already exist. Use this order when available: typecheck, tests, then build. Never
-invent a test runner or another check just to fill the command.
+only report existing checks and point to `/ci` or `$ci` when none exist. Local
+feature work uses the fast `Verify` command below: it runs backend test files
+added or changed by the feature, then the existing Assistant test and frontend
+build. It fails when backend application code changes without a corresponding
+test change. The GitHub `Verify` workflow owns the full backend regression suite
+so every pull request and default-branch push still checks all application
+features. Never weaken focused coverage merely to make the local command pass.
 
 For JavaScript and TypeScript projects, prefer a package script such as `verify`
 and use the detected package manager. For other stacks, use the native task
 runner or exact combined command. Record the exact command under Commands below.
 
-The optional `.github/workflows/verify.yml` must run that same command for pull
-requests and pushes to the default branch. Preserve existing workflows, use the
-project's real runtime and install command, and grant only `contents: read` by
-default. This setup does not add local git hooks, coverage, browser tests,
-security scans, or version matrices. Those remain later project choices.
+`.github/workflows/verify.yml` runs full backend pytest plus the frontend
+Assistant test and production build for pull requests and pushes to the default
+branch. Preserve existing workflows, use the project's real runtime and install
+command, and grant only `contents: read` by default. This setup does not add
+local git hooks, coverage, browser tests, security scans, or version matrices.
+Those remain later project choices.
 
 GitHub branch protection or a ruleset can require the check after the repository
 is pushed, but that is a separate remote setting. Missing automatic GitHub
@@ -228,8 +232,11 @@ checks do not make the Blueprint unusable.
 - Backend dev server: `cd backend && PYTHONPATH=. uvicorn app.main:app --host 127.0.0.1 --port 8000`
 - Backend syntax check: `cd backend && python3 -m compileall -q app`
 - Backend tests: `cd backend && python3 -m pytest`
+- Backend focused tests: selected automatically from backend test files added or
+  changed on the feature branch by `./scripts/verify-feature.sh`
 - Backend migration SQL check: `cd backend && PYTHONPATH=. alembic upgrade head --sql`
-- Verify: `cd backend && .venv/bin/python3 -m pytest && cd ../k8s-ui && yarn verify`
+- Verify (local feature gate): `./scripts/verify-feature.sh`
+- Full Verify (GitHub Actions): `cd backend && python -m pytest && cd ../k8s-ui && yarn test:assistant && yarn verify`
 - Docker images (GitHub Actions, reliable egress - use instead of local builds when the local `yarn install` hangs):
   - The manual workflow `.github/workflows/docker-build-push.yml` builds both images on a GitHub runner and pushes
     `hamzaelouham/kubepilot-backend:<tag>` and `hamzaelouham/kubepilot-ui:<tag>` plus `latest` to Docker Hub.
@@ -244,7 +251,12 @@ checks do not make the Blueprint unusable.
   - Open UI: `minikube service kubepilot-ui -n kubepilot`
   - Teardown: `minikube kubectl -- delete -f backend/deploy/kubernetes/`
 
-The backend uses pytest as its unit test runner (see Backend tests above); the frontend has no test runner. The combined project gate is the `Verify` command above. Browser testing remains a separate opt-in task and should only be added explicitly through `/browser-tests` or `$browser-tests` when the project is ready for UI automation.
+The backend uses pytest as its unit test runner. The frontend has a focused
+Assistant test and uses the production build for broader validation. Local
+implementation and completion run the focused `Verify`; GitHub Actions runs the
+full regression command. Browser testing remains a separate opt-in task and
+should only be added explicitly through `/browser-tests` or `$browser-tests`
+when the project is ready for UI automation.
 
 <!-- BEGIN:nextjs-agent-rules -->
  

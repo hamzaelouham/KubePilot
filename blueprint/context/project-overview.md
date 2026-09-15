@@ -1,6 +1,6 @@
 # KubePilot - Project Overview
 
-<!-- blueprint:source-hash 72f40c29ffe2f19ff87dfccfe16745fd4f495ed7411702add337661e7a9778fe -->
+<!-- blueprint:source-hash 347b69c03d160c1bf393760db76a269b18581f8c11dc515c3fa8eb1173b4f0f7 -->
 
 > A self-hosted Kubernetes operations platform for cluster visibility, troubleshooting, and resource management, with FastAPI as the only application component that talks to Kubernetes.
 
@@ -16,7 +16,7 @@ Kubernetes operations teams need to understand cluster health, investigate workl
 
 ## Features
 
-Features are listed in build-plan order. MVP covers 1–9; later items are post-MVP. Checked build-plan items are completed; pending leaves are 20e–20g and 21a–21d.
+Features are listed in build-plan order. MVP covers 1–9; later items are post-MVP. Checked build-plan items are completed; pending leaves are 20f–20g and 21a–21c.
 
 1. **Dashboard foundation** — completed application shell, navigation, and resource layout.
 2. **Cluster overview and mock data** — completed overview metrics, workload statuses, namespace controls, and resource tables.
@@ -45,8 +45,8 @@ Features are listed in build-plan order. MVP covers 1–9; later items are post-
 
 Feature 19 reuses cluster selection, namespace controls, application layout, and backend permissions. Admins/operators receive management controls; viewers remain read-only. Destructive actions require confirmation and audit records. Cluster changes refresh the displayed scope and prevent actions from using a stale target. Repository connections are Helm client configuration, not resources automatically discoverable from a cluster.
 
-20. **Centralized KubePilot Settings** — mostly completed. 20a–d deliver the administrator-controlled shell, General and Appearance preferences, secure credential storage, and OpenAI/OpenRouter/Ollama provider management. Remaining 20e–g cover the model registry, integrations/credential overview, filtered audit logs, and the AI Agents V2 placeholder. Bootstrap infrastructure configuration remains Kubernetes-managed.
-21. **Direct AI provider architecture** — pending refactor of the existing Vercel AI SDK integration away from Vercel AI Gateway. Settings-managed configuration will resolve allowlisted OpenAI direct, OpenRouter, and Ollama/local models while preserving AI Elements, streaming, tool calling, FastAPI authorization, approval, and audit boundaries.
+20. **Centralized KubePilot Settings** — mostly completed. 20a–e deliver the administrator-controlled shell, General and Appearance preferences, secure credential storage, OpenAI/OpenRouter/Ollama provider management, and the model registry. Remaining 20f–g cover integrations/credential overview, filtered audit logs, and the AI Agents V2 placeholder. Bootstrap infrastructure configuration remains Kubernetes-managed.
+21. **Direct AI provider architecture** — pending refactor of the existing Vercel AI SDK integration away from Vercel AI Gateway. Unified 21a introduces the provider abstraction and working OpenAI/OpenRouter/Ollama adapters in the same change; 21b adds Settings-backed model selection; 21c applies capability-aware tools, audit, and regression validation. Preserve AI Elements, streaming, FastAPI authorization, approval, and audit boundaries.
 
 ## Data model
 
@@ -101,7 +101,7 @@ Desktop-first operations interface with readable tables, status emphasis, namesp
 - `/marketplace` — Artifact Hub package discovery, install configuration, job progress/history, and existing rollback/uninstall controls.
 - `/manage-resources` — sidebar label **Manage resources**, Kubernetes resources and Helm releases tabs, repository configuration, and release upgrades within the same section. Reuse the application shell and selected cluster/namespace controls.
 - `/settings` — admin-only Settings shell with secondary navigation for General, Appearance, AI Providers, Models, Integrations, Secrets & Credentials, Audit Logs, and AI Agents (V2/Coming Soon).
-- `/settings/general` and `/settings/appearance` — completed 20b preference pages using the existing shell; `/settings/providers` and `/settings/credentials` are covered by completed 20c–d; `/settings/models`, `/settings/integrations`, and `/settings/audit-logs` remain planned Settings subsections.
+- `/settings/general` and `/settings/appearance` — completed 20b preference pages using the existing shell; `/settings/providers`, `/settings/credentials`, and `/settings/models` are covered by completed 20c–e; `/settings/integrations` and `/settings/audit-logs` remain planned Settings subsections.
 - `/settings/clusters` — registered cluster management.
 - `/settings/users` — admin user management.
 - `/settings/password` — self-service and forced password change.
@@ -140,7 +140,7 @@ The project plan's topology text still describes multi-cluster support as future
 - **UI direction mismatch:** project-plan §7 describes a dark-first aesthetic, while completed feature 17 establishes a light palette and shared shell. Preserve the existing UI for feature 19.
 - **Outdated milestone text:** project-plan §8 and its assumptions still describe single-cluster operation and backend integration as future work; completed build-plan items record multi-cluster/backend delivery. Earlier MVP feature summaries also omit later shipped items.
 - **Plan alignment:** the newly approved Settings (20) and direct-provider (21) scope is currently present in `build-plan.md` but not yet described in `project-plan.md`; update the authored project plan before treating the overview as a final product-direction baseline.
-- **AI migration contract:** project-plan §5 still names AI Gateway as the current integration, while build-plan 21 removes it. Define migration/bootstrap precedence, key rotation, and provider/model availability contracts in the 20/21 specs.
+- **AI migration contract:** project-plan §5 still names AI Gateway and says credentials remain exclusively in FastAPI, while build-plan 21 removes Gateway but keeps the Next.js AI SDK agent and consumes Settings-managed provider credentials. The 21a spec must define the trusted server boundary and migration/bootstrap precedence without exposing credentials to browsers, clients, logs, or audit records.
 - Exact ServiceAccount/RBAC policy and system namespace protections for new management operations must be carried into the implementation specs. Marketplace 18k already requires kube-system protection unless explicitly allowed by policy.
-- Audit recording is planned/implemented across features, but a dedicated audit-log UI is not a build-plan item.
+- Audit recording is implemented across features; its dedicated filtered Settings UI remains planned in 20g.
 - The final self-hosted/managed-service offering remains a product decision.

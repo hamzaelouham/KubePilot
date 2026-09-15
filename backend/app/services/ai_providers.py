@@ -48,6 +48,7 @@ class ProviderDefinition:
     credential_key: str | None
     capability_path: str
     capability_field: str
+    chat_path: str
 
     @property
     def credential_required(self) -> bool:
@@ -62,6 +63,7 @@ PROVIDER_DEFINITIONS: dict[str, ProviderDefinition] = {
         credential_key="ai.provider.openai.api_key",
         capability_path="models",
         capability_field="data",
+        chat_path="chat/completions",
     ),
     "openrouter": ProviderDefinition(
         provider_id="openrouter",
@@ -70,6 +72,7 @@ PROVIDER_DEFINITIONS: dict[str, ProviderDefinition] = {
         credential_key="ai.provider.openrouter.api_key",
         capability_path="models",
         capability_field="data",
+        chat_path="chat/completions",
     ),
     "ollama": ProviderDefinition(
         provider_id="ollama",
@@ -78,6 +81,7 @@ PROVIDER_DEFINITIONS: dict[str, ProviderDefinition] = {
         credential_key=None,
         capability_path="api/tags",
         capability_field="models",
+        chat_path="v1/chat/completions",
     ),
 }
 

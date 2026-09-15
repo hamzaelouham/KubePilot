@@ -11,6 +11,7 @@
     "test:assistant": "node --import ./tests/register.mjs --test tests/assistant.test.mjs"
   },
   "dependencies": {
+    "@ai-sdk/openai-compatible": "^3.0.48",
     "@ai-sdk/react": "^4.0.102",
     "@base-ui/react": "^1.8.0",
     "@radix-ui/react-use-controllable-state": "^1.2.6",

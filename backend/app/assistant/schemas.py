@@ -1,4 +1,5 @@
-from typing import Literal
+import json
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -12,6 +13,76 @@ Action = Literal["scale", "restart", "delete", "install", "upgrade", "rollback",
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
+
+
+class InferenceMessage(StrictModel):
+    role: Literal["system", "user", "assistant", "tool"]
+    content: str | list[dict[str, Any]] | None
+    name: str | None = Field(default=None, max_length=128)
+    tool_calls: list[dict[str, Any]] | None = Field(default=None, max_length=64)
+    tool_call_id: str | None = Field(default=None, max_length=256)
+
+    @model_validator(mode="after")
+    def role_fields(self):
+        if self.role == "tool" and not self.tool_call_id:
+            raise ValueError("Tool messages require tool_call_id")
+        if self.role != "assistant" and self.tool_calls is not None:
+            raise ValueError("Only assistant messages may contain tool calls")
+        return self
+
+    @model_validator(mode="after")
+    def bounded_content(self):
+        if len(json.dumps(self.model_dump(), separators=(",", ":"))) > 64 * 1024:
+            raise ValueError("Message content is too large")
+        return self
+
+
+class InferenceFunction(StrictModel):
+    name: str = Field(min_length=1, max_length=128)
+    description: str | None = Field(default=None, max_length=4096)
+    parameters: dict[str, Any]
+    strict: bool | None = None
+
+    @model_validator(mode="after")
+    def bounded_parameters(self):
+        if len(json.dumps(self.parameters, separators=(",", ":"))) > 32 * 1024:
+            raise ValueError("Tool parameters are too large")
+        return self
+
+
+class InferenceTool(StrictModel):
+    type: Literal["function"]
+    function: InferenceFunction
+
+
+class ChatCompletionsRequest(StrictModel):
+    model: Literal["default"]
+    messages: list[InferenceMessage] = Field(min_length=1, max_length=60)
+    stream: Literal[True]
+    stream_options: dict[str, bool] | None = None
+    tools: list[InferenceTool] | None = Field(default=None, max_length=32)
+    tool_choice: Literal["auto", "none", "required"] | dict[str, Any] | None = None
+    max_tokens: int | None = Field(default=None, ge=1, le=16_384)
+    max_completion_tokens: int | None = Field(default=None, ge=1, le=16_384)
+    temperature: float | None = Field(default=None, ge=0, le=2)
+    top_p: float | None = Field(default=None, ge=0, le=1)
+    frequency_penalty: float | None = Field(default=None, ge=-2, le=2)
+    presence_penalty: float | None = Field(default=None, ge=-2, le=2)
+    stop: str | list[str] | None = None
+    seed: int | None = None
+    response_format: dict[str, Any] | None = None
+    parallel_tool_calls: bool | None = None
+
+    @model_validator(mode="after")
+    def bounded_optional_values(self):
+        if isinstance(self.stop, str) and len(self.stop) > 1024:
+            raise ValueError("Stop sequence is too large")
+        if isinstance(self.stop, list) and (len(self.stop) > 8 or any(len(value) > 1024 for value in self.stop)):
+            raise ValueError("Stop sequences are too large")
+        for value in (self.tool_choice, self.response_format, self.stream_options):
+            if value is not None and len(json.dumps(value, separators=(",", ":"))) > 16 * 1024:
+                raise ValueError("Inference option is too large")
+        return self
 
 
 class Observation(StrictModel):

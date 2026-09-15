@@ -6,6 +6,7 @@ import { createAssistant } from "../lib/assistant/agent.ts";
 import { authenticate, boundedBody, sameOrigin, sessionCookie } from "../lib/assistant/backend.ts";
 import { POST } from "../app/api/assistant/route.ts";
 import { POST as confirm } from "../app/api/assistant/proposals/[id]/route.ts";
+import { resolveAssistantModel } from "../lib/assistant/model-resolver.ts";
 
 const user = { id: "actor", role: "operator", must_change_password: false, password_expired: false };
 const scope = { cluster: "primary", namespace: "default" };
@@ -78,4 +79,36 @@ test("AI SDK streaming helper emits the UI text protocol", async () => {
   const response = await createAgentUIStreamResponse({ agent, uiMessages: [{ id: "1", role: "user", parts: [{ type: "text", text: "Inspect web" }] }] });
   assert.equal(response.status, 200);
   assert.match(await response.text(), /"type":"text-delta".*Inspecting web/);
+});
+
+test("direct model resolver returns a concrete model and streams through authenticated FastAPI", async t => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    calls.push({ url: String(url), init });
+    if (String(url).endsWith("/api/v1/auth/me")) return Response.json(user);
+    const encoder = new TextEncoder();
+    return new Response(simulateReadableStream({ chunks: [
+      encoder.encode('data: {"id":"chat","object":"chat.completion.chunk","created":1,"model":"runtime","choices":[{"index":0,"delta":{"role":"assistant","content":"Direct response"},"finish_reason":null}]}\n\n'),
+      encoder.encode('data: {"id":"chat","object":"chat.completion.chunk","created":1,"model":"runtime","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}\n\n'),
+      encoder.encode("data: [DONE]\n\n"),
+    ] }), { headers: { "content-type": "text/event-stream" } });
+  });
+
+  const model = resolveAssistantModel("kubepilot_session=signed");
+  assert.notEqual(typeof model, "string");
+  assert.equal(model.modelId, "default");
+
+  const response = await POST(request({
+    context: scope,
+    messages: [{ id: "1", role: "user", parts: [{ type: "text", text: "Hello" }] }],
+  }));
+  assert.equal(response.status, 200);
+  assert.match(await response.text(), /Direct response/);
+  const inference = calls.find(call => call.url.endsWith("/api/v1/assistant/inference/chat/completions"));
+  assert.ok(inference);
+  assert.equal(new Headers(inference.init.headers).get("cookie"), "kubepilot_session=signed");
+  const payload = JSON.parse(inference.init.body);
+  assert.equal(payload.model, "default");
+  assert.equal(payload.stream, true);
+  assert.ok(!JSON.stringify(payload).includes("kubepilot_session"));
 });
