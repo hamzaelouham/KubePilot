@@ -50,7 +50,7 @@
 
 * [x] 17. **UI polish & design consistency** - unify the home, login, and change-password pages onto the dashboard's light palette with simple centered forms, restructure the sidebar into grouped sections (OVERVIEW / WORKLOADS / NETWORK / CONFIGURATION / STORAGE / CLUSTER / ADMINISTRATION) that show only existing resources, rework the header with the KubePilot brand, cluster selector, notifications, and user menu, and design the shell around a `clusterId` context so the future Multi-cluster feature (13) slots in without a redesign.
 
-* [ ] 18. **KubePilot Marketplace** - discover and install Kubernetes Helm packages from Artifact Hub.
+* [x] 18. **KubePilot Marketplace** - discover and install Kubernetes Helm packages from Artifact Hub.
 
   * [x] 18a. **Marketplace navigation & page** - add `/marketplace` route, a main sidebar entry, and a page header (Marketplace - "Discover and install Kubernetes applications") that reuses the existing application shell and preserves current navigation.
   * [x] 18b. **Package discovery** - integrate the Artifact Hub package search API (Helm charts only, kind=0) with pagination/Load More, a reusable PackageCard (logo, name, description, publisher/repository, latest version, Install button), loading skeletons, empty state, and API error state.
@@ -63,7 +63,7 @@
   * [x] 18i. **Installation progress UI** - immediate feedback while Helm runs (queued -> running -> succeeded/failed); Close only closes the UI and never cancels the installation.
   * [x] 18j. **Installation history** - a table of recent installations (package, cluster, namespace, status badge, date) with basic status filtering only if easy; no release management/upgrade/rollback/uninstall yet.
   * [x] 18k. **Security & validation** - authenticated user and install-permission checks, cluster/namespace/release-name/package/version validation, never execute arbitrary commands from user input, never trust Artifact Hub metadata as executable input, kube-system protected unless explicitly allowed by policy, safely constructed Helm commands.
-  * [ ] 18l. **Marketplace UI polish & responsive** - reuse shadcn/ui components and the Tailwind theme/spacing/colors, responsive package grid, skeleton/empty/error states, dialog animations if already used, mobile/tablet support.
+  * [x] 18l. **Marketplace UI polish & responsive** - reuse shadcn/ui components and the Tailwind theme/spacing/colors, responsive package grid, skeleton/empty/error states, dialog animations if already used, mobile/tablet support.
   * [x] 18m. **Release management (backend)** - after an install completes, admins/operators can roll back a release to its previous revision or uninstall (delete) it: job-driven Helm actions (extend InstallationJob with action/revision + worker dispatch, backward-compatible migration), rollback/uninstall endpoints gated by a marketplace release permission (operator + admin), audit events, status through the existing job/progress/history pipeline; no upgrade, no revision picker (helm history), no managing releases the app did not install.
   * [x] 18n. **Release actions UI** - Rollback / Uninstall actions on installation-history rows with confirmation and progress feedback reusing the existing install progress pattern; viewer gets no action controls.
 

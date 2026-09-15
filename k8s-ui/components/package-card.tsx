@@ -56,23 +56,23 @@ export function PackageCard({
   const publisher = publisherOf(pkg);
 
   return (
-    <article className="group relative flex min-h-64 flex-col gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm transition duration-150 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
+    <article className="group relative flex min-h-64 flex-col gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm transition duration-150 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md sm:p-5">
       <button
         type="button"
         onClick={onSelect}
         aria-label={`View details for ${pkg.name}`}
-        className="absolute inset-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        className="absolute inset-0 rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       />
       <div className="flex items-start gap-3.5">
         {logo ? (
           <img
             src={logo}
             alt=""
-            className="size-12 shrink-0 rounded-xl border border-border bg-background object-cover p-1"
+            className="size-11 shrink-0 rounded-xl border border-border bg-background object-cover p-1 sm:size-12"
             onError={() => setLogoFailed(true)}
           />
         ) : (
-          <div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-border bg-primary/10 text-sm font-semibold text-primary">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-border bg-primary/10 text-sm font-semibold text-primary sm:size-12">
             {pkg.name.slice(0, 2).toUpperCase()}
           </div>
         )}
@@ -89,12 +89,20 @@ export function PackageCard({
         </div>
       </div>
       <p className="line-clamp-3 text-sm leading-6 text-muted-foreground">{pkg.description ?? "No description provided."}</p>
-      <div className="mt-auto flex items-end justify-between gap-3 border-t border-border pt-4">
+      <div className="mt-auto flex flex-col items-stretch gap-3 border-t border-border pt-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">Latest version</p>
           <p className="truncate text-sm font-medium text-foreground">{pkg.version ?? "—"}</p>
         </div>
-        <Button size="sm" variant="default" className="relative z-10" onClick={(event) => { event.stopPropagation(); onInstall?.(); }}>
+        <Button
+          size="sm"
+          variant="default"
+          className="relative z-10 w-full sm:w-auto"
+          onClick={(event) => {
+            event.stopPropagation();
+            onInstall?.();
+          }}
+        >
           Install
         </Button>
       </div>

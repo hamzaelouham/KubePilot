@@ -27,9 +27,9 @@ export function MarketplaceView({ user, initialData }: { user: BackendUser; init
       onSelectCluster={selectCluster}
       onNavigate={handleNav}
     >
-      <div>
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-foreground">Marketplace</h1>
+      <div className="min-w-0">
+        <div className="mb-4 sm:mb-6">
+          <h1 className="text-xl font-semibold text-foreground sm:text-2xl">Marketplace</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Discover and install Kubernetes applications.
           </p>

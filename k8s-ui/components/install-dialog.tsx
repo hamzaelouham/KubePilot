@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { withCluster } from "@/lib/cluster-query";
 import { publisherOf, type MarketplacePackage } from "@/components/package-card";
 import { cachedFetch, invalidateCache } from "@/lib/marketplace-cache";
@@ -261,7 +262,7 @@ export function InstallDialog({
   return (
     <Dialog open={pkg !== null} onOpenChange={onOpenChange}>
       {pkg && (
-        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] overflow-hidden sm:max-h-[90dvh] sm:w-full sm:max-w-lg">
           <InstallDialogBody
             key={pkg.package_id}
             pkg={pkg}
@@ -451,7 +452,8 @@ function InstallDialogBody({
           <span>{installError}</span>
         </div>
       )}
-      <div className="grid gap-4">
+      <div className="max-h-[calc(100dvh-14rem)] overflow-y-auto pr-1 sm:max-h-[60vh]">
+        <div className="grid gap-4">
         <div>
           <label className="text-sm font-medium text-foreground" htmlFor="install-version">
             Version
@@ -470,6 +472,8 @@ function InstallDialogBody({
             <p className="mt-1 text-sm text-muted-foreground">
               This package has no available versions.
             </p>
+          ) : versions.status === "loading" ? (
+            <Skeleton className="mt-1 h-9 w-full" />
           ) : (
             <Select
               value={versionReady ? versions.selected : null}
@@ -545,6 +549,8 @@ function InstallDialogBody({
             <p className="mt-1 text-sm text-muted-foreground">
               No namespaces available in this cluster.
             </p>
+          ) : namespaces.status === "loading" ? (
+            <Skeleton className="mt-1 h-9 w-full" />
           ) : (
             <Select
               value={namespacesReady ? namespaces.selected : null}
@@ -594,8 +600,14 @@ function InstallDialogBody({
           )}
         </div>
       </div>
+      </div>
       <DialogFooter>
-        <Button type="button" disabled={!submitEnabled || posting} onClick={submitInstall}>
+        <Button
+          type="button"
+          className="w-full sm:w-auto"
+          disabled={!submitEnabled || posting}
+          onClick={submitInstall}
+        >
           {posting ? "Queuing…" : "Install"}
         </Button>
       </DialogFooter>

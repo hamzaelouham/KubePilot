@@ -1,6 +1,6 @@
 # KubePilot - Project Overview
 
-<!-- blueprint:source-hash e6bcf64a9d31c8fd592483c6b40d2039a8af2ff53012b110923adcb4255aba1d -->
+<!-- blueprint:source-hash 72f40c29ffe2f19ff87dfccfe16745fd4f495ed7411702add337661e7a9778fe -->
 
 > A self-hosted Kubernetes operations platform for cluster visibility, troubleshooting, and resource management, with FastAPI as the only application component that talks to Kubernetes.
 
@@ -16,7 +16,7 @@ Kubernetes operations teams need to understand cluster health, investigate workl
 
 ## Features
 
-Features are listed in build-plan order. MVP covers 1–9; later items are post-MVP. Checked build-plan items are completed; pending leaves are 18l, 20c–20g, and 21a–21d.
+Features are listed in build-plan order. MVP covers 1–9; later items are post-MVP. Checked build-plan items are completed; pending leaves are 20e–20g and 21a–21d.
 
 1. **Dashboard foundation** — completed application shell, navigation, and resource layout.
 2. **Cluster overview and mock data** — completed overview metrics, workload statuses, namespace controls, and resource tables.
@@ -35,7 +35,7 @@ Features are listed in build-plan order. MVP covers 1–9; later items are post-
 15. **shadcn/ui integration and table migration** — completed reusable resource Data Tables while preserving the existing design.
 16. **Header components and theme support** — completed header controls and light/dark themes.
 17. **UI polish & design consistency** — completed light-palette pages, grouped sidebar, header, and cluster-aware shell.
-18. **KubePilot Marketplace** — mostly completed; 18l responsive UI polish remains pending. Completed scope includes navigation, Artifact Hub discovery/search/details, install configuration/API/jobs/status/progress/history, validation, and rollback/uninstall actions (18a–k, 18m–n). Current release management is limited to releases installed through KubePilot, with previous-revision rollback and no upgrade or revision picker.
+18. **KubePilot Marketplace** — completed navigation, Artifact Hub discovery/search/details, responsive package presentation, install configuration/API/jobs/status/progress/history, validation, and rollback/uninstall actions. Current release management is limited to releases installed through KubePilot, with previous-revision rollback and no upgrade or revision picker.
 19. **Manage resources** — completed sidebar section for resource and Helm management in the selected cluster, delivered in order:
 
     - **19a — Kubernetes resource management:** `/manage-resources` and Kubernetes resources tab; list, create through validated YAML, and delete pods, deployments, namespaces, services, and other explicitly supported common types.
@@ -45,7 +45,7 @@ Features are listed in build-plan order. MVP covers 1–9; later items are post-
 
 Feature 19 reuses cluster selection, namespace controls, application layout, and backend permissions. Admins/operators receive management controls; viewers remain read-only. Destructive actions require confirmation and audit records. Cluster changes refresh the displayed scope and prevent actions from using a stale target. Repository connections are Helm client configuration, not resources automatically discoverable from a cluster.
 
-20. **Centralized KubePilot Settings** — in progress. 20a completed the administrator-controlled shell and authorization; 20b completed persisted per-user General and Appearance preferences using the existing `UserPreference` record and `next-themes`. Remaining 20c–g deliver global settings, credentials, providers/models, integrations, audit logs, and the AI Agents V2 placeholder. Bootstrap infrastructure configuration remains Kubernetes-managed.
+20. **Centralized KubePilot Settings** — mostly completed. 20a–d deliver the administrator-controlled shell, General and Appearance preferences, secure credential storage, and OpenAI/OpenRouter/Ollama provider management. Remaining 20e–g cover the model registry, integrations/credential overview, filtered audit logs, and the AI Agents V2 placeholder. Bootstrap infrastructure configuration remains Kubernetes-managed.
 21. **Direct AI provider architecture** — pending refactor of the existing Vercel AI SDK integration away from Vercel AI Gateway. Settings-managed configuration will resolve allowlisted OpenAI direct, OpenRouter, and Ollama/local models while preserving AI Elements, streaming, tool calling, FastAPI authorization, approval, and audit boundaries.
 
 ## Data model
@@ -66,9 +66,9 @@ Existing application records use UUID identifiers and creation timestamps; clust
 - **UserPreference**: user_id (unique foreign key), default_namespace, view_settings (JSON; feature 20b stores the supported theme preference here while preserving future keys).
 - **InstallationJob** (`installation_jobs`): package/chart metadata, cluster_id (foreign key), namespace, release_name, action (`install`/`rollback`/`uninstall`), revision where applicable, status (`queued`/`running`/`succeeded`/`failed`/`cancelled`), error_message (nullable), started_at, completed_at. Feature 19b supports release actions without requiring a Marketplace install record; 19d adds upgrade job metadata and behavior through a compatible extension.
 - **Helm repository configuration** (`helm_repositories`): global public URL-only repository name and URL, created/updated actor metadata, and timestamps; no credential fields.
-- **Runtime application settings** (planned 20c–g): persisted typed application preferences such as name, default cluster/namespace behavior, operational preferences, AI defaults, feature toggles, and global appearance/provider configuration. Feature 20b currently persists only repository-confirmed user-scoped namespace and theme preferences. Bootstrap infrastructure variables remain outside this store; future global keys and serialization are to be fixed in their feature specs.
-- **Encrypted credential** (planned 20c): provider/integration identity, encrypted secret material, update metadata, and timestamps. The encryption/master key is Kubernetes-managed and never stored in PostgreSQL or returned by normal GET APIs.
-- **AIProviderConfig / AIModelConfig** (planned 20d–20e): extensible provider identity/configuration and model identity, provider ownership, external model ID, enabled/default state, friendly name, capabilities (`tools`, `streaming`, optional reasoning/vision/large-context), and availability status. Credentials are referenced through the encrypted credential store.
+- **Runtime application settings** (feature 20): persisted typed application preferences such as name, default cluster/namespace behavior, operational preferences, AI defaults, feature toggles, and global appearance/provider configuration. Bootstrap infrastructure variables remain outside this store; future global keys and serialization are to be fixed in their feature specs.
+- **Encrypted credential** (feature 20c): provider/integration identity, encrypted secret material, update metadata, and timestamps. The encryption/master key is Kubernetes-managed and never stored in PostgreSQL or returned by normal GET APIs.
+- **AIProviderConfig / AIModelConfig** (features 20d–20e): extensible provider identity/configuration and model identity, provider ownership, external model ID, enabled/default state, friendly name, capabilities (`tools`, `streaming`, optional reasoning/vision/large-context), and availability status. Credentials are referenced through the encrypted credential store.
 - **IntegrationDefinition** (planned 20f): typed integration ID, name, description, category, enabled flag, and status; OAuth/API credentials remain in the encrypted credential store and integration workflows are not part of Phase 1.
 
 Kubernetes remains the source of truth for live resources and Helm releases. Marketplace job history is not a complete inventory of installed releases. Feature 19 persists application configuration, action/job metadata, and audit records needed for management and progress reporting; it reads current inventory from the selected cluster.
@@ -79,7 +79,7 @@ Kubernetes remains the source of truth for live resources and Helm releases. Mar
 - **FastAPI (Python)** — authentication, permissions, application APIs, Kubernetes operations, and backend Helm integration.
 - **PostgreSQL** — users, sessions, settings, cluster configuration, audit records, and operational jobs.
 - **Kubernetes Python client** — live cluster discovery and validated resource creation/deletion through FastAPI only.
-- **Vercel AI SDK and AI Elements** — bounded streaming assistant and typed, server-configured tools; Phase 2 replaces the current AI Gateway path with direct OpenAI, OpenRouter, and Ollama adapters; no additional agent framework.
+- **Vercel AI SDK and AI Elements** — bounded streaming assistant and typed, server-configured tools; feature 21 replaces the current AI Gateway path with direct OpenAI, OpenRouter, and Ollama adapters; no additional agent framework.
 - **Artifact Hub search API** — public Helm package discovery; no API key for basic public search.
 - **Helm in the backend** — repository setup and installs, release discovery/history, rollback/uninstall, repository management, and upgrades. Use validated argument lists, never arbitrary user-provided commands; 19d resolves an explicitly selected chart source and version.
 - **Existing background job mechanism** — installation and release mutation progress; no new Celery/RQ requirement.
@@ -101,7 +101,7 @@ Desktop-first operations interface with readable tables, status emphasis, namesp
 - `/marketplace` — Artifact Hub package discovery, install configuration, job progress/history, and existing rollback/uninstall controls.
 - `/manage-resources` — sidebar label **Manage resources**, Kubernetes resources and Helm releases tabs, repository configuration, and release upgrades within the same section. Reuse the application shell and selected cluster/namespace controls.
 - `/settings` — admin-only Settings shell with secondary navigation for General, Appearance, AI Providers, Models, Integrations, Secrets & Credentials, Audit Logs, and AI Agents (V2/Coming Soon).
-- `/settings/general` and `/settings/appearance` — completed 20b preference pages using the existing shell; `/settings/providers`, `/settings/models`, `/settings/integrations`, `/settings/credentials`, and `/settings/audit-logs` remain planned Settings subsections.
+- `/settings/general` and `/settings/appearance` — completed 20b preference pages using the existing shell; `/settings/providers` and `/settings/credentials` are covered by completed 20c–d; `/settings/models`, `/settings/integrations`, and `/settings/audit-logs` remain planned Settings subsections.
 - `/settings/clusters` — registered cluster management.
 - `/settings/users` — admin user management.
 - `/settings/password` — self-service and forced password change.

@@ -10,6 +10,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -62,29 +63,47 @@ function getPageItems(currentPage: number, totalPages: number): (number | "...")
   return items;
 }
 
-function Spinner() {
+function PackageCardSkeleton() {
   return (
-    <svg
-      className="size-8 animate-spin text-muted-foreground"
-      viewBox="0 0 24 24"
-      fill="none"
+    <div
+      aria-hidden="true"
+      className="flex min-h-64 flex-col gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5"
+    >
+      <div className="flex items-start gap-3.5">
+        <Skeleton className="size-11 shrink-0 rounded-xl sm:size-12" />
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          <Skeleton className="h-5 w-3/4" />
+          <Skeleton className="h-4 w-1/2" />
+          <Skeleton className="h-5 w-20" />
+        </div>
+      </div>
+      <div className="flex flex-col gap-2">
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-11/12" />
+        <Skeleton className="h-4 w-2/3" />
+      </div>
+      <div className="mt-auto flex items-end justify-between gap-3 border-t border-border pt-4">
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-4 w-16" />
+        </div>
+        <Skeleton className="h-9 w-full rounded-md sm:w-20" />
+      </div>
+    </div>
+  );
+}
+
+function PackageGridSkeleton() {
+  return (
+    <div
       role="status"
       aria-label="Loading packages"
+      className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
     >
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="4"
-      />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-      />
-    </svg>
+      {Array.from({ length: 8 }, (_, index) => (
+        <PackageCardSkeleton key={index} />
+      ))}
+    </div>
   );
 }
 
@@ -178,11 +197,9 @@ export function MarketplaceBrowser({
   const totalPages = total > 0 ? Math.ceil(total / PAGE_SIZE) : 0;
 
   let content;
-  if (status === "loading") {
+  if (status === "loading" && !hasPackages) {
     content = (
-      <div className="flex items-center justify-center py-20">
-        <Spinner />
-      </div>
+      <PackageGridSkeleton />
     );
   } else if (status === "error" && !hasPackages) {
     content = (
@@ -213,7 +230,12 @@ export function MarketplaceBrowser({
     );
   } else {
     content = (
-      <div>
+      <div aria-busy={status === "loading"}>
+        {status === "loading" && (
+          <p role="status" className="mb-3 text-sm text-muted-foreground">
+            Updating packages…
+          </p>
+        )}
         {status === "error" && (
           <div
             role="alert"
@@ -225,7 +247,7 @@ export function MarketplaceBrowser({
             </Button>
           </div>
         )}
-        <div className="grid items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {packages.map((pkg) => (
             <PackageCard
               key={pkg.package_id}
@@ -241,8 +263,8 @@ export function MarketplaceBrowser({
 
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-end gap-3">
-        <div className="min-w-60 flex-1">
+      <div className="mb-6 grid gap-3 sm:flex sm:flex-wrap sm:items-end">
+        <div className="min-w-0 flex-1">
           <label htmlFor="marketplace-packages-search" className="sr-only">
             Search packages
           </label>
@@ -251,12 +273,13 @@ export function MarketplaceBrowser({
             type="search"
             placeholder="Search packages…"
             value={query}
+            disabled={status === "loading"}
             onChange={(event) => setQuery(event.target.value)}
           />
         </div>
-        <div>
-          <Select value={sort} onValueChange={handleSort}>
-            <SelectTrigger aria-label="Sort packages" className="w-44">
+        <div className="w-full sm:w-auto">
+          <Select value={sort} onValueChange={handleSort} disabled={status === "loading"}>
+            <SelectTrigger aria-label="Sort packages" className="w-full sm:w-44">
               <SelectValue />
             </SelectTrigger>
             <SelectContent align="end">

@@ -77,11 +77,11 @@ function PackageDetailsBody({
           </div>
         )}
       </DialogHeader>
-      <div className="max-h-[60vh] space-y-4 overflow-y-auto pr-1">
+      <div className="flex max-h-[calc(100dvh-12rem)] flex-col gap-4 overflow-y-auto pr-1 sm:max-h-[60vh]">
         <DialogDescription>
           {pkg.description ?? "No description provided."}
         </DialogDescription>
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl border border-border bg-muted/30 p-4 text-sm">
+        <dl className="grid grid-cols-1 gap-x-4 gap-y-3 rounded-xl border border-border bg-muted/30 p-4 text-sm sm:grid-cols-2">
           <dt className="text-muted-foreground">Repository</dt>
           <dd className="truncate text-foreground">{pkg.repository?.name ?? "—"}</dd>
           <dt className="text-muted-foreground">Latest version</dt>
@@ -111,7 +111,9 @@ function PackageDetailsBody({
         <HelmInstallBlock pkg={pkg} />
       </div>
       <DialogFooter>
-        <Button type="button" onClick={onInstall}>Install</Button>
+        <Button type="button" className="w-full sm:w-auto" onClick={onInstall}>
+          Install
+        </Button>
       </DialogFooter>
     </>
   );
@@ -129,7 +131,7 @@ export function PackageDetailsDialog({
   return (
     <Dialog open={pkg !== null} onOpenChange={onOpenChange}>
       {pkg && (
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] overflow-hidden sm:max-h-[90dvh] sm:w-full sm:max-w-lg">
           <PackageDetailsBody key={pkg.package_id} pkg={pkg} onInstall={onInstall} />
         </DialogContent>
       )}

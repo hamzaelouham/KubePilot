@@ -229,7 +229,7 @@ checks do not make the Blueprint unusable.
 - Backend syntax check: `cd backend && python3 -m compileall -q app`
 - Backend tests: `cd backend && python3 -m pytest`
 - Backend migration SQL check: `cd backend && PYTHONPATH=. alembic upgrade head --sql`
-- Verify: `cd backend && .venv/bin/python3 -m pytest && cd k8s-ui && yarn verify`
+- Verify: `cd backend && .venv/bin/python3 -m pytest && cd ../k8s-ui && yarn verify`
 - Docker images (GitHub Actions, reliable egress - use instead of local builds when the local `yarn install` hangs):
   - The manual workflow `.github/workflows/docker-build-push.yml` builds both images on a GitHub runner and pushes
     `hamzaelouham/kubepilot-backend:<tag>` and `hamzaelouham/kubepilot-ui:<tag>` plus `latest` to Docker Hub.
