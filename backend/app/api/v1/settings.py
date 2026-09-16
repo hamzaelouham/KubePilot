@@ -1,12 +1,17 @@
-from typing import Annotated
+import json
+import math
+from datetime import datetime
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session as SQLAlchemySession
 
 from app.core.dependencies import AuthenticatedActor, get_current_actor, get_database_session, get_settings
 from app.core.config import Settings
 from app.core.rbac import Permission, require_permission
+from app.models.entities import AuditAction, UserAccount
 
 from app.services.settings import get_user_preferences, update_user_preferences
 from app.services.application_settings import (
@@ -48,6 +53,10 @@ from .settings_schemas import (
     ProviderSummary,
     ProviderTestResponse,
     ProvidersResponse,
+    AuditLogActor,
+    AuditLogCategory,
+    AuditLogItem,
+    AuditLogsResponse,
     ModelSummary,
     ModelsResponse,
     ModelWriteRequest,
@@ -55,12 +64,173 @@ from .settings_schemas import (
 
 router = APIRouter()
 
+AuditResultFilter = Literal["requested", "pending", "success", "succeeded", "failure", "failed", "unknown", "denied"]
+
+SENSITIVE_CONTEXT_TERMS = (
+    "secret",
+    "token",
+    "password",
+    "credential",
+    "api_key",
+    "apikey",
+    "authorization",
+    "cookie",
+    "kubeconfig",
+    "prompt",
+    "messages",
+    "raw",
+)
+
+ACTION_CATEGORY_PREFIXES: dict[AuditLogCategory, tuple[str, ...]] = {
+    "admin": (
+        "USER_",
+        "cluster.",
+        "settings.",
+        "credential.",
+    ),
+    "resource": (
+        "resource.",
+    ),
+    "helm": (
+        "marketplace.",
+        "helm.",
+    ),
+    "ai": (
+        "assistant.",
+        "ai_model.",
+    ),
+    "other": (),
+}
+
+
+def _audit_category(action: str) -> AuditLogCategory:
+    for category, prefixes in ACTION_CATEGORY_PREFIXES.items():
+        if category == "other":
+            continue
+        if any(action.startswith(prefix) for prefix in prefixes):
+            return category
+    return "other"
+
+
+def _category_filter(category: AuditLogCategory):
+    prefixes = ACTION_CATEGORY_PREFIXES[category]
+    if category == "other":
+        known_prefixes = [prefix for values in ACTION_CATEGORY_PREFIXES.values() for prefix in values]
+        return ~or_(*(AuditAction.action.startswith(prefix) for prefix in known_prefixes))
+    return or_(*(AuditAction.action.startswith(prefix) for prefix in prefixes))
+
+
+def _redact_context(value: Any) -> Any:
+    if isinstance(value, dict):
+        redacted: dict[str, Any] = {}
+        for key, item in value.items():
+            if any(term in str(key).lower() for term in SENSITIVE_CONTEXT_TERMS):
+                redacted[str(key)] = "[redacted]"
+            else:
+                redacted[str(key)] = _redact_context(item)
+        return redacted
+    if isinstance(value, list):
+        return [_redact_context(item) for item in value]
+    return value
+
+
+def _safe_context(context: str | None) -> Any:
+    if context is None:
+        return None
+    try:
+        parsed = json.loads(context)
+    except json.JSONDecodeError:
+        return {"value": "[redacted]" if any(term in context.lower() for term in SENSITIVE_CONTEXT_TERMS) else context}
+    return _redact_context(parsed)
+
+
+def _actor_summary(user: UserAccount | None) -> AuditLogActor | None:
+    if user is None:
+        return None
+    return AuditLogActor(id=user.id, email=user.email)
+
+
+def _audit_item(row: AuditAction, users: dict[UUID, UserAccount]) -> AuditLogItem:
+    return AuditLogItem(
+        id=row.id,
+        created_at=row.created_at,
+        actor=_actor_summary(users.get(row.actor_id) if row.actor_id else None),
+        action=row.action,
+        category=_audit_category(row.action),
+        resource_type=row.resource_type,
+        resource_id=row.resource_id,
+        target_user=_actor_summary(users.get(row.target_user_id) if row.target_user_id else None),
+        result=row.result,
+        context=_safe_context(row.context),
+    )
+
 
 @router.get("/settings/access", response_model=SettingsAccessResponse)
 def settings_access(
     _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.SETTINGS_READ))],
 ) -> SettingsAccessResponse:
     return SettingsAccessResponse(allowed=True)
+
+
+@router.get("/settings/audit-logs", response_model=AuditLogsResponse)
+def audit_logs(
+    _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.SETTINGS_READ))],
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+    page: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    category: AuditLogCategory | None = None,
+    result: AuditResultFilter | None = None,
+    actor: Annotated[str | None, Query(min_length=1, max_length=255)] = None,
+    resource_type: Annotated[str | None, Query(min_length=1, max_length=128)] = None,
+    action: Annotated[str | None, Query(min_length=1, max_length=128)] = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+) -> AuditLogsResponse:
+    filters = []
+    if category:
+        filters.append(_category_filter(category))
+    if result:
+        filters.append(AuditAction.result == result)
+    if resource_type:
+        filters.append(AuditAction.resource_type == resource_type)
+    if action:
+        filters.append(AuditAction.action.ilike(f"%{action.strip()}%"))
+    if date_from:
+        filters.append(AuditAction.created_at >= date_from)
+    if date_to:
+        filters.append(AuditAction.created_at <= date_to)
+    if actor:
+        actor_match = f"%{actor.strip()}%"
+        matching_users = select(UserAccount.id).where(UserAccount.email.ilike(actor_match))
+        filters.append(AuditAction.actor_id.in_(matching_users))
+
+    base = select(AuditAction)
+    count_query = select(func.count()).select_from(AuditAction)
+    for condition in filters:
+        base = base.where(condition)
+        count_query = count_query.where(condition)
+
+    total = database.scalar(count_query) or 0
+    rows = list(
+        database.scalars(
+            base.order_by(AuditAction.created_at.desc(), AuditAction.id.desc())
+            .offset(page * limit)
+            .limit(limit)
+        )
+    )
+    user_ids = {row.actor_id for row in rows if row.actor_id} | {row.target_user_id for row in rows if row.target_user_id}
+    users = {
+        user.id: user
+        for user in database.scalars(select(UserAccount).where(UserAccount.id.in_(user_ids))).all()
+    } if user_ids else {}
+
+    return AuditLogsResponse(
+        logs=[_audit_item(row, users) for row in rows],
+        page=page,
+        limit=limit,
+        total=total,
+        total_pages=max(1, math.ceil(total / limit)),
+    )
 
 
 @router.get("/settings/preferences", response_model=SettingsPreferencesResponse)

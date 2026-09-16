@@ -170,6 +170,41 @@ class ModelsResponse(BaseModel):
     models: list[ModelSummary]
 
 
+AuditLogCategory = Literal["admin", "resource", "helm", "ai", "other"]
+
+
+class AuditLogActor(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    email: str
+
+
+class AuditLogItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    created_at: datetime
+    actor: AuditLogActor | None
+    action: str
+    category: AuditLogCategory
+    resource_type: str
+    resource_id: str
+    target_user: AuditLogActor | None
+    result: str
+    context: Any
+
+
+class AuditLogsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    logs: list[AuditLogItem]
+    page: int
+    limit: int
+    total: int
+    total_pages: int
+
+
 class EligibleModelSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

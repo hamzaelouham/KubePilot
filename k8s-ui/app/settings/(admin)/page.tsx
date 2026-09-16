@@ -18,7 +18,7 @@ export default function SettingsOverviewPage() {
         </CardHeader>
         <CardContent>
           <p className="text-sm leading-6 text-muted-foreground">
-            No runtime settings are editable yet. This protected area is ready for General, Appearance, provider, model, integration, credential, and audit modules.
+            General, Appearance, provider, model, and audit modules are available here. Integration, credential overview, and AI agent automation modules remain planned.
           </p>
         </CardContent>
       </Card>
