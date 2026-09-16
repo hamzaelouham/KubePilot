@@ -50,9 +50,15 @@ def runtime_store(tmp_path: Path) -> SimpleNamespace:
     return SimpleNamespace(factory=factory, settings=settings)
 
 
-def _configure(runtime_store, provider_id: str = "ollama"):
+def _configure(
+    runtime_store,
+    provider_id: str = "ollama",
+    *,
+    external_model_id: str | None = None,
+    supports_reasoning: bool = False,
+):
     definition = PROVIDER_DEFINITIONS[provider_id]
-    external_model_id = {
+    resolved_external_model_id = external_model_id or {
         "openai": "gpt-test",
         "openrouter": "vendor/model-test",
         "ollama": "llama-test:latest",
@@ -76,17 +82,18 @@ def _configure(runtime_store, provider_id: str = "ollama"):
         database.add(
             AIModelConfig(
                 provider_id=provider_id,
-                external_model_id=external_model_id,
+                external_model_id=resolved_external_model_id,
                 friendly_name="Runtime model",
                 enabled=True,
                 is_default=True,
                 supports_streaming=True,
                 supports_tools=True,
+                supports_reasoning=supports_reasoning,
                 availability="available",
             )
         )
         database.commit()
-    return external_model_id
+    return resolved_external_model_id
 
 
 def _payload(**changes):
@@ -272,9 +279,82 @@ def test_direct_adapters_replace_identity_and_keep_credentials_server_side(
     assert content.endswith(b"data: [DONE]\n\n")
 
 
+def test_reasoning_model_uses_reasoning_compatible_request_options(runtime_store) -> None:
+    _configure(runtime_store, "openai", external_model_id="gpt-5.6-luna", supports_reasoning=True)
+    seen = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            content=b'data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n',
+        )
+
+    factory = lambda **kwargs: httpx.AsyncClient(transport=httpx.MockTransport(handler), **kwargs)
+    with runtime_store.factory() as database:
+        stream, _content_type = _run(
+            open_chat_stream(
+                database,
+                runtime_store.settings,
+                _payload(
+                    max_tokens=3000,
+                    temperature=0.7,
+                    top_p=0.9,
+                    frequency_penalty=0.1,
+                    presence_penalty=0.1,
+                ),
+                client_factory=factory,
+            )
+        )
+        _run(_consume(stream))
+
+    assert seen["body"]["model"] == "gpt-5.6-luna"
+    assert seen["body"]["max_completion_tokens"] == 3000
+    assert "max_tokens" not in seen["body"]
+    assert "temperature" not in seen["body"]
+    assert "top_p" not in seen["body"]
+    assert "frequency_penalty" not in seen["body"]
+    assert "presence_penalty" not in seen["body"]
+    assert seen["body"]["tools"]
+
+
+def test_openrouter_runtime_does_not_force_stream_options(runtime_store) -> None:
+    _configure(runtime_store, "openrouter", external_model_id="openai/gpt-5.6-luna")
+    seen = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            content=b'data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n',
+        )
+
+    factory = lambda **kwargs: httpx.AsyncClient(transport=httpx.MockTransport(handler), **kwargs)
+    with runtime_store.factory() as database:
+        stream, _content_type = _run(
+            open_chat_stream(database, runtime_store.settings, _payload(), client_factory=factory)
+        )
+        _run(_consume(stream))
+
+    assert seen["body"]["model"] == "openai/gpt-5.6-luna"
+    assert seen["body"]["stream"] is True
+    assert "stream_options" not in seen["body"]
+
+
 @pytest.mark.parametrize(
     ("status", "error_type"),
-    [(401, AIProviderAuthenticationError), (403, AIProviderAuthenticationError), (404, AIModelUnavailableError), (429, AIRateLimitError), (500, AIRuntimeError), (302, AIRuntimeError)],
+    [
+        (400, AIModelUnavailableError),
+        (401, AIProviderAuthenticationError),
+        (403, AIProviderAuthenticationError),
+        (404, AIModelUnavailableError),
+        (422, AIModelUnavailableError),
+        (429, AIRateLimitError),
+        (500, AIRuntimeError),
+        (302, AIRuntimeError),
+    ],
 )
 def test_provider_statuses_are_normalized_without_raw_body(runtime_store, status, error_type) -> None:
     _configure(runtime_store)
@@ -287,6 +367,8 @@ def test_provider_statuses_are_normalized_without_raw_body(runtime_store, status
         with pytest.raises(error_type) as error:
             _run(open_chat_stream(database, runtime_store.settings, _payload(), client_factory=factory))
     assert "upstream secret detail" not in str(error.value)
+    if status in {400, 422}:
+        assert "streaming, tool, and reasoning capabilities" in str(error.value)
 
 
 def test_non_event_stream_is_rejected(runtime_store) -> None:

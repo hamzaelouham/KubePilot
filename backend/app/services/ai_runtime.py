@@ -58,6 +58,7 @@ class RuntimeModel:
     external_model_id: str
     base_url: str
     api_key: str | None
+    supports_reasoning: bool
 
 
 AsyncClientFactory = Callable[..., httpx.AsyncClient]
@@ -157,7 +158,7 @@ def resolve_runtime_model(
         except (ConfigurationError, TypeError, ValueError) as error:
             raise AINotConfiguredError(f"The {label} model's provider credential is unavailable.") from error
 
-    return RuntimeModel(provider, model.external_model_id, base_url, api_key)
+    return RuntimeModel(provider, model.external_model_id, base_url, api_key, bool(model.supports_reasoning))
 
 
 async def open_chat_stream(
@@ -171,11 +172,7 @@ async def open_chat_stream(
     if model_id != "default" and not isinstance(model_id, UUID):
         raise AIModelUnavailableError("The selected AI model is not currently available.")
     runtime = resolve_runtime_model(database, settings, model_id)
-    outbound = dict(payload)
-    outbound["model"] = runtime.external_model_id
-    outbound["stream"] = True
-    outbound["stream_options"] = {"include_usage": True}
-
+    outbound = _provider_payload(payload, runtime)
     encoded = json.dumps(outbound, separators=(",", ":")).encode("utf-8")
     if len(encoded) > MAX_INFERENCE_REQUEST_BYTES:
         raise AIModelUnavailableError("The AI request is too large.")
@@ -205,6 +202,10 @@ async def open_chat_stream(
         status_code = response.status_code
         await response.aclose()
         await client.aclose()
+        if status_code in {400, 422}:
+            raise AIModelUnavailableError(
+                "The selected AI model rejected the Assistant request. Check the model's streaming, tool, and reasoning capabilities in Settings."
+            )
         if status_code in {401, 403}:
             raise AIProviderAuthenticationError("The AI provider rejected its configured credential.")
         if status_code == 429:
@@ -222,3 +223,19 @@ async def open_chat_stream(
         raise AIRuntimeError("The AI provider returned an invalid streaming response.")
 
     return ProviderStream(response, client), content_type
+
+
+def _provider_payload(payload: dict[str, Any], runtime: RuntimeModel) -> dict[str, Any]:
+    outbound = dict(payload)
+    outbound["model"] = runtime.external_model_id
+    outbound["stream"] = True
+    if runtime.provider.provider_id == "openrouter":
+        outbound.pop("stream_options", None)
+    else:
+        outbound["stream_options"] = {"include_usage": True}
+    if runtime.supports_reasoning:
+        if outbound.get("max_completion_tokens") is None and outbound.get("max_tokens") is not None:
+            outbound["max_completion_tokens"] = outbound["max_tokens"]
+        for key in ("max_tokens", "temperature", "top_p", "frequency_penalty", "presence_penalty"):
+            outbound.pop(key, None)
+    return outbound
