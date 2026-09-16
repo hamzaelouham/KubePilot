@@ -238,4 +238,6 @@ def _provider_payload(payload: dict[str, Any], runtime: RuntimeModel) -> dict[st
             outbound["max_completion_tokens"] = outbound["max_tokens"]
         for key in ("max_tokens", "temperature", "top_p", "frequency_penalty", "presence_penalty"):
             outbound.pop(key, None)
+    if runtime.provider.provider_id == "openai" and runtime.supports_reasoning and outbound.get("tools"):
+        outbound.setdefault("reasoning_effort", "none")
     return outbound

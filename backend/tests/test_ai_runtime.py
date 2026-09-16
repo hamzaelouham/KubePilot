@@ -317,6 +317,57 @@ def test_reasoning_model_uses_reasoning_compatible_request_options(runtime_store
     assert "frequency_penalty" not in seen["body"]
     assert "presence_penalty" not in seen["body"]
     assert seen["body"]["tools"]
+    assert seen["body"]["reasoning_effort"] == "none"
+
+
+def test_reasoning_model_forwards_explicit_reasoning_effort(runtime_store) -> None:
+    _configure(runtime_store, "openai", external_model_id="gpt-5.6-luna", supports_reasoning=True)
+    seen = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            content=b'data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n',
+        )
+
+    factory = lambda **kwargs: httpx.AsyncClient(transport=httpx.MockTransport(handler), **kwargs)
+    with runtime_store.factory() as database:
+        stream, _content_type = _run(
+            open_chat_stream(
+                database,
+                runtime_store.settings,
+                _payload(reasoning_effort="high"),
+                client_factory=factory,
+            )
+        )
+        _run(_consume(stream))
+
+    assert seen["body"]["reasoning_effort"] == "high"
+
+
+def test_non_reasoning_openai_model_keeps_no_reasoning_effort(runtime_store) -> None:
+    _configure(runtime_store, "openai", external_model_id="gpt-4.1-mini", supports_reasoning=False)
+    seen = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            content=b'data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n',
+        )
+
+    factory = lambda **kwargs: httpx.AsyncClient(transport=httpx.MockTransport(handler), **kwargs)
+    with runtime_store.factory() as database:
+        stream, _content_type = _run(
+            open_chat_stream(database, runtime_store.settings, _payload(), client_factory=factory)
+        )
+        _run(_consume(stream))
+
+    assert seen["body"]["model"] == "gpt-4.1-mini"
+    assert "reasoning_effort" not in seen["body"]
 
 
 def test_openrouter_runtime_does_not_force_stream_options(runtime_store) -> None:
@@ -341,6 +392,7 @@ def test_openrouter_runtime_does_not_force_stream_options(runtime_store) -> None
     assert seen["body"]["model"] == "openai/gpt-5.6-luna"
     assert seen["body"]["stream"] is True
     assert "stream_options" not in seen["body"]
+    assert "reasoning_effort" not in seen["body"]
 
 
 @pytest.mark.parametrize(

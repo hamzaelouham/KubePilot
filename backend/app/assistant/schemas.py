@@ -61,6 +61,7 @@ class ChatCompletionsRequest(StrictModel):
     messages: list[InferenceMessage] = Field(min_length=1, max_length=60)
     stream: Literal[True]
     stream_options: dict[str, bool] | None = None
+    reasoning_effort: Literal["none", "low", "medium", "high"] | None = None
     tools: list[InferenceTool] | None = Field(default=None, max_length=32)
     tool_choice: Literal["auto", "none", "required"] | dict[str, Any] | None = None
     max_tokens: int | None = Field(default=None, ge=1, le=16_384)
