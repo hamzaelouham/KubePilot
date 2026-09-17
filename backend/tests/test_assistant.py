@@ -1,6 +1,8 @@
 """Real HTTP/session/database approval boundaries; Kubernetes effects are fakes."""
+import asyncio
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+import json
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
@@ -10,12 +12,15 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from app.api.v1.routes import _signed_cookie
+from app.api.v1 import assistant as assistant_api
 from app.assistant.sanitize import diagnostic_projection, safe_text
+from app.core.audit import AuditEvent
 from app.core.config import Settings
 from app.kubernetes.resource_management import ResourceManagementError
 from app.main import create_app
 from app.models.base import Base
 from app.models.entities import AssistantProposal, AuditAction, ClusterConnection, Session, UserAccount
+from app.services.ai_runtime import AINotConfiguredError, AIProviderTimeoutError
 
 
 @pytest.fixture
@@ -88,8 +93,105 @@ def test_read_requires_active_session_and_never_exposes_cluster_credentials(api)
     assert response.status_code == 200, response.text
     assert response.json()["result"]["truncated"] is True
     assert "NEVER-EXPOSE" not in response.text and "private-endpoint" not in response.text
+    failed = api.client.post("/api/v1/assistant/observe/list", json={"cluster": "missing", "namespace": "default"})
+    assert failed.status_code == 404
+    with api.db() as db:
+        actions = list(db.scalars(select(AuditAction).where(AuditAction.action == AuditEvent.ASSISTANT_TOOL)))
+        assert [action.result for action in actions] == ["success", "failed"]
+        serialized = "".join(action.context or "" for action in actions)
+        assert "NEVER-EXPOSE" not in serialized and "private-endpoint" not in serialized
+        assert set(json.loads(actions[0].context)) == {"cluster", "duration_ms"}
     api.client.cookies.clear()
     assert api.client.post("/api/v1/assistant/observe/list", json={"cluster": "primary"}).status_code == 401
+
+
+def test_inference_failures_before_headers_are_audited_without_request_content(api, monkeypatch):
+    def unavailable(*_args, **_kwargs):
+        raise AINotConfiguredError("secret provider detail")
+
+    monkeypatch.setattr(assistant_api, "resolve_runtime_model", unavailable)
+    response = api.client.post(
+        "/api/v1/assistant/inference/chat/completions",
+        json={
+            "model": "default",
+            "messages": [{"role": "user", "content": "prompt-secret"}],
+            "stream": True,
+        },
+    )
+    assert response.status_code == 503
+    with api.db() as db:
+        action = db.scalar(select(AuditAction).where(AuditAction.action == AuditEvent.ASSISTANT_INFERENCE))
+        assert action is not None
+        assert action.actor_id == api.user.id
+        assert action.resource_type == "ai_model"
+        assert action.resource_id == "default"
+        assert action.result == "failed"
+        context = json.loads(action.context)
+        assert context["error_code"] == "ai_not_configured"
+        assert "prompt-secret" not in action.context
+        assert "secret provider detail" not in action.context
+
+
+def test_stream_terminal_outcomes_are_audited_exactly_once_and_redacted(api):
+    class Stream:
+        def __init__(self, outcome):
+            self.outcome = outcome
+            self.sent = False
+            self.closed = False
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if self.outcome == "failed":
+                raise AIProviderTimeoutError("provider-secret")
+            if not self.sent:
+                self.sent = True
+                return b"response-secret"
+            raise StopAsyncIteration
+
+        async def aclose(self):
+            self.closed = True
+
+    runtime = SimpleNamespace(
+        model_id=uuid4(),
+        provider=SimpleNamespace(provider_id="openai"),
+        supports_tools=True,
+    )
+
+    async def exercise():
+        with api.db() as db:
+            actor = SimpleNamespace(user_id=api.user.id)
+            success_source = Stream("success")
+            success = assistant_api.AuditedInferenceStream(success_source, db, actor, runtime.model_id, runtime, 0)
+            assert await success.__anext__() == b"response-secret"
+            with pytest.raises(StopAsyncIteration):
+                await success.__anext__()
+            await success.aclose()
+
+            failed_source = Stream("failed")
+            failed = assistant_api.AuditedInferenceStream(failed_source, db, actor, runtime.model_id, runtime, 0)
+            with pytest.raises(AIProviderTimeoutError):
+                await failed.__anext__()
+            await failed.aclose()
+
+            cancelled_source = Stream("cancelled")
+            cancelled = assistant_api.AuditedInferenceStream(cancelled_source, db, actor, runtime.model_id, runtime, 0)
+            await cancelled.aclose()
+            await cancelled.aclose()
+
+    asyncio.run(exercise())
+    with api.db() as db:
+        actions = list(db.scalars(select(AuditAction).where(AuditAction.action == AuditEvent.ASSISTANT_INFERENCE)))
+        assert [action.result for action in actions] == ["success", "failed", "cancelled"]
+        assert all(action.resource_id == str(runtime.model_id) for action in actions)
+        contexts = [json.loads(action.context) for action in actions]
+        assert contexts[0]["provider_id"] == "openai"
+        assert contexts[0]["tool_mode"] == "enabled"
+        assert contexts[1]["error_code"] == "ai_provider_timeout"
+        assert contexts[2]["error_code"] == "request_cancelled"
+        serialized = json.dumps(contexts)
+        assert "response-secret" not in serialized and "provider-secret" not in serialized
 
 
 def test_approval_executes_exact_snapshot_once_and_records_metadata_audit(api):

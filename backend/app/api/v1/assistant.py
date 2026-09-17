@@ -1,3 +1,5 @@
+import asyncio
+from collections.abc import AsyncIterator
 from time import monotonic
 from typing import Annotated, Literal
 from uuid import UUID
@@ -15,14 +17,21 @@ from app.assistant.actions import decide, propose, summary
 from app.assistant.api_adapter import read_tool
 from app.assistant.observations import observe
 from app.assistant.schemas import ChatCompletionsRequest, Decision, Observation, Proposal, ReadTool
-from app.core.audit import record_audit
+from app.core.audit import AuditEvent, record_audit
 from app.core.config import Settings
 from app.core.dependencies import AuthenticatedActor, get_database_session, get_settings
 from app.core.rbac import Permission, require_permission
 from app.kubernetes.resource_management import ResourceManagementError
 from app.models.entities import AssistantProposal
 from app.services.ai_models import list_eligible_models
-from app.services.ai_runtime import AIRuntimeError, MAX_INFERENCE_REQUEST_BYTES, open_chat_stream
+from app.services.ai_runtime import (
+    AIRuntimeError,
+    MAX_INFERENCE_REQUEST_BYTES,
+    ProviderStream,
+    RuntimeModel,
+    open_chat_stream,
+    resolve_runtime_model,
+)
 from app.api.v1.settings_schemas import EligibleModelsResponse
 
 router = APIRouter(prefix="/assistant", tags=["assistant"])
@@ -38,9 +47,102 @@ async def audited(database, actor, tool, cluster, operation):
         result = await operation()
         outcome = "success"
         return result
+    except asyncio.CancelledError:
+        outcome = "cancelled"
+        raise
     finally:
-        record_audit(database, "assistant.tool", actor.user_id, "assistant_tool", tool, result=outcome, context={"cluster": cluster, "duration_ms": round((monotonic() - start) * 1000)})
+        record_audit(database, AuditEvent.ASSISTANT_TOOL, actor.user_id, "assistant_tool", tool, result=outcome, context={"cluster": cluster, "duration_ms": round((monotonic() - start) * 1000)})
         database.commit()
+
+
+def _record_inference_audit(
+    database: Session,
+    actor: AuthenticatedActor,
+    requested_model: Literal["default"] | UUID,
+    started_at: float,
+    result: Literal["success", "failed", "cancelled"],
+    runtime: RuntimeModel | None = None,
+    error_code: str | None = None,
+) -> None:
+    context: dict[str, str | int] = {
+        "tool_mode": "enabled" if runtime and runtime.supports_tools else "disabled" if runtime else "unknown",
+        "duration_ms": round((monotonic() - started_at) * 1000),
+    }
+    if runtime is not None:
+        context["provider_id"] = runtime.provider.provider_id
+    if error_code is not None:
+        context["error_code"] = error_code
+    record_audit(
+        database,
+        AuditEvent.ASSISTANT_INFERENCE,
+        actor.user_id,
+        "ai_model",
+        str(runtime.model_id if runtime is not None else requested_model),
+        result=result,
+        context=context,
+    )
+    database.commit()
+
+
+class AuditedInferenceStream(AsyncIterator[bytes]):
+    def __init__(
+        self,
+        stream: ProviderStream,
+        database: Session,
+        actor: AuthenticatedActor,
+        requested_model: Literal["default"] | UUID,
+        runtime: RuntimeModel,
+        started_at: float,
+    ) -> None:
+        self._stream = stream
+        self._database = database
+        self._actor = actor
+        self._requested_model = requested_model
+        self._runtime = runtime
+        self._started_at = started_at
+        self._finalized = False
+
+    def __aiter__(self) -> "AuditedInferenceStream":
+        return self
+
+    async def __anext__(self) -> bytes:
+        try:
+            return await self._stream.__anext__()
+        except StopAsyncIteration:
+            self._finalize("success")
+            raise
+        except asyncio.CancelledError:
+            self._finalize("cancelled", "request_cancelled")
+            raise
+        except AIRuntimeError as error:
+            self._finalize("failed", error.code)
+            raise
+        except Exception:
+            self._finalize("failed", "ai_provider_stream_failed")
+            raise
+
+    async def aclose(self) -> None:
+        if not self._finalized:
+            self._finalize("cancelled", "request_cancelled")
+        await self._stream.aclose()
+
+    def _finalize(
+        self,
+        result: Literal["success", "failed", "cancelled"],
+        error_code: str | None = None,
+    ) -> None:
+        if self._finalized:
+            return
+        self._finalized = True
+        _record_inference_audit(
+            self._database,
+            self._actor,
+            self._requested_model,
+            self._started_at,
+            result,
+            self._runtime,
+            error_code,
+        )
 
 
 @router.post("/observe/{operation}")
@@ -79,7 +181,7 @@ def eligible_models(_actor: Actor, database: Database) -> EligibleModelsResponse
 @router.post("/inference/chat/completions")
 async def chat_completions(
     request: Request,
-    _actor: Actor,
+    actor: Actor,
     database: Database,
     settings: Configuration,
 ) -> StreamingResponse:
@@ -98,18 +200,30 @@ async def chat_completions(
         body = ChatCompletionsRequest.model_validate(parsed)
     except (json.JSONDecodeError, UnicodeDecodeError, ValidationError, TypeError) as error:
         raise ResourceManagementError(422, "invalid_ai_request", "The AI request is invalid.") from error
+    started_at = monotonic()
+    runtime: RuntimeModel | None = None
     try:
+        runtime = resolve_runtime_model(database, settings, body.model)
         stream, content_type = await open_chat_stream(
             database,
             settings,
             body.model_dump(exclude_none=True),
+            runtime_model=runtime,
         )
     except AIRuntimeError as error:
+        _record_inference_audit(database, actor, body.model, started_at, "failed", runtime, error.code)
         raise ResourceManagementError(error.status_code, error.code, str(error)) from error
+    except asyncio.CancelledError:
+        _record_inference_audit(database, actor, body.model, started_at, "cancelled", runtime, "request_cancelled")
+        raise
+    except Exception:
+        _record_inference_audit(database, actor, body.model, started_at, "failed", runtime, "ai_provider_unavailable")
+        raise
+    audited_stream = AuditedInferenceStream(stream, database, actor, body.model, runtime, started_at)
     return StreamingResponse(
-        stream,
+        audited_stream,
         status_code=200,
         media_type=content_type,
         headers={"cache-control": "no-store", "x-content-type-options": "nosniff"},
-        background=BackgroundTask(stream.aclose),
+        background=BackgroundTask(audited_stream.aclose),
     )

@@ -344,10 +344,22 @@ export function SettingsAuditLogsView() {
   }, [apiFilters]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    let active = true;
+    fetchAuditLogs(apiFilters).then(
+      (data) => {
+        if (active) setState({ kind: "ready", data });
+      },
+      (error: unknown) => {
+        if (active) setState(errorState(error));
+      }
+    );
+    return () => {
+      active = false;
+    };
+  }, [apiFilters]);
 
   function updateFilters(changes: Partial<FilterForm>) {
+    setState({ kind: "loading" });
     setPage(0);
     setFilters((current) => ({ ...current, ...changes }));
   }
@@ -381,10 +393,10 @@ export function SettingsAuditLogsView() {
           </div>
           <AuditRows logs={ready.logs} />
           <div className="flex items-center justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setPage((current) => Math.max(0, current - 1))} disabled={!canGoBack || loading}>
+            <Button type="button" variant="outline" onClick={() => { setState({ kind: "loading" }); setPage((current) => Math.max(0, current - 1)); }} disabled={!canGoBack || loading}>
               Previous
             </Button>
-            <Button type="button" variant="outline" onClick={() => setPage((current) => current + 1)} disabled={!canGoForward || loading}>
+            <Button type="button" variant="outline" onClick={() => { setState({ kind: "loading" }); setPage((current) => current + 1); }} disabled={!canGoForward || loading}>
               Next
             </Button>
           </div>

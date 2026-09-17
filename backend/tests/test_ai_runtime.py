@@ -25,6 +25,7 @@ from app.services.ai_runtime import (
     AIRateLimitError,
     AIRuntimeError,
     AIProviderTimeoutError,
+    AIToolCapabilityError,
     MAX_STREAM_CHUNK_BYTES,
     open_chat_stream,
     resolve_runtime_model,
@@ -56,6 +57,7 @@ def _configure(
     *,
     external_model_id: str | None = None,
     supports_reasoning: bool = False,
+    supports_tools: bool = True,
 ):
     definition = PROVIDER_DEFINITIONS[provider_id]
     resolved_external_model_id = external_model_id or {
@@ -87,7 +89,7 @@ def _configure(
                 enabled=True,
                 is_default=True,
                 supports_streaming=True,
-                supports_tools=True,
+                supports_tools=supports_tools,
                 supports_reasoning=supports_reasoning,
                 availability="available",
             )
@@ -143,8 +145,8 @@ def test_runtime_model_requires_eligible_configured_default(runtime_store) -> No
         model = database.query(AIModelConfig).one()
         model.supports_tools = False
         database.commit()
-        with pytest.raises(AIModelUnavailableError):
-            resolve_runtime_model(database, runtime_store.settings)
+        runtime = resolve_runtime_model(database, runtime_store.settings)
+        assert runtime.supports_tools is False
 
 
 def test_runtime_model_resolves_only_eligible_internal_model_id(runtime_store) -> None:
@@ -180,8 +182,7 @@ def test_runtime_model_resolves_only_eligible_internal_model_id(runtime_store) -
         selected.availability = "available"
         selected.supports_tools = False
         database.commit()
-        with pytest.raises(AIModelUnavailableError, match="current Assistant runtime"):
-            resolve_runtime_model(database, runtime_store.settings, selected_id)
+        assert resolve_runtime_model(database, runtime_store.settings, selected_id).supports_tools is False
 
         selected.supports_tools = True
         database.query(ApplicationSetting).delete()
@@ -191,6 +192,52 @@ def test_runtime_model_resolves_only_eligible_internal_model_id(runtime_store) -
 
         with pytest.raises(AIModelUnavailableError, match="selected AI model"):
             resolve_runtime_model(database, runtime_store.settings, uuid4())
+
+
+def test_non_tool_model_rejects_forged_tools_before_provider_access(runtime_store) -> None:
+    _configure(runtime_store, supports_tools=False)
+    called = False
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal called
+        called = True
+        return httpx.Response(500)
+
+    factory = lambda **kwargs: httpx.AsyncClient(transport=httpx.MockTransport(handler), **kwargs)
+    with runtime_store.factory() as database:
+        with pytest.raises(AIToolCapabilityError) as error:
+            _run(open_chat_stream(database, runtime_store.settings, _payload(), client_factory=factory))
+    assert error.value.status_code == 422
+    assert error.value.code == "ai_model_tool_capability_mismatch"
+    assert called is False
+
+
+def test_non_tool_model_streams_without_forwarding_tool_options(runtime_store) -> None:
+    _configure(runtime_store, supports_tools=False)
+    seen = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            content=b'data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n',
+        )
+
+    factory = lambda **kwargs: httpx.AsyncClient(transport=httpx.MockTransport(handler), **kwargs)
+    with runtime_store.factory() as database:
+        stream, _content_type = _run(
+            open_chat_stream(
+                database,
+                runtime_store.settings,
+                _payload(tools=None, tool_choice="none", parallel_tool_calls=True),
+                client_factory=factory,
+            )
+        )
+        _run(_consume(stream))
+    assert "tools" not in seen["body"]
+    assert "tool_choice" not in seen["body"]
+    assert "parallel_tool_calls" not in seen["body"]
 
 
 def test_selected_model_external_identity_replaces_internal_id(runtime_store) -> None:

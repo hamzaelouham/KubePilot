@@ -287,13 +287,19 @@ def test_selector_excludes_available_model_when_provider_is_not_configured(model
         assert ai_models.list_eligible_models(database) == []
 
 
-def test_selector_excludes_models_incompatible_with_current_assistant(model_store) -> None:
+def test_selector_includes_conversational_models_but_requires_streaming(model_store) -> None:
     with model_store.factory() as database:
         _configure_ollama(database, model_store)
         created = _create(database, model_store, enabled=True)
         model = database.get(AIModelConfig, created["id"])
         model.availability = "available"
         model.supports_tools = False
+        database.commit()
+        eligible = ai_models.list_eligible_models(database)
+        assert len(eligible) == 1
+        assert eligible[0]["capabilities"]["tools"] is False
+
+        model.supports_streaming = False
         database.commit()
         assert ai_models.list_eligible_models(database) == []
 

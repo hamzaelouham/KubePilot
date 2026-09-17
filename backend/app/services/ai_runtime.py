@@ -37,6 +37,11 @@ class AIModelUnavailableError(AIRuntimeError):
     code = "ai_model_unavailable"
 
 
+class AIToolCapabilityError(AIRuntimeError):
+    status_code = 422
+    code = "ai_model_tool_capability_mismatch"
+
+
 class AIProviderAuthenticationError(AIRuntimeError):
     status_code = 502
     code = "ai_provider_authentication_failed"
@@ -54,10 +59,12 @@ class AIProviderTimeoutError(AIRuntimeError):
 
 @dataclass(frozen=True)
 class RuntimeModel:
+    model_id: UUID
     provider: ProviderDefinition
     external_model_id: str
     base_url: str
     api_key: str | None
+    supports_tools: bool
     supports_reasoning: bool
 
 
@@ -124,7 +131,7 @@ def resolve_runtime_model(
     label = "default" if selecting_default else "selected"
     if not model.enabled or model.availability != "available":
         raise AIModelUnavailableError(f"The {label} AI model is not currently available.")
-    if not model.supports_streaming or not model.supports_tools:
+    if not model.supports_streaming:
         raise AIModelUnavailableError(f"The {label} AI model does not support the current Assistant runtime.")
 
     try:
@@ -158,7 +165,15 @@ def resolve_runtime_model(
         except (ConfigurationError, TypeError, ValueError) as error:
             raise AINotConfiguredError(f"The {label} model's provider credential is unavailable.") from error
 
-    return RuntimeModel(provider, model.external_model_id, base_url, api_key, bool(model.supports_reasoning))
+    return RuntimeModel(
+        model.id,
+        provider,
+        model.external_model_id,
+        base_url,
+        api_key,
+        bool(model.supports_tools),
+        bool(model.supports_reasoning),
+    )
 
 
 async def open_chat_stream(
@@ -167,11 +182,12 @@ async def open_chat_stream(
     payload: dict[str, Any],
     *,
     client_factory: AsyncClientFactory | None = None,
+    runtime_model: RuntimeModel | None = None,
 ) -> tuple[ProviderStream, str]:
     model_id = payload.get("model", "default")
     if model_id != "default" and not isinstance(model_id, UUID):
         raise AIModelUnavailableError("The selected AI model is not currently available.")
-    runtime = resolve_runtime_model(database, settings, model_id)
+    runtime = runtime_model or resolve_runtime_model(database, settings, model_id)
     outbound = _provider_payload(payload, runtime)
     encoded = json.dumps(outbound, separators=(",", ":")).encode("utf-8")
     if len(encoded) > MAX_INFERENCE_REQUEST_BYTES:
@@ -229,6 +245,13 @@ def _provider_payload(payload: dict[str, Any], runtime: RuntimeModel) -> dict[st
     outbound = dict(payload)
     outbound["model"] = runtime.external_model_id
     outbound["stream"] = True
+    if not runtime.supports_tools:
+        tool_choice = outbound.get("tool_choice")
+        if outbound.get("tools") or (tool_choice is not None and tool_choice != "none"):
+            raise AIToolCapabilityError("The selected AI model does not support Assistant tools.")
+        outbound.pop("tools", None)
+        outbound.pop("tool_choice", None)
+        outbound.pop("parallel_tool_calls", None)
     if runtime.provider.provider_id == "openrouter":
         outbound.pop("stream_options", None)
     else:

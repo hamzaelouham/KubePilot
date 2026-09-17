@@ -48,6 +48,15 @@ interface PersonaProps {
   variant?: keyof typeof sources;
 }
 
+const setRiveBooleanInput = (
+  input: { value: number | boolean } | null,
+  value: boolean
+) => {
+  if (input) {
+    input.value = value;
+  }
+};
+
 // The state machine name is always 'default' for Elements AI visuals
 const stateMachine = "default";
 
@@ -279,18 +288,10 @@ export const Persona: FC<PersonaProps> = memo(
     // Rive state machine inputs are mutable objects that must be set via direct
     // property assignment — this is the intended Rive API, not a React anti-pattern.
     useEffect(() => {
-      if (listeningInput) {
-        listeningInput.value = state === "listening";
-      }
-      if (thinkingInput) {
-        thinkingInput.value = state === "thinking";
-      }
-      if (speakingInput) {
-        speakingInput.value = state === "speaking";
-      }
-      if (asleepInput) {
-        asleepInput.value = state === "asleep";
-      }
+      setRiveBooleanInput(listeningInput, state === "listening");
+      setRiveBooleanInput(thinkingInput, state === "thinking");
+      setRiveBooleanInput(speakingInput, state === "speaking");
+      setRiveBooleanInput(asleepInput, state === "asleep");
     }, [state, listeningInput, thinkingInput, speakingInput, asleepInput]);
 
     const Component = source.hasModel ? PersonaWithModel : PersonaWithoutModel;

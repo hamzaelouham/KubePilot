@@ -1,6 +1,6 @@
 # KubePilot - Project Overview
 
-<!-- blueprint:source-hash 49a46d7f253fe983813de0b166b6c398f78be40027b9e34335c0ae24a92be40c -->
+<!-- blueprint:source-hash 400f3ea8e835f17139fdde3b34501f24a8d620437a48cfa617fa3c647f280014 -->
 
 > A self-hosted Kubernetes operations platform for cluster visibility, troubleshooting, and safe resource management.
 
@@ -149,10 +149,6 @@ backend ServiceAccount/RBAC and a background worker for Helm jobs.
 
 ## Open questions
 
-- The project plan still describes the AI integration as AI Gateway-backed with credentials exclusively in FastAPI, while build-plan items 21a-21b replace Gateway usage with direct Settings-backed providers and a server-side Next.js resolver. Align the authored plans with the shipped boundary before the remaining 21c work.
-- The project plan describes a dark control-plane aesthetic, while completed UI work establishes a light palette with optional light/dark themes. Confirm the long-term default direction.
-- The project plan's initial-release text still says single-cluster and multi-cluster-later, while item 13 is shipped. Update the product narrative to reflect current multi-cluster support.
-- The project plan lists basic scale/restart actions, but the build plan's management scope explicitly covers validated create/delete and Helm workflows; decide whether scale/restart needs a separately planned item.
 - Confirm whether the commercial offering is self-hosted only, managed, or both.
 - Carry the exact ServiceAccount/RBAC and protected-system-namespace policy into future operation specs.
 - Items 21c and 22 remain planned; their detailed specs must define tool capability behavior, regression coverage, integration credential boundaries, and future agent automation scope.

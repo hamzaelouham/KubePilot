@@ -8,6 +8,8 @@ from app.models.entities import AuditAction
 
 
 class AuditEvent:
+    ASSISTANT_INFERENCE = "assistant.inference"
+    ASSISTANT_TOOL = "assistant.tool"
     AI_MODEL_CREATED = "ai_model.create"
     AI_MODEL_UPDATED = "ai_model.update"
     AI_MODEL_DELETED = "ai_model.delete"

@@ -117,8 +117,27 @@ export const useAudioDevices = () => {
   }, [loading]);
 
   useEffect(() => {
-    loadDevicesWithoutPermission();
-  }, [loadDevicesWithoutPermission]);
+    let active = true;
+    navigator.mediaDevices.enumerateDevices().then(
+      (deviceList) => {
+        if (active) {
+          setDevices(deviceList.filter((device) => device.kind === "audioinput"));
+          setLoading(false);
+        }
+      },
+      (caughtError: unknown) => {
+        if (active) {
+          const message = caughtError instanceof Error ? caughtError.message : "Failed to get audio devices";
+          setError(message);
+          setLoading(false);
+          console.error("Error getting audio devices:", message);
+        }
+      }
+    );
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const handleDeviceChange = () => {

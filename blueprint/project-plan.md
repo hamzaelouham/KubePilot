@@ -6,7 +6,10 @@ This project solves the problem of operating Kubernetes clusters without forcing
 
 The product is designed to make Kubernetes operations more approachable and more operationally transparent for teams that need visibility across namespaces, workloads, pods, services, nodes, and events. It keeps Kubernetes as the source of truth while presenting it in a cleaner and more decision-oriented interface.
 
-> TODO (confirm): Confirm whether the product is targeted only at self-hosted/on-premise clusters or also for cloud-hosted Kubernetes environments.
+KubePilot is deployed as self-hosted software and can operate registered
+Kubernetes environments that are on-premise, private-cloud, or
+customer-managed cloud clusters. Whether KubePilot itself will also be offered
+as a managed service remains a commercial decision.
 
 ## 2. Users - Who is this for?
 
@@ -27,6 +30,9 @@ Secondary users may include engineering managers and technical operators who nee
 - AI-Powered SRE/DevOps Assistant (post-MVP, feature 14): native streaming investigations, typed tools wrapping existing APIs, evidence-based diagnosis, and human-approved resource/Helm lifecycle operations using Vercel AI SDK and AI Elements.
 - KubePilot Marketplace (post-MVP) for discovering, installing, and tracking Kubernetes Helm packages from Artifact Hub
 - Manage resources (post-MVP, feature 19) for Kubernetes create/delete operations and Helm release/repository management in the selected cluster
+- Centralized Settings (post-MVP, feature 20) for application preferences, appearance, AI providers and models, encrypted credentials, and audit logs
+- Direct AI provider architecture (post-MVP, feature 21) using Settings-managed OpenAI, OpenRouter, and Ollama/local models without Vercel AI Gateway; tool access follows each model's declared capabilities
+- Integrations and AI agent automation (post-MVP, feature 22) for Slack, Gmail, Microsoft Outlook, and configurable Kubernetes workflows after provider capability enforcement and audit visibility are complete
 
 Manage resources is delivered in four ordered items:
 
@@ -52,6 +58,7 @@ All four items live under the "Manage resources" sidebar entry. Admins and opera
 - Application-level session and RBAC metadata for local access control
 - Marketplace installation and release-action jobs (package and chart metadata, target cluster, namespace, release name, action, revision where applicable, status, error message, timestamps) and resolved Artifact Hub package metadata; feature 19 extends release management to externally installed releases and upgrades
 - KubePilot-managed global public Helm chart repository configuration (name and URL); 19c does not support credentials, and 19d requires explicit repository/chart/version selection for each upgrade without a persisted release-to-chart-source association
+- Centralized runtime application settings, encrypted provider credentials, allowlisted AI provider configuration, and an administrator-managed model registry with enabled/default, availability, and capability metadata
 
 Kubernetes remains the source of truth for live resources and Helm releases. Manage resources reads current cluster state; Marketplace installation history is not an inventory of every installed release. Persist only the application configuration, action/job metadata, and audit records needed to support management and progress reporting.
 
@@ -62,12 +69,18 @@ Kubernetes remains the source of truth for live resources and Helm releases. Man
 - Database: PostgreSQL for application data and operational metadata
 - Kubernetes integration: Kubernetes Python client and Kubernetes API access through FastAPI only
 - Authentication: local admin account with a shared, signed, HTTP-only session cookie validated by Next.js and FastAPI against PostgreSQL
-- Architecture: a modern UI backed by structured API endpoints, with Kubernetes as the operational system of record and credentials kept exclusively in FastAPI
-- AI integration: installed Vercel AI SDK ToolLoopAgent and AI Elements; a server-configured tool-capable model via AI Gateway, with backend-only safe observations and durable human approval. No additional agent framework.
+- Architecture: a modern UI backed by structured API endpoints, with Kubernetes as the operational system of record; Kubernetes and Helm credentials remain exclusively in FastAPI, while encrypted AI provider credentials stay in server-side application storage and never reach the browser
+- AI integration: installed Vercel AI SDK ToolLoopAgent and AI Elements with Settings-managed direct OpenAI, OpenRouter, and Ollama/local adapters; the server-side Next.js model resolver accepts only internal administrator-enabled model IDs, attaches tools only for models declaring tool support, and preserves backend-only safe observations and durable human approval. No Vercel AI Gateway or additional agent framework.
 - Marketplace integration: Artifact Hub package search API (read-only, public search, no API key for basic search) and Helm execution inside the FastAPI backend (repo add/update/install) with a simple background job mechanism for V1; do not introduce Celery/RQ unless the existing architecture already needs it
 - Resource management: Kubernetes resource creation/deletion through the Kubernetes Python client in FastAPI; live Helm release discovery, history, rollback, uninstall, repository configuration, and upgrades through backend Helm integration, using validated command arguments and the existing job mechanism for release mutations
 
-Confirmed architecture: the browser reaches the Next.js UI, the UI reaches FastAPI over HTTPS or WebSocket, and FastAPI is the only application component that reaches the Kubernetes API. AI features will use the same backend API and never connect directly to Kubernetes.
+Confirmed architecture: the browser reaches the Next.js UI, Next.js server
+routes resolve configured AI models and call direct providers, and the UI uses
+FastAPI over HTTPS or WebSocket for authenticated application and tool APIs.
+FastAPI is the only application component that reaches Kubernetes or executes
+Helm. AI providers never receive Kubernetes credentials, provider credentials
+never reach the browser, and every operational action retains FastAPI
+authorization, approval, and audit enforcement.
 
 ## 6. Monetize - How will this make money?
 
@@ -84,7 +97,11 @@ The first version should focus on product value and reliability before monetizat
 
 ## 7. UI/UX - How should this look and feel?
 
-The product should feel like a modern, high-trust operations platform: clean, focused, credible, and low-friction for real-world workflows. The current dashboard direction uses a dark, polished control-plane aesthetic with strong contrast, clear status indicators, and careful hierarchy so operators can quickly scan the system.
+The product should feel like a modern, high-trust operations platform: clean,
+focused, credible, and low-friction for real-world workflows. The shipped
+dashboard direction uses a calm light operational palette with strong status
+indicators and careful hierarchy, plus System, Light, and Dark theme choices so
+operators can match their environment without losing readability.
 
 The interface should prioritize:
 
@@ -108,12 +125,15 @@ Expected deployment shape:
 - Frontend: Next.js app deployed behind a web server or runtime environment
 - Backend: FastAPI service providing app APIs and connection logic
 - Database: PostgreSQL for application metadata, auth, and audit data
-- Kubernetes integration: FastAPI connects to one initial cluster through a Kubernetes ServiceAccount and Kubernetes RBAC
-- Environment variables: cluster endpoint config, DB connection string, shared session signing secret, and session settings
+- Kubernetes integration: FastAPI routes requests across registered clusters using scoped kubeconfig or in-cluster ServiceAccount access and Kubernetes RBAC
+- Environment variables: bootstrap cluster/admin configuration, DB connection string, shared session signing secret, session settings, backend URL, and the Kubernetes-managed encryption key; mutable provider/model settings and provider credentials live in PostgreSQL-backed Settings
 - Operational needs: health-check endpoints, logs, background workers or polling jobs as needed, and secure secret management
 - Domain and hosting: a private or enterprise-ready deployment model, likely behind internal access controls or a corporate network boundary
 
-Initial deployment topology: Next.js frontend, FastAPI backend, and PostgreSQL. The first release supports one cluster; multi-cluster support is designed for later, not implemented now.
+Deployment topology: Next.js frontend, FastAPI backend, and PostgreSQL.
+Multi-cluster registration, routing, selection, and administration are shipped;
+each Kubernetes and Helm request remains explicitly scoped to a registered
+cluster.
 
 Authentication contract:
 
@@ -129,8 +149,8 @@ Confirmed decisions:
 - This is a self-hosted Kubernetes operations platform.
 - The primary users are DevOps, platform, and SRE operators.
 - The current dashboard is a polished front-end foundation for a real product.
-- The next milestone is backend integration with live Kubernetes data.
-- AI Copilot is a later-stage capability, not the first shipped feature set.
+- Live Kubernetes integration, multi-cluster support, Settings, and the AI Assistant are shipped foundations.
+- The current milestone is direct-provider capability enforcement, safe provider/model/tool audit outcomes, and regression validation before external integrations and agent automation.
 
 Open assumptions or TODOs:
 
@@ -140,6 +160,5 @@ Open assumptions or TODOs:
 Explicit exclusions for the first build phase:
 
 - Large-scale AI orchestration is not part of the early implementation
-- Full multi-cluster management is not the first milestone
 - A broad Kubernetes admin platform with every possible feature is not the MVP
 - A visual clone of Kubernetes Dashboard without real operating logic is not the product direction

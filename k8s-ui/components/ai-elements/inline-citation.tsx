@@ -163,12 +163,13 @@ export const InlineCitationCarouselIndex = ({
       return;
     }
 
-    syncState();
-
     api.on("select", syncState);
+    api.on("reInit", syncState);
+    api.emit("select");
 
     return () => {
       api.off("select", syncState);
+      api.off("reInit", syncState);
     };
   }, [api, syncState]);
 

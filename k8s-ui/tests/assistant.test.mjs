@@ -13,6 +13,15 @@ import { fetchAssistantModels } from "../lib/assistant/models.ts";
 const user = { id: "actor", role: "operator", must_change_password: false, password_expired: false };
 const scope = { cluster: "primary", namespace: "default" };
 const selectedModelId = "11111111-1111-4111-8111-111111111111";
+const assistantModel = (tools = true) => ({
+  id: selectedModelId,
+  provider_id: "openai",
+  provider_name: "OpenAI",
+  external_model_id: "gpt-test",
+  friendly_name: "GPT Test",
+  capabilities: { streaming: true, tools, reasoning: false, vision: false, large_context: false },
+  is_default: true,
+});
 const usage = { inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined }, outputTokens: { total: 10, text: 10, reasoning: undefined } };
 const request = (body, origin = "http://localhost:3000", host = "localhost:3000", url = "http://localhost:3000/api/assistant") => {
   const headers = new Headers({ cookie: "kubepilot_session=signed; unrelated=private", "content-type": "application/json" });
@@ -87,15 +96,7 @@ test("model list bridge forwards only the session cookie without caching", async
 });
 
 test("model client validates capability metadata and reports denied access", async t => {
-  const model = {
-    id: selectedModelId,
-    provider_id: "openai",
-    provider_name: "OpenAI",
-    external_model_id: "gpt-test",
-    friendly_name: "GPT Test",
-    capabilities: { streaming: true, tools: true, reasoning: false, vision: false, large_context: false },
-    is_default: true,
-  };
+  const model = assistantModel();
   t.mock.method(globalThis, "fetch", async () => Response.json({ models: [model] }));
   assert.deepEqual(await fetchAssistantModels(), [model]);
 
@@ -147,11 +148,25 @@ test("AI SDK streaming helper emits the UI text protocol", async () => {
   assert.match(await response.text(), /"type":"text-delta".*Inspecting web/);
 });
 
+test("conversational-only model streams without an operational tool surface", async () => {
+  const model = new MockLanguageModelV4({ doStream: async () => ({ stream: simulateReadableStream({ chunks: [
+    { type: "text-start", id: "text" }, { type: "text-delta", id: "text", delta: "General guidance" }, { type: "text-end", id: "text" },
+    { type: "finish", finishReason: { unified: "stop", raw: undefined }, usage },
+  ], initialDelayInMs: 0, chunkDelayInMs: 0 }) }) });
+  const agent = createAssistant(model, "", scope, "viewer", new AbortController().signal, false);
+  const response = await createAgentUIStreamResponse({ agent, uiMessages: [{ id: "1", role: "user", parts: [{ type: "text", text: "What is a Pod?" }] }] });
+  assert.equal(response.status, 200);
+  assert.match(await response.text(), /General guidance/);
+  assert.deepEqual(Object.keys(agent.tools), []);
+  assert.match(JSON.stringify(model.doStreamCalls), /no operational tools/i);
+});
+
 test("direct model resolver returns a concrete model and streams through authenticated FastAPI", async t => {
   const calls = [];
   t.mock.method(globalThis, "fetch", async (url, init) => {
     calls.push({ url: String(url), init });
     if (String(url).endsWith("/api/v1/auth/me")) return Response.json(user);
+    if (String(url).endsWith("/api/v1/assistant/models")) return Response.json({ models: [assistantModel()] });
     const encoder = new TextEncoder();
     return new Response(simulateReadableStream({ chunks: [
       encoder.encode('data: {"id":"chat","object":"chat.completion.chunk","created":1,"model":"runtime","choices":[{"index":0,"delta":{"role":"assistant","content":"Direct response"},"finish_reason":null}]}\n\n'),
@@ -181,6 +196,33 @@ test("direct model resolver returns a concrete model and streams through authent
   assert.equal(payload.model, selectedModelId);
   assert.equal(payload.stream, true);
   assert.ok(!JSON.stringify(payload).includes("kubepilot_session"));
+});
+
+test("chat route omits tools for a conversational-only selected model", async t => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    calls.push({ url: String(url), init });
+    if (String(url).endsWith("/api/v1/auth/me")) return Response.json(user);
+    if (String(url).endsWith("/api/v1/assistant/models")) return Response.json({ models: [assistantModel(false)] });
+    const encoder = new TextEncoder();
+    return new Response(simulateReadableStream({ chunks: [
+      encoder.encode('data: {"id":"chat","object":"chat.completion.chunk","created":1,"model":"runtime","choices":[{"index":0,"delta":{"role":"assistant","content":"General guidance"},"finish_reason":null}]}\n\n'),
+      encoder.encode('data: {"id":"chat","object":"chat.completion.chunk","created":1,"model":"runtime","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n'),
+      encoder.encode("data: [DONE]\n\n"),
+    ] }), { headers: { "content-type": "text/event-stream" } });
+  });
+  const response = await POST(request({
+    context: scope,
+    modelId: selectedModelId,
+    messages: [{ id: "1", role: "user", parts: [{ type: "text", text: "What is a Pod?" }] }],
+  }));
+  assert.equal(response.status, 200);
+  assert.match(await response.text(), /General guidance/);
+  const inference = calls.find(call => call.url.endsWith("/api/v1/assistant/inference/chat/completions"));
+  const payload = JSON.parse(inference.init.body);
+  assert.equal(payload.model, selectedModelId);
+  assert.ok(!("tools" in payload));
+  assert.ok(!("tool_choice" in payload));
 });
 
 test("direct model resolver keeps the default sentinel when no model is selected", () => {

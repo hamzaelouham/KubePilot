@@ -32,8 +32,26 @@ export function AppearanceSettingsForm() {
   }
 
   useEffect(() => {
-    void loadPreferences();
-  }, []);
+    let active = true;
+    fetchUserPreferences().then(
+      (preferences) => {
+        if (active) {
+          setSelectedTheme(preferences.theme);
+          setTheme(preferences.theme);
+          setLoading(false);
+        }
+      },
+      (requestError: unknown) => {
+        if (active) {
+          setError(requestError instanceof Error ? requestError.message : "Unable to load appearance preferences");
+          setLoading(false);
+        }
+      }
+    );
+    return () => {
+      active = false;
+    };
+  }, [setTheme]);
 
   async function saveTheme() {
     setSaving(true);

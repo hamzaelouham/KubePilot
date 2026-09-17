@@ -266,7 +266,6 @@ def list_eligible_models(database: SQLAlchemySession) -> list[dict[str, Any]]:
             AIModelConfig.enabled.is_(True),
             AIModelConfig.availability == "available",
             AIModelConfig.supports_streaming.is_(True),
-            AIModelConfig.supports_tools.is_(True),
         )
         .order_by(AIModelConfig.is_default.desc(), AIModelConfig.friendly_name, AIModelConfig.id)
     ).all()

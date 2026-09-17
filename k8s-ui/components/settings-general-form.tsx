@@ -28,7 +28,24 @@ export function GeneralSettingsForm() {
   }
 
   useEffect(() => {
-    void loadPreferences();
+    let active = true;
+    fetchUserPreferences().then(
+      (preferences) => {
+        if (active) {
+          setDefaultNamespace(preferences.default_namespace ?? "");
+          setLoading(false);
+        }
+      },
+      (requestError: unknown) => {
+        if (active) {
+          setError(requestError instanceof Error ? requestError.message : "Unable to load preferences");
+          setLoading(false);
+        }
+      }
+    );
+    return () => {
+      active = false;
+    };
   }, []);
 
   async function savePreferences(event: FormEvent<HTMLFormElement>) {

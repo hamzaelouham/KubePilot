@@ -12,7 +12,7 @@ export const assistantModelSchema = z.object({
   is_default: z.boolean(),
 });
 
-const assistantModelsResponseSchema = z.object({
+export const assistantModelsResponseSchema = z.object({
   models: z.array(assistantModelSchema),
 });
 
