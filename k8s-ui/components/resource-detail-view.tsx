@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ArrowDown, FileText, RefreshCw, Terminal } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { useClusterSelection } from "@/lib/use-cluster-selection";
 import { useCluster } from "@/lib/cluster-context";
@@ -10,6 +11,9 @@ import { withCluster } from "@/lib/cluster-query";
 import { MetricBar } from "@/components/metric-bar";
 import { usePolling } from "@/lib/use-polling";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   formatMillicores,
   formatBytes,
@@ -291,33 +295,155 @@ function YamlPanel({ state }: { state: YamlState }) {
   );
 }
 
-function LogsPanel({ state }: { state: LogState }) {
+function LogViewer({ data, onRefresh }: { data: LogData; onRefresh: () => void }) {
+  const logRef = useRef<HTMLPreElement | null>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const lastLine = data.lines.at(-1) ?? "";
+
+  useEffect(() => {
+    const element = logRef.current;
+    if (!element) return;
+    const frame = window.requestAnimationFrame(() => {
+      element.scrollTop = element.scrollHeight;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [data.lines.length, lastLine]);
+
+  const scrollToBottom = () => {
+    const element = logRef.current;
+    if (!element) return;
+    element.scrollTo({ top: element.scrollHeight, behavior: "smooth" });
+    setIsAtBottom(true);
+  };
+
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader className="border-b bg-muted/20">
+        <div className="flex items-start gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Terminal className="size-5" aria-hidden="true" />
+          </div>
+          <div>
+            <CardTitle>Pod Logs</CardTitle>
+            <CardDescription className="mt-1">
+              Latest bounded snapshot{data.container ? ` from ${data.container}` : " from the selected pod"}.
+            </CardDescription>
+          </div>
+        </div>
+        <CardAction>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Badge variant="outline" className="gap-1.5 font-normal">
+              <FileText className="size-3.5" aria-hidden="true" />
+              {data.lines.length} {data.lines.length === 1 ? "line" : "lines"}
+            </Badge>
+            <Button type="button" variant="outline" size="sm" onClick={onRefresh}>
+              <RefreshCw data-icon="inline-start" />
+              Refresh
+            </Button>
+          </div>
+        </CardAction>
+      </CardHeader>
+      <CardContent className="space-y-4 p-4 sm:p-6">
+        {data.truncated ? (
+          <div className="flex items-start gap-3 rounded-lg border border-amber-300/60 bg-amber-50/70 p-3 text-sm text-amber-800 dark:border-amber-400/30 dark:bg-amber-950/20 dark:text-amber-200">
+            <span className="mt-0.5 size-2 shrink-0 rounded-full bg-amber-500" aria-hidden="true" />
+            <span>Only the most recent logs are shown because this snapshot reached the display limit.</span>
+          </div>
+        ) : null}
+        <div className="relative overflow-hidden rounded-xl border border-border bg-zinc-950 shadow-inner dark:bg-black">
+          <pre
+            ref={logRef}
+            role="log"
+            aria-label="Pod log output"
+            tabIndex={0}
+            onScroll={(event) => {
+              const element = event.currentTarget;
+              setIsAtBottom(element.scrollHeight - element.scrollTop - element.clientHeight <= 24);
+            }}
+            className="h-[28rem] max-h-[60vh] min-h-64 overflow-auto p-4 font-mono text-xs leading-6 text-zinc-200 outline-none focus-visible:ring-2 focus-visible:ring-primary/60 sm:p-5 sm:text-sm"
+          >
+            <code>
+              {data.lines.map((line, index) => (
+                <span className="block whitespace-pre" key={`${index}-${line}`}>
+                  <span className="mr-4 inline-block w-10 select-none text-right text-zinc-500" aria-hidden="true">{index + 1}</span>
+                  {line}
+                </span>
+              ))}
+            </code>
+          </pre>
+          {!isAtBottom ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={scrollToBottom}
+              className="absolute bottom-4 right-4 shadow-lg"
+            >
+              <ArrowDown data-icon="inline-start" />
+              Scroll to bottom
+            </Button>
+          ) : null}
+        </div>
+      </CardContent>
+      <CardFooter className="flex flex-wrap justify-between gap-3 text-xs text-muted-foreground">
+        <span>Showing the newest {data.lines.length} lines</span>
+        <span>Scroll inside the viewer to inspect older entries</span>
+      </CardFooter>
+    </Card>
+  );
+}
+
+function LogsPanel({ state, onRefresh }: { state: LogState; onRefresh: () => void }) {
   if (state.status === "loading") {
-    return <p className="rounded-lg bg-muted p-5 text-muted-foreground">Loading logs...</p>;
+    return (
+      <Card aria-busy="true" aria-label="Loading pod logs">
+        <CardHeader className="border-b bg-muted/20">
+          <CardTitle>Pod Logs</CardTitle>
+          <CardDescription>Loading the latest bounded snapshot…</CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 sm:p-6">
+          <div className="h-[28rem] max-h-[60vh] min-h-64 animate-pulse rounded-xl bg-muted" />
+        </CardContent>
+      </Card>
+    );
   }
   if (state.status === "error") {
-    return <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-5 text-destructive">{state.message}</p>;
+    return (
+      <Card role="alert" className="border-destructive/40">
+        <CardHeader>
+          <CardTitle>Unable to load Pod Logs</CardTitle>
+          <CardDescription className="text-destructive">{state.message}</CardDescription>
+        </CardHeader>
+        <CardFooter>
+          <Button type="button" variant="outline" onClick={onRefresh}>
+            <RefreshCw data-icon="inline-start" />
+            Try again
+          </Button>
+        </CardFooter>
+      </Card>
+    );
   }
   if (state.data.lines.length === 0) {
-    return <p className="rounded-lg bg-muted p-5 text-muted-foreground">No logs available for this resource.</p>;
+    return (
+      <Card>
+        <CardHeader className="border-b bg-muted/20">
+          <CardTitle>Pod Logs</CardTitle>
+          <CardDescription>No log lines were returned for the selected pod.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col items-center justify-center gap-3 p-10 text-center">
+          <div className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <FileText className="size-5" aria-hidden="true" />
+          </div>
+          <p className="text-sm text-muted-foreground">The container may not have written output yet.</p>
+          <Button type="button" variant="outline" onClick={onRefresh}>
+            <RefreshCw data-icon="inline-start" />
+            Refresh logs
+          </Button>
+        </CardContent>
+      </Card>
+    );
   }
-  return (
-    <div className="space-y-4">
-      {state.data.container && (
-        <p className="text-sm text-muted-foreground">Container: {state.data.container}</p>
-      )}
-      {state.data.truncated && (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
-          Logs were truncated due to size limits.
-        </p>
-      )}
-      <div className="rounded-xl border border-border bg-card">
-        <pre className="overflow-x-auto p-6 font-mono text-sm text-foreground whitespace-pre-wrap">
-          {state.data.lines.join("\n")}
-        </pre>
-      </div>
-    </div>
-  );
+  return <LogViewer key={`${state.data.lines.length}-${state.data.lines.at(-1) ?? ""}`} data={state.data} onRefresh={onRefresh} />;
 }
 
 function EventsPanel({ state }: { state: EventState }) {
@@ -364,6 +490,7 @@ export default function ResourceDetailView({
   const [yamlState, setYamlState] = useState<YamlState>({ status: "loading" });
   const [logState, setLogState] = useState<LogState>({ status: "loading" });
   const [eventState, setEventState] = useState<EventState>({ status: "loading" });
+  const [logRefreshKey, setLogRefreshKey] = useState(0);
   const router = useRouter();
 
   const requestKey = `${resourceType}\0${name}\0${namespace ?? ""}`;
@@ -462,7 +589,7 @@ export default function ResourceDetailView({
       });
 
     return () => controller.abort();
-  }, [activeTab, resourceType, name, namespace, activeCluster]);
+  }, [activeTab, resourceType, name, namespace, activeCluster, logRefreshKey]);
 
   useEffect(() => {
     if (!name || activeTab !== "events") return;
@@ -578,7 +705,7 @@ export default function ResourceDetailView({
           )
         )}
         {activeTab === "yaml" && <YamlPanel state={yamlState} />}
-        {activeTab === "logs" && <LogsPanel state={logState} />}
+        {activeTab === "logs" && <LogsPanel state={logState} onRefresh={() => { setLogState({ status: "loading" }); setLogRefreshKey((current) => current + 1); }} />}
         {activeTab === "events" && <EventsPanel state={eventState} />}
       </div>
     </div>
