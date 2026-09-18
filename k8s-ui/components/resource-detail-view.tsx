@@ -14,6 +14,7 @@ import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import type { BackendUser } from "@/lib/auth-client";
 import {
   formatMillicores,
   formatBytes,
@@ -474,11 +475,13 @@ function EventsPanel({ state }: { state: EventState }) {
 }
 
 export default function ResourceDetailView({
+  user,
   resourceType,
   name,
   namespace,
   cluster: initialCluster,
 }: {
+  user: BackendUser;
   resourceType: string;
   name: string;
   namespace: string | null;
@@ -626,6 +629,7 @@ export default function ResourceDetailView({
   if (!name) {
     return (
       <DashboardShell
+        user={user}
         activeResource={resourceType}
         activeNamespace={namespace ?? ""}
         activeCluster={activeCluster}
@@ -647,6 +651,7 @@ export default function ResourceDetailView({
 
   return (
     <DashboardShell
+      user={user}
       activeResource={resourceType}
       activeNamespace={namespace ?? ""}
       activeCluster={activeCluster}

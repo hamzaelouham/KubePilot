@@ -7,7 +7,7 @@ export default async function DetailPage({
 }: {
   searchParams?: Promise<{ resourceType?: string; name?: string; namespace?: string; cluster?: string }>;
 }) {
-  await requireUsableBackendUser();
+  const user = await requireUsableBackendUser();
   const params = searchParams ? await searchParams : {};
   const resourceType = params.resourceType ?? "pods";
   const name = params.name ?? "";
@@ -15,8 +15,8 @@ export default async function DetailPage({
   const cluster = params.cluster;
 
   return (
-    <Suspense fallback={<ResourceDetailView resourceType={resourceType} name={name} namespace={namespace} cluster={cluster} />}>
-      <ResourceDetailView resourceType={resourceType} name={name} namespace={namespace} cluster={cluster} />
+    <Suspense fallback={<ResourceDetailView user={user} resourceType={resourceType} name={name} namespace={namespace} cluster={cluster} />}>
+      <ResourceDetailView user={user} resourceType={resourceType} name={name} namespace={namespace} cluster={cluster} />
     </Suspense>
   );
 }
