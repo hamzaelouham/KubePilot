@@ -60,7 +60,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           tags: |
-            
+            ${{ env.DOCKERHUB_NAMESPACE }}/kubepilot-backend:${{ steps.tag.outputs.tag }}
             ${{ env.DOCKERHUB_NAMESPACE }}/kubepilot-backend:latest
 
       - name: Build and push UI
@@ -72,5 +72,5 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           tags: |
-       
+            ${{ env.DOCKERHUB_NAMESPACE }}/kubepilot-ui:${{ steps.tag.outputs.tag }}
             ${{ env.DOCKERHUB_NAMESPACE }}/kubepilot-ui:latest
