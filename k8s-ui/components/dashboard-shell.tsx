@@ -401,8 +401,8 @@ export function DashboardShell({
                 </SelectTrigger>
                 <SelectContent align="start">
                   <SelectGroup>
-                    {suppliedNamespaces !== undefined ? <SelectItem value="__all__">All namespaces</SelectItem> : null}
-                    {suppliedNamespaces !== undefined && activeNamespace && !namespaceOptions.includes(activeNamespace)
+                    <SelectItem value="__all__">All namespaces</SelectItem>
+                    {activeNamespace && !namespaceOptions.includes(activeNamespace)
                       ? <SelectItem value={activeNamespace}>{activeNamespace} (unavailable)</SelectItem> : null}
                     {namespaceOptions.map((namespace) => (
                       <SelectItem key={namespace} value={namespace}>{namespace}</SelectItem>
