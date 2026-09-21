@@ -124,7 +124,12 @@ def register_provider_settings() -> None:
             )
         if definition.credential_key and definition.credential_key not in application_settings.CREDENTIAL_DEFINITIONS:
             application_settings.register_credential_definition(
-                application_settings.CredentialDefinition(definition.credential_key)
+                application_settings.CredentialDefinition(
+                    key=definition.credential_key,
+                    display_name=f"{definition.name} API key",
+                    description=f"API key used by KubePilot to access {definition.name}.",
+                    category="provider",
+                )
             )
 
 

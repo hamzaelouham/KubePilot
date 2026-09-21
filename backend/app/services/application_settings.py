@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 import json
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 from uuid import UUID
 
 from sqlalchemy import select
@@ -31,6 +31,10 @@ class InvalidSettingValueError(SettingsServiceError):
     code = "invalid_setting_value"
 
 
+class InvalidCredentialValueError(SettingsServiceError):
+    code = "invalid_credential_value"
+
+
 @dataclass(frozen=True)
 class SettingDefinition:
     key: str
@@ -49,6 +53,9 @@ class SettingDefinition:
 @dataclass(frozen=True)
 class CredentialDefinition:
     key: str
+    display_name: str
+    description: str
+    category: Literal["provider", "integration"]
 
 
 # Later provider/integration modules register their own stable server-side keys.
@@ -132,14 +139,7 @@ def list_credential_metadata(database: SQLAlchemySession) -> list[dict[str, Any]
         for row in database.scalars(select(ApplicationCredential)).all()
         if row.credential_key in CREDENTIAL_DEFINITIONS
     }
-    return [
-        {
-            "credential_key": definition.key,
-            "configured": definition.key in rows,
-            "updated_at": rows[definition.key].updated_at if definition.key in rows else None,
-        }
-        for definition in CREDENTIAL_DEFINITIONS.values()
-    ]
+    return [_credential_metadata(definition, rows.get(definition.key)) for definition in CREDENTIAL_DEFINITIONS.values()]
 
 
 def replace_credential(
@@ -149,8 +149,11 @@ def replace_credential(
     credential_key: str,
     value: str,
 ) -> dict[str, Any]:
-    if credential_key not in CREDENTIAL_DEFINITIONS:
+    definition = CREDENTIAL_DEFINITIONS.get(credential_key)
+    if definition is None:
         raise UnknownCredentialError("Credential is not registered")
+    if not value.strip():
+        raise InvalidCredentialValueError("Credential value must not be blank")
     ciphertext = CredentialEncryption.from_settings(settings).encrypt(value)
     row = database.scalar(
         select(ApplicationCredential).where(ApplicationCredential.credential_key == credential_key)
@@ -178,17 +181,18 @@ def replace_credential(
     )
     _commit(database)
     database.refresh(row)
-    return _credential_metadata(row)
+    return _credential_metadata(definition, row)
 
 
 def delete_credential(database: SQLAlchemySession, actor_id: UUID, credential_key: str) -> dict[str, Any]:
-    if credential_key not in CREDENTIAL_DEFINITIONS:
+    definition = CREDENTIAL_DEFINITIONS.get(credential_key)
+    if definition is None:
         raise UnknownCredentialError("Credential is not registered")
     row = database.scalar(
         select(ApplicationCredential).where(ApplicationCredential.credential_key == credential_key)
     )
     if row is None:
-        return {"credential_key": credential_key, "configured": False, "updated_at": None}
+        return _credential_metadata(definition, None)
     database.delete(row)
     record_audit(
         database,
@@ -200,7 +204,7 @@ def delete_credential(database: SQLAlchemySession, actor_id: UUID, credential_ke
         context={"credential_key": credential_key},
     )
     _commit(database)
-    return {"credential_key": credential_key, "configured": False, "updated_at": None}
+    return _credential_metadata(definition, None)
 
 
 def read_credential_value(database: SQLAlchemySession, settings: Settings, credential_key: str) -> str | None:
@@ -214,8 +218,18 @@ def read_credential_value(database: SQLAlchemySession, settings: Settings, crede
     return CredentialEncryption.from_settings(settings).decrypt(row.ciphertext)
 
 
-def _credential_metadata(row: ApplicationCredential) -> dict[str, Any]:
-    return {"credential_key": row.credential_key, "configured": True, "updated_at": row.updated_at}
+def _credential_metadata(
+    definition: CredentialDefinition,
+    row: ApplicationCredential | None,
+) -> dict[str, Any]:
+    return {
+        "credential_key": definition.key,
+        "display_name": definition.display_name,
+        "description": definition.description,
+        "category": definition.category,
+        "configured": row is not None,
+        "updated_at": row.updated_at if row is not None else None,
+    }
 
 
 def _commit(database: SQLAlchemySession) -> None:

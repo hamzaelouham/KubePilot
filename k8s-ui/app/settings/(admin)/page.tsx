@@ -18,7 +18,7 @@ export default function SettingsOverviewPage() {
         </CardHeader>
         <CardContent>
           <p className="text-sm leading-6 text-muted-foreground">
-            General, Appearance, provider, model, and audit modules are available here. Integration, credential overview, and AI agent automation modules remain planned.
+            General, Appearance, provider, model, credential, and audit modules are available here. Integrations and AI agent automation remain planned.
           </p>
         </CardContent>
       </Card>

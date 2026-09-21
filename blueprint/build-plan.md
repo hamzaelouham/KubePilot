@@ -90,3 +90,5 @@
   * [x] 21c. **Tool capability, audit, and regression validation** - attach Kubernetes tools only to models that support them, keep unsupported models conversational but non-operational, preserve FastAPI authorization/approval/audit boundaries, record provider/model/tool outcomes without secrets or raw prompts, and verify existing streaming/tool workflows plus build, type-check, lint, and tests.
 
 * [ ] 22. **Integrations and AI agent automation** - add Slack, Gmail, Microsoft Outlook, and configurable Kubernetes AI agent workflows after direct provider capability enforcement and audit visibility are complete.
+
+  * [x] 22a. **Secrets and API key management** - add an admin-only Secrets & Credentials Settings page for CRUD-style management of KubePilot-registered provider and integration credentials: list safe metadata, create a missing value, replace or rotate an existing value, and delete it with confirmation, while never revealing stored plaintext or accepting arbitrary credential identifiers.

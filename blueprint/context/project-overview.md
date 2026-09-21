@@ -1,6 +1,6 @@
 # KubePilot - Project Overview
 
-<!-- blueprint:source-hash 400f3ea8e835f17139fdde3b34501f24a8d620437a48cfa617fa3c647f280014 -->
+<!-- blueprint:source-hash e867b93a7299b232985dde14c5803b7d3ad534ef7b8682e9e38ad5ac412eb5d3 -->
 
 > A self-hosted Kubernetes operations platform for cluster visibility, troubleshooting, and safe resource management.
 
@@ -45,8 +45,9 @@ Features are ordered as tracked in `build-plan.md`; checked items are shipped.
 18. **KubePilot Marketplace** - Artifact Hub discovery, installation jobs, progress/history, and release actions.
 19. **Manage resources** - validated Kubernetes resource operations plus Helm release, repository, and upgrade workflows.
 20. **Centralized KubePilot Settings** - administrator-controlled runtime settings, appearance, providers/models, credentials, and audit logs. Items 20a-20f are shipped.
-21. **Direct AI provider architecture** - Settings-backed OpenAI, OpenRouter, and Ollama/local model architecture without the AI Gateway. Items 21a-21b are shipped; 21c remains.
-22. **Integrations and AI agent automation** - deferred Slack, Gmail, Microsoft Outlook, and configurable Kubernetes AI agent workflows after provider capability and audit visibility work.
+21. **Direct AI provider architecture** - shipped Settings-backed OpenAI, OpenRouter, and Ollama/local model architecture without the AI Gateway, including capability enforcement and safe audit outcomes.
+22. **Integrations and AI agent automation** - deferred Slack, Gmail, Microsoft Outlook, and configurable Kubernetes AI agent workflows after provider capability enforcement and audit visibility work.
+   - **22a. Secrets and API key management** - shipped admin-only CRUD-style management of KubePilot-registered provider and integration credentials using metadata-only reads, write-only create/replace, and confirmed deletion.
 
 ## Data model
 
@@ -83,8 +84,9 @@ application identity, configuration, and bounded operational history.
 
 ### EncryptedCredential
 
-- Provider/integration identity, encrypted secret material, update actor metadata, and timestamps.
+- Server-registered provider/integration credential key, encrypted secret material, creator/updater metadata, and timestamps.
 - Encryption uses a Kubernetes-managed master key; normal APIs are write-only for secret values.
+- Admins may list safe configured/updated metadata, create a missing value, rotate or replace it, and delete it; APIs never reveal stored plaintext and reject arbitrary credential identifiers.
 
 ### AIProviderConfig and AIModelConfig
 
@@ -130,6 +132,7 @@ controls. The existing theme system also supports light/dark selection.
 - `/manage-resources` - Kubernetes resources and Helm releases tabs, repository configuration, and upgrades.
 - `/assistant` - authenticated streaming investigation, scoped tool results, proposals, and confirmations.
 - `/settings` - protected administrator Settings shell; General, Appearance, Providers, Models, Integrations, Credentials, Audit Logs, and AI Agents sections.
+- `/settings/credentials` - planned admin-only inventory and CRUD-style management surface for KubePilot-registered provider and integration secrets without reveal/copy behavior.
 - `/api/*` - same-origin Next.js bridges that forward only the signed session cookie where backend access is needed.
 
 ## Deployment
@@ -151,4 +154,4 @@ backend ServiceAccount/RBAC and a background worker for Helm jobs.
 
 - Confirm whether the commercial offering is self-hosted only, managed, or both.
 - Carry the exact ServiceAccount/RBAC and protected-system-namespace policy into future operation specs.
-- Items 21c and 22 remain planned; their detailed specs must define tool capability behavior, regression coverage, integration credential boundaries, and future agent automation scope.
+- Feature 22 after shipped item 22a remains underspecified; later specs must define Slack, Gmail, Outlook, and AI-agent workflow boundaries without expanding the credential store into arbitrary or Kubernetes secret management.

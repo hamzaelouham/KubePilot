@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 ThemePreference = Literal["system", "light", "dark"]
+CredentialCategory = Literal["provider", "integration"]
 
 
 class SettingsAccessResponse(BaseModel):
@@ -52,6 +53,9 @@ class CredentialMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     credential_key: str
+    display_name: str
+    description: str
+    category: CredentialCategory
     configured: bool
     updated_at: datetime | None
 

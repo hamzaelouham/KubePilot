@@ -12,12 +12,12 @@ const sections = [
   { label: "Appearance", href: "/settings/appearance" },
   { label: "AI Providers", href: "/settings/providers" },
   { label: "Models", href: "/settings/models" },
+  { label: "Secrets & Credentials", href: "/settings/credentials" },
   { label: "Audit Logs", href: "/settings/audit-logs" },
 ] as const;
 
 const plannedSections = [
   "Integrations",
-  "Secrets & Credentials",
   "AI Agents",
 ] as const;
 
