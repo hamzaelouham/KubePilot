@@ -135,6 +135,16 @@ Deployment is also explicit. `/release` can prepare local Render or Vercel confi
 and run readiness checks, but it must stop before deploy, remote service changes,
 push, or publish unless the user gives a separate yes in the current chat.
 
+## Release versioning
+
+Before proposing, creating, tagging, or publishing any release, or choosing a
+Docker image tag, read and follow `docs/versions.md`. Treat it as the
+authoritative policy for semantic version bumps, release-candidate versions,
+preview image tags, and `latest`. Do not invent a different version or tag
+scheme. This reference does not authorize creating tags, pushing, publishing,
+deploying, or triggering remote workflows; those actions still require the
+explicit approvals defined above.
+
 ## Dashboard activity
 
 The dashboard can show the active or most recent substantial Blueprint command
