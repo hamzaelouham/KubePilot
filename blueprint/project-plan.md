@@ -32,7 +32,7 @@ Secondary users may include engineering managers and technical operators who nee
 - Manage resources (post-MVP, feature 19) for Kubernetes create/delete operations and Helm release/repository management in the selected cluster
 - Centralized Settings (post-MVP, feature 20) for application preferences, appearance, AI providers and models, encrypted credentials, and audit logs
 - Direct AI provider architecture (post-MVP, feature 21) using Settings-managed OpenAI, OpenRouter, and Ollama/local models without Vercel AI Gateway; tool access follows each model's declared capabilities
-- Integrations and AI agent automation (post-MVP, feature 22) for Slack, Gmail, Microsoft Outlook, and configurable Kubernetes workflows after provider capability enforcement and audit visibility are complete
+- Integrations and AI agent automation (post-MVP, feature 22) for Slack, Gmail, and Microsoft Outlook configuration under Settings, plus configurable Kubernetes workflows under the existing AI Assistant area after provider capability enforcement and audit visibility are complete
 
 Manage resources is delivered in four ordered items:
 

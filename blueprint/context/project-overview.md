@@ -1,6 +1,6 @@
 # KubePilot - Project Overview
 
-<!-- blueprint:source-hash e867b93a7299b232985dde14c5803b7d3ad534ef7b8682e9e38ad5ac412eb5d3 -->
+<!-- blueprint:source-hash 5a9817079b90f9c791e97bf94f3e0d40b942786c72315a006311abe4b118c063 -->
 
 > A self-hosted Kubernetes operations platform for cluster visibility, troubleshooting, and safe resource management.
 
@@ -44,9 +44,9 @@ Features are ordered as tracked in `build-plan.md`; checked items are shipped.
 17. **UI polish and design consistency** - light operational palette, grouped navigation, shared shell, and cluster context.
 18. **KubePilot Marketplace** - Artifact Hub discovery, installation jobs, progress/history, and release actions.
 19. **Manage resources** - validated Kubernetes resource operations plus Helm release, repository, and upgrade workflows.
-20. **Centralized KubePilot Settings** - administrator-controlled runtime settings, appearance, providers/models, credentials, and audit logs. Items 20a-20f are shipped.
+20. **Centralized KubePilot Settings** - administrator-controlled provider/model configuration, credentials, integrations, and audit logs. Items 20a-20f are shipped.
 21. **Direct AI provider architecture** - shipped Settings-backed OpenAI, OpenRouter, and Ollama/local model architecture without the AI Gateway, including capability enforcement and safe audit outcomes.
-22. **Integrations and AI agent automation** - deferred Slack, Gmail, Microsoft Outlook, and configurable Kubernetes AI agent workflows after provider capability enforcement and audit visibility work.
+22. **Integrations and AI agent automation** - deferred Slack, Gmail, and Microsoft Outlook configuration under Settings, plus configurable Kubernetes AI agent workflows under the existing AI Assistant area after provider capability enforcement and audit visibility work.
    - **22a. Secrets and API key management** - shipped admin-only CRUD-style management of KubePilot-registered provider and integration credentials using metadata-only reads, write-only create/replace, and confirmed deletion.
 
 ## Data model
@@ -130,9 +130,9 @@ controls. The existing theme system also supports light/dark selection.
 - `/dashboard/detail` - resource status, YAML, logs, and events.
 - `/marketplace` - Artifact Hub search, package details, install configuration, progress, and history.
 - `/manage-resources` - Kubernetes resources and Helm releases tabs, repository configuration, and upgrades.
-- `/assistant` - authenticated streaming investigation, scoped tool results, proposals, and confirmations.
-- `/settings` - protected administrator Settings shell; General, Appearance, Providers, Models, Integrations, Credentials, Audit Logs, and AI Agents sections.
-- `/settings/credentials` - planned admin-only inventory and CRUD-style management surface for KubePilot-registered provider and integration secrets without reveal/copy behavior.
+- `/assistant` - authenticated streaming investigation, scoped tool results, proposals, confirmations, and the future home for configurable agent workflows.
+- `/settings` - protected administrator Settings shell for Providers, Models, Integrations, Credentials, and Audit Logs.
+- `/settings/credentials` - admin-only inventory and CRUD-style management for KubePilot-registered provider and integration secrets without reveal/copy behavior.
 - `/api/*` - same-origin Next.js bridges that forward only the signed session cookie where backend access is needed.
 
 ## Deployment

@@ -8,18 +8,13 @@ import { useClusterSelection } from "@/lib/use-cluster-selection";
 import type { BackendUser } from "@/lib/auth-client";
 
 const sections = [
-  { label: "General", href: "/settings/general" },
-  { label: "Appearance", href: "/settings/appearance" },
   { label: "AI Providers", href: "/settings/providers" },
   { label: "Models", href: "/settings/models" },
   { label: "Secrets & Credentials", href: "/settings/credentials" },
   { label: "Audit Logs", href: "/settings/audit-logs" },
 ] as const;
 
-const plannedSections = [
-  "Integrations",
-  "AI Agents",
-] as const;
+const plannedSections = ["Integrations"] as const;
 
 export function SettingsShell({ user, children }: { user: BackendUser; children: React.ReactNode }) {
   const router = useRouter();
@@ -52,13 +47,6 @@ export function SettingsShell({ user, children }: { user: BackendUser; children:
         </div>
 
         <nav aria-label="Settings sections" className="flex flex-wrap gap-2 border-b border-border pb-3">
-          <Link
-            href="/settings"
-            aria-current={pathname === "/settings" ? "page" : undefined}
-            className={`rounded-md px-3 py-2 text-sm font-medium ${pathname === "/settings" ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
-          >
-            Overview
-          </Link>
           {sections.map((section) => (
             <Link
               key={section.href}
