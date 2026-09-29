@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from dataclasses import replace
 from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
 
@@ -44,14 +45,15 @@ class FakeAdapter:
         return OAuthTokenSet("access-token", "refresh-token", 3600, self.required_scopes)
 
     def identify(self, access_token: str, *, client=None) -> ConnectionIdentity:
-        assert access_token == "access-token"
+        if access_token not in {"access-token", "manual-bot-token"}:
+            raise IntegrationProviderError("integration_provider_unauthorized")
         return ConnectionIdentity("external-1", "Connected account", self.required_scopes)
 
     def refresh(self, client_id, client_secret, refresh_token, *, client=None) -> OAuthTokenSet:
         return OAuthTokenSet("refreshed-access", refresh_token, 3600, self.required_scopes)
 
     def revoke(self, access_token: str, *, client=None) -> None:
-        assert access_token in {"access-token", "refreshed-access"}
+        assert access_token in {"access-token", "manual-bot-token", "refreshed-access"}
         self.revoked = True
 
 
@@ -112,18 +114,92 @@ def test_list_is_metadata_only_and_catalog_only_providers_are_not_supported(inte
     payload = {item["provider_id"]: item for item in response.json()["integrations"]}
     assert payload["slack"]["supported"] is True
     assert payload["slack"]["configured"] is True
+    assert payload["slack"]["manual_token_configured"] is False
     assert payload["slack"]["status"] == "not_connected"
     assert payload["teams"] == {
         "provider_id": "teams",
         "name": "Microsoft Teams",
         "supported": False,
         "configured": False,
+        "manual_token_configured": False,
         "status": "not_supported",
         "external_account_label": None,
         "granted_scopes": [],
         "last_tested_at": None,
         "last_error_code": None,
     }
+
+
+def test_manual_slack_token_connects_without_public_url_and_redacts_token(integration_api) -> None:
+    client, factory, settings, _adapters, actor = integration_api
+    with factory() as database:
+        credential_service.delete_credential(database, actor.user_id, "integration.slack.client_id")
+        credential_service.delete_credential(database, actor.user_id, "integration.slack.client_secret")
+        credential_service.replace_credential(
+            database,
+            settings,
+            actor.user_id,
+            "integration.slack.bot_token",
+            "manual-bot-token",
+        )
+
+    client.app.dependency_overrides[get_settings] = lambda: replace(settings, public_url=None)
+    response = client.post("/api/v1/settings/integrations/slack/connect")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["provider_id"] == "slack"
+    assert payload["status"] == "connected"
+    assert payload["manual_token_configured"] is True
+    assert "manual-bot-token" not in response.text
+
+    with factory() as database:
+        connection = database.scalar(select(IntegrationConnection))
+        audit = database.scalar(
+            select(AuditAction).where(AuditAction.action == AuditEvent.INTEGRATION_CONNECTED)
+        )
+        assert connection is not None
+        assert connection.access_token_ciphertext != "manual-bot-token"
+        assert audit is not None and "manual-bot-token" not in (audit.context or "")
+
+
+def test_invalid_manual_slack_token_does_not_create_connection(integration_api) -> None:
+    client, factory, settings, _adapters, actor = integration_api
+    with factory() as database:
+        credential_service.replace_credential(
+            database,
+            settings,
+            actor.user_id,
+            "integration.slack.bot_token",
+            "invalid-bot-token",
+        )
+
+    client.app.dependency_overrides[get_settings] = lambda: replace(settings, public_url=None)
+    response = client.post("/api/v1/settings/integrations/slack/connect")
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "integration_provider_unauthorized"
+    with factory() as database:
+        assert database.scalar(select(IntegrationConnection)) is None
+        audits = database.scalars(
+            select(AuditAction).where(AuditAction.action == AuditEvent.INTEGRATION_MANUAL_CONNECTION_FAILED)
+        ).all()
+        assert audits
+        assert "invalid-bot-token" not in "".join(audit.context or "" for audit in audits)
+
+
+def test_manual_slack_connect_requires_settings_write(integration_api) -> None:
+    client, _factory, settings, _adapters, _actor = integration_api
+    client.app.dependency_overrides[get_current_actor] = lambda: AuthenticatedActor(
+        "operator@example.com",
+        "operator",
+    )
+    client.app.dependency_overrides[get_settings] = lambda: replace(settings, public_url=None)
+
+    response = client.post("/api/v1/settings/integrations/slack/connect")
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "insufficient_permissions"
 
 
 def test_oauth_callback_is_one_use_and_persists_only_ciphertext(integration_api) -> None:

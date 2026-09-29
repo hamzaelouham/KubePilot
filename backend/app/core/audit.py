@@ -24,6 +24,7 @@ class AuditEvent:
     INTEGRATION_AUTHORIZATION_STARTED = "integration.authorization_started"
     INTEGRATION_CONNECTED = "integration.connected"
     INTEGRATION_AUTHORIZATION_FAILED = "integration.authorization_failed"
+    INTEGRATION_MANUAL_CONNECTION_FAILED = "integration.manual_connection_failed"
     INTEGRATION_TEST_SUCCEEDED = "integration.test_succeeded"
     INTEGRATION_TEST_FAILED = "integration.test_failed"
     INTEGRATION_DISCONNECTED = "integration.disconnected"

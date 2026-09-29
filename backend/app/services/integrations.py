@@ -18,6 +18,7 @@ from app.services.credential_encryption import CredentialEncryption
 
 STATE_TTL = timedelta(minutes=10)
 REFRESH_SKEW = timedelta(minutes=1)
+SLACK_BOT_TOKEN_CREDENTIAL_KEY = "integration.slack.bot_token"
 
 CATALOG = (
     ("slack", "Slack", True),
@@ -55,11 +56,21 @@ def list_connection_metadata(database: SQLAlchemySession) -> list[dict[str, Any]
             result.append(_metadata(provider_id, name, False, None, configured=False))
             continue
         adapter = get_adapter(provider_id)
-        configured = (
+        manual_token_configured = _manual_token_configured(database, provider_id)
+        oauth_configured = (
             adapter.client_id_credential_key in configured_keys
             and adapter.client_secret_credential_key in configured_keys
         )
-        result.append(_metadata(provider_id, name, True, row, configured=configured))
+        result.append(
+            _metadata(
+                provider_id,
+                name,
+                True,
+                row,
+                configured=manual_token_configured or oauth_configured,
+                manual_token_configured=manual_token_configured,
+            )
+        )
     return result
 
 
@@ -106,6 +117,66 @@ def begin_authorization(
     )
     database.commit()
     return {"provider_id": provider_id, "authorization_url": authorization_url, "expires_at": state.expires_at}
+
+
+def connect_manual_token(
+    database: SQLAlchemySession,
+    settings: Settings,
+    actor_id: UUID,
+    provider_id: str,
+) -> dict[str, Any]:
+    if provider_id != "slack":
+        raise IntegrationServiceError(
+            "integration_manual_not_supported",
+            "Manual token connection is supported only for Slack",
+            status_code=422,
+        )
+
+    adapter = _adapter(provider_id)
+    try:
+        access_token = read_credential_value(database, settings, SLACK_BOT_TOKEN_CREDENTIAL_KEY)
+        if not access_token:
+            raise IntegrationServiceError(
+                "integration_not_configured",
+                "The Slack Bot User OAuth token is not configured",
+            )
+        identity = adapter.identify(access_token)
+        _store_connection(
+            database,
+            settings,
+            actor_id,
+            provider_id,
+            OAuthTokenSet(access_token, None, None, identity.scopes),
+            identity,
+        )
+    except IntegrationServiceError as error:
+        _record_manual_failure(database, actor_id, provider_id, error.code)
+        raise
+    except (ConfigurationError, IntegrationProviderError) as provider_error:
+        database.rollback()
+        error_code = _provider_error_code(provider_error)
+        _record_manual_failure(database, actor_id, provider_id, error_code)
+        raise IntegrationServiceError(error_code, "The Slack Bot Token could not be verified") from provider_error
+
+    record_audit(
+        database,
+        AuditEvent.INTEGRATION_CONNECTED,
+        actor_id,
+        "integration_connection",
+        provider_id,
+        result="success",
+        context={"provider": provider_id, "status": "connected", "mode": "manual_token"},
+    )
+    database.commit()
+    row = database.scalar(select(IntegrationConnection).where(IntegrationConnection.provider == provider_id))
+    return _metadata(
+        provider_id,
+        adapter.display_name,
+        True,
+        row,
+        configured=True,
+        manual_token_configured=True,
+    )
 
 
 def complete_authorization(
@@ -169,7 +240,14 @@ def complete_authorization(
     )
     database.commit()
     row = database.scalar(select(IntegrationConnection).where(IntegrationConnection.provider == provider_id))
-    return _metadata(provider_id, adapter.display_name, True, row, configured=True)
+    return _metadata(
+        provider_id,
+        adapter.display_name,
+        True,
+        row,
+        configured=True,
+        manual_token_configured=_manual_token_configured(database, provider_id),
+    )
 
 
 def test_connection(
@@ -219,7 +297,14 @@ def test_connection(
         )
         database.commit()
         raise IntegrationServiceError(error_code, "The integration connection test failed") from provider_error
-    return _metadata(provider_id, adapter.display_name, True, row, configured=True)
+    return _metadata(
+        provider_id,
+        adapter.display_name,
+        True,
+        row,
+        configured=True,
+        manual_token_configured=_manual_token_configured(database, provider_id),
+    )
 
 
 def disconnect(
@@ -231,7 +316,14 @@ def disconnect(
     adapter = _adapter(provider_id)
     row = _get_connection(database, provider_id)
     if row is None:
-        return _metadata(provider_id, adapter.display_name, True, None, configured=_configured(database, adapter))
+        return _metadata(
+            provider_id,
+            adapter.display_name,
+            True,
+            None,
+            configured=_configured(database, adapter),
+            manual_token_configured=_manual_token_configured(database, provider_id),
+        )
 
     revoke_error: str | None = None
     if row.access_token_ciphertext:
@@ -257,7 +349,14 @@ def disconnect(
         context={"provider": provider_id, "status": "revoked", **({"error_code": revoke_error} if revoke_error else {})},
     )
     database.commit()
-    return _metadata(provider_id, adapter.display_name, True, row, configured=_configured(database, adapter))
+    return _metadata(
+        provider_id,
+        adapter.display_name,
+        True,
+        row,
+        configured=_configured(database, adapter),
+        manual_token_configured=_manual_token_configured(database, provider_id),
+    )
 
 
 def _store_connection(
@@ -328,15 +427,42 @@ def _get_connection(database, provider_id):
 
 def _configured(database, adapter) -> bool:
     keys = {row.credential_key for row in database.scalars(select(ApplicationCredential)).all()}
-    return adapter.client_id_credential_key in keys and adapter.client_secret_credential_key in keys
+    oauth_configured = adapter.client_id_credential_key in keys and adapter.client_secret_credential_key in keys
+    return oauth_configured or (
+        adapter.provider_id == "slack" and SLACK_BOT_TOKEN_CREDENTIAL_KEY in keys
+    )
 
 
-def _metadata(provider_id, name, supported, row, *, configured):
+def _manual_token_configured(database, provider_id: str) -> bool:
+    if provider_id != "slack":
+        return False
+    return database.scalar(
+        select(ApplicationCredential).where(
+            ApplicationCredential.credential_key == SLACK_BOT_TOKEN_CREDENTIAL_KEY
+        )
+    ) is not None
+
+
+def _record_manual_failure(database, actor_id: UUID, provider_id: str, error_code: str) -> None:
+    record_audit(
+        database,
+        AuditEvent.INTEGRATION_MANUAL_CONNECTION_FAILED,
+        actor_id,
+        "integration_connection",
+        provider_id,
+        result="failure",
+        context={"provider": provider_id, "error_code": error_code},
+    )
+    database.commit()
+
+
+def _metadata(provider_id, name, supported, row, *, configured, manual_token_configured=False):
     return {
         "provider_id": provider_id,
         "name": name,
         "supported": supported,
         "configured": configured,
+        "manual_token_configured": manual_token_configured,
         "status": row.status if row is not None else "not_connected" if supported else "not_supported",
         "external_account_label": row.external_account_label if row is not None else None,
         "granted_scopes": row.granted_scopes if row is not None else [],

@@ -21,6 +21,7 @@ def test_integration_oauth_credentials_are_fixed_registered_keys() -> None:
     expected = {
         "integration.slack.client_id",
         "integration.slack.client_secret",
+        "integration.slack.bot_token",
         "integration.google.client_id",
         "integration.google.client_secret",
         "integration.microsoft.client_id",

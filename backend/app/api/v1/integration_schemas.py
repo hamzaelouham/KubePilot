@@ -15,6 +15,7 @@ class IntegrationCatalogItem(BaseModel):
     name: str
     supported: bool
     configured: bool
+    manual_token_configured: bool
     status: IntegrationStatus
     external_account_label: str | None
     granted_scopes: list[str]

@@ -78,6 +78,12 @@ CREDENTIAL_DEFINITIONS: dict[str, CredentialDefinition] = {
             category="integration",
         ),
         CredentialDefinition(
+            key="integration.slack.bot_token",
+            display_name="Slack Bot User OAuth token",
+            description="Bot token from a manually installed Slack app in one workspace.",
+            category="integration",
+        ),
+        CredentialDefinition(
             key="integration.google.client_id",
             display_name="Google OAuth client ID",
             description="OAuth client ID used to connect KubePilot to Gmail.",

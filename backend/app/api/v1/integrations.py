@@ -13,6 +13,7 @@ from app.services.integrations import (
     IntegrationServiceError,
     begin_authorization,
     complete_authorization,
+    connect_manual_token,
     disconnect,
     list_connection_metadata,
     test_connection,
@@ -113,6 +114,20 @@ def authorize_integration(
         return IntegrationAuthorizeResponse(**begin_authorization(database, settings, actor.user_id, provider_id))
     except IntegrationServiceError as error:
         raise _service_error(error) from error
+
+
+@router.post("/settings/integrations/{provider_id}/connect", response_model=IntegrationActionResponse)
+def connect_manual_integration(
+    provider_id: str,
+    actor: Annotated[AuthenticatedActor, Depends(require_permission(Permission.SETTINGS_WRITE))],
+    settings: Annotated[Settings, Depends(get_settings)],
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+) -> IntegrationActionResponse:
+    try:
+        result = connect_manual_token(database, settings, actor.user_id, provider_id)
+    except IntegrationServiceError as error:
+        raise _service_error(error) from error
+    return IntegrationActionResponse(**result, message="The integration is connected")
 
 
 @router.get("/settings/integrations/{provider_id}/callback", response_model=IntegrationCallbackResponse)

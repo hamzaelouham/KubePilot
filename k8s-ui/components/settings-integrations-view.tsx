@@ -45,6 +45,7 @@ type IntegrationState = {
   name: string;
   supported: boolean;
   configured: boolean;
+  manual_token_configured: boolean;
   status: ConnectionStatus;
   external_account_label: string | null;
   granted_scopes: string[];
@@ -77,7 +78,7 @@ const integrations: Integration[] = [
     name: "Slack",
     category: "Communication",
     description: "Send alerts, notifications and updates to Slack channels.",
-    securityHint: "Uses scoped OAuth 2.0",
+    securityHint: "Uses an encrypted Bot Token or scoped OAuth 2.0",
     icon: MessageSquare,
     iconClassName: "text-[#36c5f0]",
     iconBackground: "bg-[#e8f8fc]",
@@ -315,14 +316,17 @@ export function SettingsIntegrationsView() {
     if (action === "learn") {
       setNotice(integration.id === "teams" || integration.id === "github" || integration.id === "webhooks"
         ? `${integration.name} is cataloged for a future connector contract.`
-        : `Configure the ${integration.name} OAuth application credentials in Settings Credentials before connecting.`);
+        : integration.id === "slack"
+          ? "Configure the Slack Bot User OAuth token or OAuth application credentials in Settings Credentials before connecting."
+          : `Configure the ${integration.name} OAuth application credentials in Settings Credentials before connecting.`);
       return;
     }
     setBusyProvider(integration.id);
     try {
+      const usesManualSlackToken = action === "connect" && integration.id === "slack" && states.slack?.manual_token_configured;
       const response = await fetch(
         action === "connect"
-          ? `/api/settings/integrations/${integration.id}/authorize`
+          ? `/api/settings/integrations/${integration.id}/${usesManualSlackToken ? "connect" : "authorize"}`
           : action === "test"
             ? `/api/settings/integrations/${integration.id}/test`
             : `/api/settings/integrations/${integration.id}`,
@@ -337,7 +341,13 @@ export function SettingsIntegrationsView() {
       if (payload.provider_id) {
         setStates((current) => ({ ...current, [payload.provider_id]: payload }));
       }
-      setNotice(action === "test" ? `${integration.name} connection test succeeded.` : `${integration.name} was disconnected.`);
+      setNotice(
+        action === "test"
+          ? `${integration.name} connection test succeeded.`
+          : action === "connect"
+            ? `${integration.name} connected successfully.`
+            : `${integration.name} was disconnected.`,
+      );
       void loadDeliveries();
     } catch (error: unknown) {
       setNotice(error instanceof Error ? error.message : `The ${integration.name} action failed`);
