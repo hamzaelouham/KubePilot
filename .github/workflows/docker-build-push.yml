@@ -1,6 +1,9 @@
 name: Build and push Docker images
 
 on:
+  push:
+    branches:
+      - master
   workflow_dispatch:
     inputs:
       tag:
