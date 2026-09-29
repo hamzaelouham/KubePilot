@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Badge } from "@/components/ui/badge";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { useClusterSelection } from "@/lib/use-cluster-selection";
 import type { BackendUser } from "@/lib/auth-client";
@@ -10,11 +9,10 @@ import type { BackendUser } from "@/lib/auth-client";
 const sections = [
   { label: "AI Providers", href: "/settings/providers" },
   { label: "Models", href: "/settings/models" },
+  { label: "Integrations", href: "/settings/integrations" },
   { label: "Secrets & Credentials", href: "/settings/credentials" },
   { label: "Audit Logs", href: "/settings/audit-logs" },
 ] as const;
-
-const plannedSections = ["Integrations"] as const;
 
 export function SettingsShell({ user, children }: { user: BackendUser; children: React.ReactNode }) {
   const router = useRouter();
@@ -56,18 +54,6 @@ export function SettingsShell({ user, children }: { user: BackendUser; children:
             >
               {section.label}
             </Link>
-          ))}
-          {plannedSections.map((section) => (
-            <span
-              key={section}
-              aria-disabled="true"
-              className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground"
-            >
-              {section}
-              <Badge variant="outline" className="text-[10px] font-normal">
-                Planned
-              </Badge>
-            </span>
           ))}
         </nav>
 
