@@ -310,6 +310,36 @@ class IntegrationConnection(Base):
     __table_args__ = (Index("ix_integration_connections_status", "status"),)
 
 
+class IntegrationDeliveryJob(Base):
+    __tablename__ = "integration_delivery_jobs"
+
+    id: Mapped[PrimaryKey]
+    connection_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("integration_connections.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    event_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    destination_hint: Mapped[str] = mapped_column(String(128), nullable=False)
+    payload_ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued", server_default="queued")
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3, server_default="3")
+    next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    last_error_code: Mapped[str | None] = mapped_column(String(128))
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("user_accounts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[CreatedAt]
+
+    __table_args__ = (
+        Index("ix_integration_delivery_jobs_status_due", "status", "next_attempt_at"),
+        Index("ix_integration_delivery_jobs_provider_created", "provider", "created_at"),
+    )
+
+
 class IntegrationOAuthState(Base):
     __tablename__ = "integration_oauth_states"
 

@@ -302,6 +302,11 @@ def _usable_access_token(database, settings, row, adapter) -> str:
     return tokens.access_token
 
 
+def get_usable_access_token(database, settings, row, adapter) -> str:
+    """Resolve a connection token without exposing encryption outside this service boundary."""
+    return _usable_access_token(database, settings, row, adapter)
+
+
 def _client_credentials(database, settings, adapter) -> tuple[str, str]:
     client_id = read_credential_value(database, settings, adapter.client_id_credential_key)
     client_secret = read_credential_value(database, settings, adapter.client_secret_credential_key)

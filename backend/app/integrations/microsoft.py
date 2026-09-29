@@ -1,9 +1,11 @@
+import re
 from urllib.parse import urlencode
 
 import httpx
 
 from .base import (
     ConnectionIdentity,
+    DeliveryReceipt,
     IntegrationAdapter,
     OAuthTokenSet,
     normalized_scopes,
@@ -21,6 +23,10 @@ class OutlookAdapter(IntegrationAdapter):
     client_id_credential_key = "integration.microsoft.client_id"
     client_secret_credential_key = "integration.microsoft.client_secret"
     required_scopes = ("Mail.Send", "User.Read", "offline_access", "openid", "profile", "email")
+
+    def validate_destination(self, destination: str) -> None:
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", destination):
+            raise IntegrationProviderError("integration_delivery_invalid")
 
     def build_authorization_url(self, client_id: str, redirect_uri: str, state: str) -> str:
         return "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?" + urlencode(
@@ -101,3 +107,30 @@ class OutlookAdapter(IntegrationAdapter):
         # Microsoft Graph has no portable token-revoke endpoint for this flow;
         # disconnect clears local tokens and future refreshes stop immediately.
         return None
+
+    def send(
+        self,
+        access_token: str,
+        destination: str,
+        subject: str | None,
+        body: str,
+        *,
+        client: httpx.Client | None = None,
+    ) -> DeliveryReceipt:
+        self.validate_destination(destination)
+        provider_request(
+            "POST",
+            "https://graph.microsoft.com/v1.0/me/sendMail",
+            client=client,
+            allow_empty=True,
+            headers={"authorization": f"Bearer {access_token}"},
+            json={
+                "message": {
+                    "subject": subject or "KubePilot notification",
+                    "body": {"contentType": "Text", "content": body},
+                    "toRecipients": [{"emailAddress": {"address": destination}}],
+                },
+                "saveToSentItems": True,
+            },
+        )
+        return DeliveryReceipt()

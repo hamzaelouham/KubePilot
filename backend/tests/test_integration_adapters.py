@@ -1,4 +1,6 @@
+import base64
 import httpx
+import json
 import pytest
 
 from app.integrations.base import IntegrationProviderError
@@ -68,4 +70,50 @@ def test_provider_http_failures_are_normalized_without_upstream_body() -> None:
     with pytest.raises(IntegrationProviderError) as error:
         SlackAdapter().identify("token", client=mock_client(handler))
     assert error.value.code == "integration_provider_unavailable"
+    assert error.value.retryable is True
     assert "provider secret" not in str(error.value)
+
+
+def test_provider_timeout_is_explicitly_ambiguous() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("provider timed out")
+
+    with pytest.raises(IntegrationProviderError) as error:
+        SlackAdapter().send("token", "C123", "Subject", "Body", client=mock_client(handler))
+    assert error.value.code == "integration_provider_unavailable"
+    assert error.value.outcome_unknown is True
+    assert error.value.retryable is False
+
+
+def test_slack_send_uses_channel_and_plain_text_payload() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/api/chat.postMessage")
+        assert request.headers["authorization"] == "Bearer token"
+        assert request.content == b'{"channel":"C123","text":"Body","unfurl_links":false}'
+        return httpx.Response(200, json={"ok": True, "ts": "123.45"})
+
+    receipt = SlackAdapter().send("token", "C123", "Subject", "Body", client=mock_client(handler))
+    assert receipt.receipt_id == "123.45"
+
+
+def test_gmail_send_encodes_plain_text_message() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raw = json.loads(request.content)["raw"]
+        decoded = base64.urlsafe_b64decode(raw + "===")
+        assert b"To: user@example.com" in decoded
+        assert b"Subject: Subject" in decoded
+        assert decoded.endswith(b"Body")
+        return httpx.Response(200, json={"id": "gmail-1"})
+
+    receipt = GmailAdapter().send("token", "user@example.com", "Subject", "Body", client=mock_client(handler))
+    assert receipt.receipt_id == "gmail-1"
+
+
+def test_outlook_send_accepts_empty_success_response() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/me/sendMail")
+        assert json.loads(request.content)["message"]["body"] == {"contentType": "Text", "content": "Body"}
+        return httpx.Response(202)
+
+    receipt = OutlookAdapter().send("token", "user@example.com", "Subject", "Body", client=mock_client(handler))
+    assert receipt.receipt_id is None

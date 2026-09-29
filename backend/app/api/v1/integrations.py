@@ -1,5 +1,8 @@
 from typing import Annotated
 
+from datetime import datetime
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session as SQLAlchemySession
 
@@ -14,16 +17,81 @@ from app.services.integrations import (
     list_connection_metadata,
     test_connection,
 )
+from app.services.integration_delivery import (
+    DeliveryServiceError,
+    get_delivery_job,
+    list_delivery_jobs,
+    retry_delivery,
+)
 
 from .integration_schemas import (
     IntegrationActionResponse,
     IntegrationAuthorizeResponse,
     IntegrationCallbackResponse,
+    IntegrationDeliveryItem,
+    IntegrationDeliveryListResponse,
+    IntegrationDeliveryRetryResponse,
     IntegrationListResponse,
 )
 
 
 router = APIRouter()
+
+
+@router.get("/settings/integrations/deliveries", response_model=IntegrationDeliveryListResponse)
+def delivery_history(
+    _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.SETTINGS_READ))],
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+    provider: str | None = Query(default=None, min_length=1, max_length=32),
+    status: str | None = Query(default=None, min_length=1, max_length=32),
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
+    page: int = Query(default=1, ge=1, le=10_000),
+    limit: int = Query(default=20, ge=1, le=100),
+) -> IntegrationDeliveryListResponse:
+    try:
+        result = list_delivery_jobs(
+            database,
+            provider=provider,
+            status=status,
+            date_from=date_from,
+            date_to=date_to,
+            page=page,
+            limit=limit,
+        )
+    except DeliveryServiceError as error:
+        raise _delivery_error(error) from error
+    return IntegrationDeliveryListResponse(
+        items=[IntegrationDeliveryItem(**item) for item in result["items"]],
+        total=result["total"],
+        page=result["page"],
+        limit=result["limit"],
+    )
+
+
+@router.get("/settings/integrations/deliveries/{delivery_id}", response_model=IntegrationDeliveryItem)
+def delivery_detail(
+    delivery_id: UUID,
+    _authorized: Annotated[AuthenticatedActor, Depends(require_permission(Permission.SETTINGS_READ))],
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+) -> IntegrationDeliveryItem:
+    try:
+        return IntegrationDeliveryItem(**get_delivery_job(database, delivery_id))
+    except DeliveryServiceError as error:
+        raise _delivery_error(error) from error
+
+
+@router.post("/settings/integrations/deliveries/{delivery_id}/retry", response_model=IntegrationDeliveryRetryResponse)
+def retry_delivery_job(
+    delivery_id: UUID,
+    actor: Annotated[AuthenticatedActor, Depends(require_permission(Permission.SETTINGS_WRITE))],
+    database: Annotated[SQLAlchemySession, Depends(get_database_session)],
+) -> IntegrationDeliveryRetryResponse:
+    try:
+        result = retry_delivery(database, actor.user_id, delivery_id)
+    except DeliveryServiceError as error:
+        raise _delivery_error(error) from error
+    return IntegrationDeliveryRetryResponse(**result, message="The delivery was queued for retry")
 
 
 @router.get("/settings/integrations", response_model=IntegrationListResponse)
@@ -97,6 +165,13 @@ def disconnect_integration(
 
 
 def _service_error(error: IntegrationServiceError) -> HTTPException:
+    return HTTPException(
+        status_code=error.status_code,
+        detail={"code": error.code, "message": str(error)},
+    )
+
+
+def _delivery_error(error: DeliveryServiceError) -> HTTPException:
     return HTTPException(
         status_code=error.status_code,
         detail={"code": error.code, "message": str(error)},

@@ -1,9 +1,11 @@
+import re
 from urllib.parse import urlencode
 
 import httpx
 
 from .base import (
     ConnectionIdentity,
+    DeliveryReceipt,
     IntegrationProviderError,
     OAuthTokenSet,
     IntegrationAdapter,
@@ -22,6 +24,10 @@ class SlackAdapter(IntegrationAdapter):
     client_id_credential_key = "integration.slack.client_id"
     client_secret_credential_key = "integration.slack.client_secret"
     required_scopes = ("chat:write",)
+
+    def validate_destination(self, destination: str) -> None:
+        if not re.fullmatch(r"[CGD][A-Z0-9]+", destination):
+            raise IntegrationProviderError("integration_delivery_invalid")
 
     def build_authorization_url(self, client_id: str, redirect_uri: str, state: str) -> str:
         return "https://slack.com/oauth/v2/authorize?" + urlencode(
@@ -94,3 +100,28 @@ class SlackAdapter(IntegrationAdapter):
         )
         if payload.get("ok") is not True:
             raise IntegrationProviderError("integration_provider_rejected")
+
+    def send(
+        self,
+        access_token: str,
+        destination: str,
+        subject: str | None,
+        body: str,
+        *,
+        client: httpx.Client | None = None,
+    ) -> DeliveryReceipt:
+        self.validate_destination(destination)
+        payload = provider_request(
+            "POST",
+            "https://slack.com/api/chat.postMessage",
+            client=client,
+            headers={"authorization": f"Bearer {access_token}"},
+            json={"channel": destination, "text": body, "unfurl_links": False},
+        )
+        if payload.get("ok") is not True:
+            error_code = payload.get("error")
+            if error_code == "ratelimited":
+                raise IntegrationProviderError("integration_provider_rate_limited", retryable=True)
+            raise IntegrationProviderError("integration_delivery_rejected")
+        receipt_id = payload.get("ts")
+        return DeliveryReceipt(receipt_id if isinstance(receipt_id, str) else None)

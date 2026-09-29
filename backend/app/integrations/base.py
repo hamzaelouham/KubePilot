@@ -8,9 +8,18 @@ import httpx
 class IntegrationProviderError(RuntimeError):
     """Safe, normalized provider failure that can cross the API boundary."""
 
-    def __init__(self, code: str, message: str = "The integration provider request failed") -> None:
+    def __init__(
+        self,
+        code: str,
+        message: str = "The integration provider request failed",
+        *,
+        retryable: bool = False,
+        outcome_unknown: bool = False,
+    ) -> None:
         super().__init__(message)
         self.code = code
+        self.retryable = retryable
+        self.outcome_unknown = outcome_unknown
 
 
 @dataclass(frozen=True)
@@ -28,12 +37,19 @@ class ConnectionIdentity:
     scopes: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class DeliveryReceipt:
+    receipt_id: str | None = None
+
+
 class IntegrationAdapter(Protocol):
     provider_id: str
     display_name: str
     client_id_credential_key: str
     client_secret_credential_key: str
     required_scopes: tuple[str, ...]
+
+    def validate_destination(self, destination: str) -> None: ...
 
     def build_authorization_url(self, client_id: str, redirect_uri: str, state: str) -> str: ...
 
@@ -70,12 +86,23 @@ class IntegrationAdapter(Protocol):
         client: httpx.Client | None = None,
     ) -> None: ...
 
+    def send(
+        self,
+        access_token: str,
+        destination: str,
+        subject: str | None,
+        body: str,
+        *,
+        client: httpx.Client | None = None,
+    ) -> DeliveryReceipt: ...
+
 
 def provider_request(
     method: str,
     url: str,
     *,
     client: httpx.Client | None = None,
+    allow_empty: bool = False,
     **kwargs: Any,
 ) -> dict[str, Any]:
     owned_client = client is None
@@ -83,13 +110,28 @@ def provider_request(
     try:
         try:
             response = request_client.request(method, url, **kwargs)
-        except httpx.HTTPError as error:
-            raise IntegrationProviderError("integration_provider_unavailable") from error
+        except httpx.TimeoutException as error:
+            raise IntegrationProviderError(
+                "integration_provider_unavailable",
+                retryable=False,
+                outcome_unknown=True,
+            ) from error
+        except httpx.TransportError as error:
+            raise IntegrationProviderError(
+                "integration_provider_unavailable",
+                retryable=True,
+            ) from error
         if response.status_code >= 400:
-            raise IntegrationProviderError(_status_error_code(response.status_code))
+            code = _status_error_code(response.status_code)
+            raise IntegrationProviderError(
+                code,
+                retryable=response.status_code == 429 or response.status_code >= 500,
+            )
         try:
             payload = response.json()
         except ValueError as error:
+            if allow_empty and not response.content:
+                return {}
             raise IntegrationProviderError("integration_provider_invalid_response") from error
         if not isinstance(payload, dict):
             raise IntegrationProviderError("integration_provider_invalid_response")

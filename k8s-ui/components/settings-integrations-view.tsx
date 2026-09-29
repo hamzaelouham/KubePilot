@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Blocks,
   BookOpen,
   CheckCircle2,
+  Clock,
   CircleAlert,
   GitBranch,
   Info,
@@ -14,6 +15,7 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  RefreshCw,
   Users,
   Webhook,
 } from "lucide-react";
@@ -48,6 +50,23 @@ type IntegrationState = {
   granted_scopes: string[];
   last_tested_at: string | null;
   last_error_code: string | null;
+};
+
+type DeliveryStatus = "queued" | "running" | "succeeded" | "failed" | "outcome_unknown";
+
+type DeliveryItem = {
+  delivery_id: string;
+  provider_id: string;
+  event_type: string;
+  destination_hint: string;
+  status: DeliveryStatus;
+  attempt_count: number;
+  max_attempts: number;
+  next_attempt_at: string;
+  last_error_code: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
 };
 
 const categories: Category[] = ["All", "Notifications", "Communication", "Source Control", "Automation"];
@@ -221,6 +240,10 @@ export function SettingsIntegrationsView() {
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(() => callbackNoticeFromLocation());
   const [busyProvider, setBusyProvider] = useState<string | null>(null);
+  const [deliveries, setDeliveries] = useState<DeliveryItem[]>([]);
+  const [deliveryLoading, setDeliveryLoading] = useState(true);
+  const [deliveryError, setDeliveryError] = useState<string | null>(null);
+  const [retryingDelivery, setRetryingDelivery] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -247,6 +270,28 @@ export function SettingsIntegrationsView() {
       cancelled = true;
     };
   }, []);
+
+  const loadDeliveries = useCallback(async () => {
+    setDeliveryLoading(true);
+    setDeliveryError(null);
+    try {
+      const response = await fetch("/api/settings/integrations/deliveries?limit=20", { cache: "no-store" });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(safeErrorMessage(payload, "The delivery history could not be loaded"));
+      setDeliveries((payload.items ?? []) as DeliveryItem[]);
+    } catch (error: unknown) {
+      setDeliveryError(error instanceof Error ? error.message : "The delivery history could not be loaded");
+    } finally {
+      setDeliveryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const task = Promise.resolve().then(() => loadDeliveries());
+    return () => {
+      void task.catch(() => undefined);
+    };
+  }, [loadDeliveries]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -293,6 +338,7 @@ export function SettingsIntegrationsView() {
         setStates((current) => ({ ...current, [payload.provider_id]: payload }));
       }
       setNotice(action === "test" ? `${integration.name} connection test succeeded.` : `${integration.name} was disconnected.`);
+      void loadDeliveries();
     } catch (error: unknown) {
       setNotice(error instanceof Error ? error.message : `The ${integration.name} action failed`);
     } finally {
@@ -322,6 +368,24 @@ export function SettingsIntegrationsView() {
     );
   }
 
+  async function retryDelivery(deliveryId: string) {
+    setRetryingDelivery(deliveryId);
+    try {
+      const response = await fetch(`/api/settings/integrations/deliveries/${encodeURIComponent(deliveryId)}/retry`, {
+        method: "POST",
+        cache: "no-store",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(safeErrorMessage(payload, "The delivery could not be retried"));
+      setNotice("The delivery was queued for retry.");
+      await loadDeliveries();
+    } catch (error: unknown) {
+      setNotice(error instanceof Error ? error.message : "The delivery could not be retried");
+    } finally {
+      setRetryingDelivery(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -334,7 +398,7 @@ export function SettingsIntegrationsView() {
             <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">Connect KubePilot with external services for notifications, communication, and automation.</p>
             <p className="mt-3 flex max-w-2xl items-start gap-2 text-xs leading-5 text-muted-foreground">
               <Info className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden="true" />
-              <span>Connection status is managed by the backend. Delivery workflows are not implemented yet, and credentials never reach the browser.</span>
+              <span>Connection and delivery status are managed by the backend. Message content and credentials never reach the browser.</span>
             </p>
           </div>
         </div>
@@ -375,6 +439,51 @@ export function SettingsIntegrationsView() {
       {renderSection("Connected", "Services that are currently connected to your KubePilot environment.", connectedIntegrations, loaded ? "No connected integrations match the current filters." : "Loading connection status…")}
       {renderSection("Available integrations", "Connect additional services to extend KubePilot’s capabilities.", availableIntegrations, "No available integrations match the current filters.")}
 
+      <section aria-labelledby="delivery-history-heading" className="space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 id="delivery-history-heading" className="font-heading text-lg font-semibold text-foreground">Delivery activity</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Recent notification delivery status without message content or provider secrets.</p>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={() => void loadDeliveries()} disabled={deliveryLoading}>
+            <RefreshCw className={cn("size-4", deliveryLoading && "animate-spin")} data-icon="inline-start" />
+            Refresh
+          </Button>
+        </div>
+        {deliveryError ? (
+          <div role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <span>{deliveryError}</span>
+          </div>
+        ) : deliveryLoading ? (
+          <Card aria-busy="true"><CardContent className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><Clock className="size-4 animate-pulse" aria-hidden="true" />Loading delivery history…</CardContent></Card>
+        ) : deliveries.length === 0 ? (
+          <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">No deliveries have been queued.</CardContent></Card>
+        ) : (
+          <div className="space-y-2">
+            {deliveries.map((delivery) => (
+              <Card key={delivery.delivery_id}>
+                <CardContent className="flex flex-wrap items-center gap-3 p-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium text-foreground">{providerName(delivery.provider_id)}</span>
+                      <DeliveryStatusBadge status={delivery.status} retrying={delivery.status === "queued" && delivery.attempt_count > 0} />
+                    </div>
+                    <p className="mt-1 truncate text-sm text-muted-foreground">{delivery.event_type} · {delivery.destination_hint}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Attempt {delivery.attempt_count}/{delivery.max_attempts} · {formatDate(delivery.created_at)}{delivery.last_error_code ? ` · ${delivery.last_error_code}` : ""}</p>
+                  </div>
+                  {delivery.status === "failed" ? (
+                    <Button type="button" variant="outline" size="sm" onClick={() => void retryDelivery(delivery.delivery_id)} disabled={retryingDelivery === delivery.delivery_id}>
+                      {retryingDelivery === delivery.delivery_id ? "Retrying…" : "Retry"}
+                    </Button>
+                  ) : null}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </section>
+
       <Card className="border-primary/20 bg-primary/5">
         <CardHeader className="flex-row items-center gap-3 space-y-0">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary" aria-hidden="true">
@@ -413,6 +522,20 @@ function safeErrorMessage(payload: unknown, fallback: string): string {
     }
   }
   return fallback;
+}
+
+function DeliveryStatusBadge({ status, retrying }: { status: DeliveryStatus; retrying: boolean }) {
+  const label = status === "outcome_unknown" ? "Outcome unknown" : retrying ? "Retrying" : status[0].toUpperCase() + status.slice(1);
+  const className = status === "succeeded"
+    ? "text-emerald-700 dark:text-emerald-300"
+    : status === "failed" || status === "outcome_unknown"
+      ? "text-destructive"
+      : "text-muted-foreground";
+  return <Badge variant={status === "succeeded" ? "secondary" : "outline"} className={className}>{label}</Badge>;
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
 function providerName(provider: string): string {

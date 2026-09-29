@@ -15,6 +15,7 @@ from app.core.audit import AuditEvent, record_audit
 from app.core.config import Settings
 from app.db.session import create_session_factory
 from app.models.entities import InstallationJob
+from app.jobs.integration_delivery_worker import requeue_running_deliveries, run_pending_deliveries
 
 logger = logging.getLogger(__name__)
 
@@ -432,6 +433,7 @@ def _run_cycle(settings: Settings) -> None:
     database = create_session_factory(settings)()
     try:
         run_pending_installations(database, settings)
+        run_pending_deliveries(database, settings)
     finally:
         database.close()
 

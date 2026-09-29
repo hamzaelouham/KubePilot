@@ -22,7 +22,7 @@ from app.api.v1.schemas import ErrorResponse
 from app.api.v1.users import router as users_router
 from app.core.config import ConfigurationError, Settings
 from app.db.session import create_session_factory
-from app.jobs.worker import requeue_running_jobs, _worker_loop
+from app.jobs.worker import requeue_running_deliveries, requeue_running_jobs, _worker_loop
 from app.models.entities import ClusterConnection
 from app.kubernetes.client import (
     ClusterClientError,
@@ -62,6 +62,7 @@ def _requeue_orphaned_jobs(settings: Settings) -> None:
     database = create_session_factory(settings)()
     try:
         requeue_running_jobs(database)
+        requeue_running_deliveries(database)
     except Exception as error:  # noqa: BLE001
         logger.warning("Skipped installation job requeue: %s", error)
     finally:
