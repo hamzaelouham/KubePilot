@@ -12,6 +12,7 @@ class Settings:
     auth_secret: str
     database_url: str
     encryption_key: str | None = None
+    public_url: str | None = None
     provider_allowed_hosts: tuple[str, ...] = ()
     service_name: str = "kubepilot-api"
     cluster_name: str = "primary"
@@ -49,6 +50,8 @@ class Settings:
         )
         raw_encryption_key = os.getenv("KUBEPILOT_ENCRYPTION_KEY")
         encryption_key = raw_encryption_key.strip() if raw_encryption_key else None
+        raw_public_url = os.getenv("KUBEPILOT_PUBLIC_URL")
+        public_url = raw_public_url.strip().rstrip("/") if raw_public_url else None
         provider_allowed_hosts = tuple(
             host.strip().lower().rstrip(".")
             for host in os.getenv("KUBEPILOT_PROVIDER_ALLOWED_HOSTS", "").split(",")
@@ -75,11 +78,14 @@ class Settings:
             raise ConfigurationError("KUBEPILOT_CLUSTER_NAME must not be empty")
         if not admin_email or not admin_password:
             raise ConfigurationError("KUBEPILOT_ADMIN_EMAIL and KUBEPILOT_ADMIN_PASSWORD must not be empty")
+        if public_url and not public_url.startswith(("http://", "https://")):
+            raise ConfigurationError("KUBEPILOT_PUBLIC_URL must use http:// or https://")
 
         return cls(
             auth_secret=auth_secret,
             database_url=database_url,
             encryption_key=encryption_key,
+            public_url=public_url,
             provider_allowed_hosts=provider_allowed_hosts,
             service_name=service_name,
             cluster_name=cluster_name,

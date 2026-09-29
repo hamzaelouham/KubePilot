@@ -87,6 +87,7 @@ ACTION_CATEGORY_PREFIXES: dict[AuditLogCategory, tuple[str, ...]] = {
         "cluster.",
         "settings.",
         "credential.",
+        "integration.",
     ),
     "resource": (
         "resource.",

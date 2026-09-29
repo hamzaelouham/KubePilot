@@ -1,6 +1,6 @@
 # KubePilot - Project Overview
 
-<!-- blueprint:source-hash 23963e0d3c6a74e7435b01ed1b3ad2aafbe0279b08f435d72ca157229ec8ce67 -->
+<!-- blueprint:source-hash e78ed6ace43586d1f1a35e439fcae4bb97db5289370d2f554ec77b2465cac165 -->
 
 > A self-hosted Kubernetes operations platform for cluster visibility, troubleshooting, and safe resource management.
 
@@ -49,6 +49,9 @@ Features are ordered as tracked in `build-plan.md`; checked items are shipped.
 22. **Integrations and AI agent automation** - partially started: the protected Integrations catalog UI is shipped, while Slack, Gmail, Outlook, and other connector delivery remain deferred; configurable Kubernetes AI agent workflows belong under the existing AI Assistant area, never Settings.
    - **22a. Secrets and API key management** - shipped admin-only CRUD-style management of KubePilot-registered provider and integration credentials using metadata-only reads, write-only create/replace, and confirmed deletion.
    - **22b. Integrations catalog UI foundation** - shipped frontend-only catalog, filters, search, status groupings, and local preview actions for Slack, Teams, Gmail, Outlook, GitHub, and Webhooks.
+   - **22c. Integration connections and delivery** - planned backend-authoritative connector work, split into connection lifecycle and delivery/status slices.
+     - **22c1. Integration connection lifecycle** - planned initial Slack, Gmail, and Microsoft Outlook connection registry, OAuth, encrypted token references, scoped permissions, testing, status, and audit contracts; Teams, GitHub, and Webhooks remain catalog-only until separately approved.
+     - **22c2. Integration delivery and status** - planned queued delivery, idempotency, bounded retries, safe provider errors, delivery history, and audit visibility.
 
 ## Data model
 
@@ -156,4 +159,4 @@ backend ServiceAccount/RBAC and a background worker for Helm jobs.
 
 - Confirm whether the commercial offering is self-hosted only, managed, or both.
 - Carry the exact ServiceAccount/RBAC and protected-system-namespace policy into future operation specs.
-- Feature 22 remains partially implemented: later specs must define Slack, Gmail, Outlook, and other connector boundaries, connection/delivery contracts, and AI-agent workflow behavior under Assistant without expanding the credential store into arbitrary or Kubernetes secret management.
+- Feature 22 remains partially implemented: 22c1 and 22c2 define the remaining Slack, Gmail, and Outlook connector boundaries and delivery contracts; 22d will define AI-agent workflow behavior under Assistant without expanding the credential store into arbitrary or Kubernetes secret management.

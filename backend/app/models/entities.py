@@ -279,6 +279,53 @@ class ApplicationCredential(Base):
     )
 
 
+class IntegrationConnection(Base):
+    __tablename__ = "integration_connections"
+
+    id: Mapped[PrimaryKey]
+    provider: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="not_connected", server_default="not_connected")
+    external_account_id: Mapped[str | None] = mapped_column(String(512))
+    external_account_label: Mapped[str | None] = mapped_column(String(512))
+    granted_scopes: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
+    access_token_ciphertext: Mapped[str | None] = mapped_column(Text)
+    refresh_token_ciphertext: Mapped[str | None] = mapped_column(Text)
+    access_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error_code: Mapped[str | None] = mapped_column(String(128))
+    last_tested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("user_accounts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    updated_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("user_accounts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    created_at: Mapped[CreatedAt]
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now().astimezone(),
+        server_default=text("now()"),
+    )
+
+    __table_args__ = (Index("ix_integration_connections_status", "status"),)
+
+
+class IntegrationOAuthState(Base):
+    __tablename__ = "integration_oauth_states"
+
+    id: Mapped[PrimaryKey]
+    state_digest: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    actor_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("user_accounts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[CreatedAt]
+
+    __table_args__ = (Index("ix_integration_oauth_states_provider_expiry", "provider", "expires_at"),)
+
+
 class AIModelConfig(Base):
     __tablename__ = "ai_model_configs"
 

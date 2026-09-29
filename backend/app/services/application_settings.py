@@ -58,11 +58,51 @@ class CredentialDefinition:
     category: Literal["provider", "integration"]
 
 
-# Later provider/integration modules register their own stable server-side keys.
-# Keeping these registries empty here prevents bootstrap secrets or arbitrary
-# environment variables from becoming editable through this foundation API.
+# Provider and integration modules register stable server-side keys here. The
+# registry is intentionally explicit so bootstrap secrets and arbitrary
+# environment variables cannot become editable through this API.
 SETTING_DEFINITIONS: dict[str, SettingDefinition] = {}
-CREDENTIAL_DEFINITIONS: dict[str, CredentialDefinition] = {}
+CREDENTIAL_DEFINITIONS: dict[str, CredentialDefinition] = {
+    definition.key: definition
+    for definition in (
+        CredentialDefinition(
+            key="integration.slack.client_id",
+            display_name="Slack OAuth client ID",
+            description="OAuth client ID used to connect KubePilot to Slack.",
+            category="integration",
+        ),
+        CredentialDefinition(
+            key="integration.slack.client_secret",
+            display_name="Slack OAuth client secret",
+            description="OAuth client secret used to connect KubePilot to Slack.",
+            category="integration",
+        ),
+        CredentialDefinition(
+            key="integration.google.client_id",
+            display_name="Google OAuth client ID",
+            description="OAuth client ID used to connect KubePilot to Gmail.",
+            category="integration",
+        ),
+        CredentialDefinition(
+            key="integration.google.client_secret",
+            display_name="Google OAuth client secret",
+            description="OAuth client secret used to connect KubePilot to Gmail.",
+            category="integration",
+        ),
+        CredentialDefinition(
+            key="integration.microsoft.client_id",
+            display_name="Microsoft OAuth client ID",
+            description="OAuth client ID used to connect KubePilot to Microsoft Outlook.",
+            category="integration",
+        ),
+        CredentialDefinition(
+            key="integration.microsoft.client_secret",
+            display_name="Microsoft OAuth client secret",
+            description="OAuth client secret used to connect KubePilot to Microsoft Outlook.",
+            category="integration",
+        ),
+    )
+}
 
 
 def register_setting_definition(definition: SettingDefinition) -> None:

@@ -17,6 +17,19 @@ from app.models.entities import ApplicationCredential, AuditAction, UserAccount
 from app.services import application_settings as service
 
 
+def test_integration_oauth_credentials_are_fixed_registered_keys() -> None:
+    expected = {
+        "integration.slack.client_id",
+        "integration.slack.client_secret",
+        "integration.google.client_id",
+        "integration.google.client_secret",
+        "integration.microsoft.client_id",
+        "integration.microsoft.client_secret",
+    }
+    assert expected <= set(service.CREDENTIAL_DEFINITIONS)
+    assert all(service.CREDENTIAL_DEFINITIONS[key].category == "integration" for key in expected)
+
+
 @pytest.fixture()
 def settings_store(monkeypatch: pytest.MonkeyPatch):
     engine = create_engine(

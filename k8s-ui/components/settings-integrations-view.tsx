@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Blocks,
@@ -24,6 +24,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 
 type Category = "All" | "Notifications" | "Communication" | "Source Control" | "Automation";
+type ConnectionStatus = "not_connected" | "authorizing" | "connected" | "error" | "revoked" | "not_supported";
+type Action = "connect" | "test" | "disconnect" | "learn";
 
 type Integration = {
   id: string;
@@ -36,6 +38,18 @@ type Integration = {
   iconBackground: string;
 };
 
+type IntegrationState = {
+  provider_id: string;
+  name: string;
+  supported: boolean;
+  configured: boolean;
+  status: ConnectionStatus;
+  external_account_label: string | null;
+  granted_scopes: string[];
+  last_tested_at: string | null;
+  last_error_code: string | null;
+};
+
 const categories: Category[] = ["All", "Notifications", "Communication", "Source Control", "Automation"];
 
 const integrations: Integration[] = [
@@ -44,7 +58,7 @@ const integrations: Integration[] = [
     name: "Slack",
     category: "Communication",
     description: "Send alerts, notifications and updates to Slack channels.",
-    securityHint: "Uses secure OAuth 2.0",
+    securityHint: "Uses scoped OAuth 2.0",
     icon: MessageSquare,
     iconClassName: "text-[#36c5f0]",
     iconBackground: "bg-[#e8f8fc]",
@@ -54,7 +68,7 @@ const integrations: Integration[] = [
     name: "GitHub",
     category: "Source Control",
     description: "Integrate with GitHub for automation and notifications.",
-    securityHint: "Uses secure OAuth 2.0",
+    securityHint: "Connector contract planned",
     icon: GitBranch,
     iconClassName: "text-foreground",
     iconBackground: "bg-muted",
@@ -64,7 +78,7 @@ const integrations: Integration[] = [
     name: "Microsoft Teams",
     category: "Communication",
     description: "Send alerts and messages to Teams channels.",
-    securityHint: "Uses secure OAuth 2.0",
+    securityHint: "Connector contract planned",
     icon: Users,
     iconClassName: "text-[#6264a7]",
     iconBackground: "bg-[#efefff]",
@@ -74,7 +88,7 @@ const integrations: Integration[] = [
     name: "Gmail",
     category: "Notifications",
     description: "Send email notifications and reports.",
-    securityHint: "Uses secure OAuth 2.0",
+    securityHint: "Uses scoped OAuth 2.0",
     icon: Mail,
     iconClassName: "text-[#ea4335]",
     iconBackground: "bg-[#fff0ee]",
@@ -84,7 +98,7 @@ const integrations: Integration[] = [
     name: "Microsoft Outlook",
     category: "Notifications",
     description: "Send email notifications using Microsoft 365.",
-    securityHint: "Uses secure OAuth 2.0",
+    securityHint: "Uses scoped OAuth 2.0",
     icon: Mail,
     iconClassName: "text-[#0078d4]",
     iconBackground: "bg-[#eaf5ff]",
@@ -94,37 +108,54 @@ const integrations: Integration[] = [
     name: "Webhooks",
     category: "Automation",
     description: "Send events to custom webhook endpoints.",
-    securityHint: "Supports HMAC signatures",
+    securityHint: "Connector contract planned",
     icon: Webhook,
     iconClassName: "text-[#e91e63]",
     iconBackground: "bg-[#fff0f6]",
   },
 ];
 
-const initialConnections: Record<string, boolean> = {
-  slack: true,
-  github: true,
-};
+function StatusBadge({ state, loaded }: { state?: IntegrationState; loaded: boolean }) {
+  const connected = state?.status === "connected";
+  const label = !loaded
+    ? "Loading"
+    : !state?.supported
+      ? "Coming soon"
+      : !state.configured
+        ? "Needs credentials"
+        : state.status === "error"
+          ? "Needs attention"
+          : state.status === "revoked"
+            ? "Disconnected"
+            : connected
+              ? "Connected"
+              : "Not connected";
 
-function StatusBadge({ connected }: { connected: boolean }) {
   return (
     <Badge variant={connected ? "secondary" : "outline"} className={connected ? "text-emerald-700 dark:text-emerald-300" : "text-muted-foreground"}>
       <span className={cn("size-1.5 rounded-full", connected ? "bg-emerald-600" : "bg-muted-foreground/50")} aria-hidden="true" />
-      {connected ? "Connected" : "Not connected"}
+      {label}
     </Badge>
   );
 }
 
 function IntegrationCard({
   integration,
-  connected,
+  state,
+  loaded,
+  busy,
   onAction,
 }: {
   integration: Integration;
-  connected: boolean;
-  onAction: (integration: Integration, action: "connect" | "manage" | "learn") => void;
+  state?: IntegrationState;
+  loaded: boolean;
+  busy: boolean;
+  onAction: (integration: Integration, action: Action) => void;
 }) {
   const Icon = integration.icon;
+  const connected = state?.status === "connected";
+  const supported = state?.supported ?? (integration.id === "slack" || integration.id === "gmail" || integration.id === "outlook");
+  const configured = state?.configured ?? false;
 
   return (
     <Card className="h-full">
@@ -135,23 +166,47 @@ function IntegrationCard({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-heading text-base font-semibold text-foreground">{integration.name}</h3>
-            <StatusBadge connected={connected} />
+            <StatusBadge state={state} loaded={loaded} />
           </div>
           <p className="mt-2 max-w-sm text-sm leading-5 text-muted-foreground">{integration.description}</p>
+          {state?.external_account_label ? (
+            <p className="mt-2 truncate text-xs text-foreground" title={state.external_account_label}>
+              Connected account: {state.external_account_label}
+            </p>
+          ) : null}
           <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
             <ShieldCheck className="size-3.5 text-primary" aria-hidden="true" />
             {integration.securityHint}
           </p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
-          <Button type="button" variant={connected ? "outline" : "default"} size="sm" onClick={() => onAction(integration, connected ? "manage" : "connect")}>
-            {connected ? "Manage" : "Connect"}
-          </Button>
-          {!connected ? (
+          {!loaded || busy ? (
+            <Button type="button" variant="outline" size="sm" disabled>
+              {busy ? "Working…" : "Loading…"}
+            </Button>
+          ) : !supported ? (
+            <Button type="button" variant="outline" size="sm" disabled>
+              Coming soon
+            </Button>
+          ) : connected ? (
+            <>
+              <Button type="button" variant="outline" size="sm" onClick={() => onAction(integration, "test")}>
+                Test connection
+              </Button>
+              <Button type="button" variant="link" size="sm" className="h-6 px-1 text-destructive" onClick={() => onAction(integration, "disconnect")}>
+                Disconnect
+              </Button>
+            </>
+          ) : (
+            <Button type="button" variant={configured ? "default" : "outline"} size="sm" onClick={() => onAction(integration, configured ? "connect" : "learn")}>
+              {configured ? "Connect" : "Configure credentials"}
+            </Button>
+          )}
+          {!supported || connected || !loaded ? null : (
             <Button type="button" variant="link" size="sm" className="h-6 px-1" onClick={() => onAction(integration, "learn")}>
               Learn more
             </Button>
-          ) : null}
+          )}
         </div>
       </CardContent>
     </Card>
@@ -161,8 +216,43 @@ function IntegrationCard({
 export function SettingsIntegrationsView() {
   const [category, setCategory] = useState<Category>("All");
   const [query, setQuery] = useState("");
-  const [connections, setConnections] = useState(initialConnections);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [states, setStates] = useState<Record<string, IntegrationState>>({});
+  const [loaded, setLoaded] = useState(false);
+  const [loadingError, setLoadingError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(() => callbackNoticeFromLocation());
+  const [busyProvider, setBusyProvider] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/settings/integrations", { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(safeErrorMessage(payload, "The integration catalog could not be loaded"));
+        return payload;
+      })
+      .then((payload) => {
+        if (cancelled) return;
+        const nextStates = Object.fromEntries(
+          (payload.integrations ?? []).map((item: IntegrationState) => [item.provider_id, item]),
+        ) as Record<string, IntegrationState>;
+        setStates(nextStates);
+        setLoaded(true);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setLoadingError(error instanceof Error ? error.message : "The integration catalog could not be loaded");
+        setLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const connection = params.get("connection");
+    if (connection) window.history.replaceState({}, "", window.location.pathname);
+  }, []);
 
   const filteredIntegrations = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -173,20 +263,41 @@ export function SettingsIntegrationsView() {
     });
   }, [category, query]);
 
-  const connectedIntegrations = filteredIntegrations.filter((integration) => connections[integration.id]);
-  const availableIntegrations = filteredIntegrations.filter((integration) => !connections[integration.id]);
+  const connectedIntegrations = filteredIntegrations.filter((integration) => states[integration.id]?.status === "connected");
+  const availableIntegrations = filteredIntegrations.filter((integration) => states[integration.id]?.status !== "connected");
 
-  function handleAction(integration: Integration, action: "connect" | "manage" | "learn") {
-    if (action === "connect") {
-      setConnections((current) => ({ ...current, [integration.id]: true }));
-      setNotice(`${integration.name} is connected in this UI preview. Backend authorization will be added with the integration contract.`);
+  async function handleAction(integration: Integration, action: Action) {
+    if (action === "learn") {
+      setNotice(integration.id === "teams" || integration.id === "github" || integration.id === "webhooks"
+        ? `${integration.name} is cataloged for a future connector contract.`
+        : `Configure the ${integration.name} OAuth application credentials in Settings Credentials before connecting.`);
       return;
     }
-    if (action === "manage") {
-      setNotice(`${integration.name} is ready for configuration. Connection settings will be wired to the backend integration service next.`);
-      return;
+    setBusyProvider(integration.id);
+    try {
+      const response = await fetch(
+        action === "connect"
+          ? `/api/settings/integrations/${integration.id}/authorize`
+          : action === "test"
+            ? `/api/settings/integrations/${integration.id}/test`
+            : `/api/settings/integrations/${integration.id}`,
+        { method: action === "disconnect" ? "DELETE" : "POST", cache: "no-store" },
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(safeErrorMessage(payload, `The ${integration.name} action failed`));
+      if (action === "connect" && typeof payload.authorization_url === "string") {
+        window.location.assign(payload.authorization_url);
+        return;
+      }
+      if (payload.provider_id) {
+        setStates((current) => ({ ...current, [payload.provider_id]: payload }));
+      }
+      setNotice(action === "test" ? `${integration.name} connection test succeeded.` : `${integration.name} was disconnected.`);
+    } catch (error: unknown) {
+      setNotice(error instanceof Error ? error.message : `The ${integration.name} action failed`);
+    } finally {
+      setBusyProvider(null);
     }
-    setNotice(`${integration.name} will support scoped permissions and a guided connection flow.`);
   }
 
   function renderSection(title: string, description: string, items: Integration[], emptyMessage: string) {
@@ -199,7 +310,7 @@ export function SettingsIntegrationsView() {
         {items.length ? (
           <div className="grid gap-4 xl:grid-cols-2">
             {items.map((integration) => (
-              <IntegrationCard key={integration.id} integration={integration} connected={Boolean(connections[integration.id])} onAction={handleAction} />
+              <IntegrationCard key={integration.id} integration={integration} state={states[integration.id]} loaded={loaded} busy={busyProvider === integration.id} onAction={handleAction} />
             ))}
           </div>
         ) : (
@@ -223,7 +334,7 @@ export function SettingsIntegrationsView() {
             <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">Connect KubePilot with external services for notifications, communication, and automation.</p>
             <p className="mt-3 flex max-w-2xl items-start gap-2 text-xs leading-5 text-muted-foreground">
               <Info className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden="true" />
-              <span>Preview catalog: connection actions are local to this page and are not persisted or authorized with an external service yet.</span>
+              <span>Connection status is managed by the backend. Delivery workflows are not implemented yet, and credentials never reach the browser.</span>
             </p>
           </div>
         </div>
@@ -247,6 +358,13 @@ export function SettingsIntegrationsView() {
         </div>
       </div>
 
+      {loadingError ? (
+        <div role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          <span>{loadingError}</span>
+        </div>
+      ) : null}
+
       {notice ? (
         <div role="status" aria-live="polite" className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-muted-foreground">
           <Info className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
@@ -254,7 +372,7 @@ export function SettingsIntegrationsView() {
         </div>
       ) : null}
 
-      {renderSection("Connected", "Services that are currently connected to your KubePilot environment.", connectedIntegrations, "No connected integrations match the current filters.")}
+      {renderSection("Connected", "Services that are currently connected to your KubePilot environment.", connectedIntegrations, loaded ? "No connected integrations match the current filters." : "Loading connection status…")}
       {renderSection("Available integrations", "Connect additional services to extend KubePilot’s capabilities.", availableIntegrations, "No available integrations match the current filters.")}
 
       <Card className="border-primary/20 bg-primary/5">
@@ -285,4 +403,34 @@ export function SettingsIntegrationsView() {
       </div>
     </div>
   );
+}
+
+function safeErrorMessage(payload: unknown, fallback: string): string {
+  if (typeof payload === "object" && payload !== null && "detail" in payload) {
+    const detail = payload.detail;
+    if (typeof detail === "object" && detail !== null && "message" in detail && typeof detail.message === "string") {
+      return detail.message;
+    }
+  }
+  return fallback;
+}
+
+function providerName(provider: string): string {
+  return integrations.find((integration) => integration.id === provider)?.name ?? provider;
+}
+
+function callbackNoticeFromLocation(): string | null {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  const connection = params.get("connection");
+  const provider = params.get("provider");
+  const errorCode = params.get("error");
+  if (connection === "connected" && provider) {
+    return `${providerName(provider)} is connected. Delivery workflows will be added separately.`;
+  }
+  if (connection === "error") {
+    return `The ${providerName(provider ?? "integration")} connection could not be completed${errorCode ? ` (${errorCode})` : ""}.`;
+  }
+  if (connection === "backend_unavailable") return "The integration service is unavailable. Try again later.";
+  return null;
 }
