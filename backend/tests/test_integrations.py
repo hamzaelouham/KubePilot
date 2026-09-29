@@ -188,6 +188,39 @@ def test_invalid_manual_slack_token_does_not_create_connection(integration_api) 
         assert "invalid-bot-token" not in "".join(audit.context or "" for audit in audits)
 
 
+def test_manual_slack_disconnect_preserves_token_for_reconnect(integration_api) -> None:
+    client, factory, settings, adapters, actor = integration_api
+    with factory() as database:
+        credential_service.delete_credential(database, actor.user_id, "integration.slack.client_id")
+        credential_service.delete_credential(database, actor.user_id, "integration.slack.client_secret")
+        credential_service.replace_credential(
+            database,
+            settings,
+            actor.user_id,
+            "integration.slack.bot_token",
+            "manual-bot-token",
+        )
+
+    client.app.dependency_overrides[get_settings] = lambda: replace(settings, public_url=None)
+    connected = client.post("/api/v1/settings/integrations/slack/connect")
+    assert connected.status_code == 200
+
+    disconnected = client.delete("/api/v1/settings/integrations/slack")
+    assert disconnected.status_code == 200
+    assert disconnected.json()["status"] == "revoked"
+    assert adapters["slack"].revoked is False
+
+    reconnected = client.post("/api/v1/settings/integrations/slack/connect")
+    assert reconnected.status_code == 200
+    assert reconnected.json()["status"] == "connected"
+
+    with factory() as database:
+        connection = database.scalar(select(IntegrationConnection))
+        assert connection is not None
+        assert connection.status == "connected"
+        assert connection.access_token_ciphertext is not None
+
+
 def test_manual_slack_connect_requires_settings_write(integration_api) -> None:
     client, _factory, settings, _adapters, _actor = integration_api
     client.app.dependency_overrides[get_current_actor] = lambda: AuthenticatedActor(

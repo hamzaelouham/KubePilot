@@ -329,7 +329,8 @@ def disconnect(
     if row.access_token_ciphertext:
         try:
             access_token = CredentialEncryption.from_settings(settings).decrypt(row.access_token_ciphertext)
-            adapter.revoke(access_token)
+            if not _is_manual_slack_connection(database, settings, provider_id, access_token):
+                adapter.revoke(access_token)
         except (ConfigurationError, IntegrationProviderError) as provider_error:
             revoke_error = _provider_error_code(provider_error)
     row.status = "revoked"
@@ -441,6 +442,21 @@ def _manual_token_configured(database, provider_id: str) -> bool:
             ApplicationCredential.credential_key == SLACK_BOT_TOKEN_CREDENTIAL_KEY
         )
     ) is not None
+
+
+def _is_manual_slack_connection(
+    database: SQLAlchemySession,
+    settings: Settings,
+    provider_id: str,
+    access_token: str,
+) -> bool:
+    if provider_id != "slack":
+        return False
+    try:
+        configured_token = read_credential_value(database, settings, SLACK_BOT_TOKEN_CREDENTIAL_KEY)
+    except ConfigurationError:
+        return False
+    return bool(configured_token) and secrets.compare_digest(configured_token, access_token)
 
 
 def _record_manual_failure(database, actor_id: UUID, provider_id: str, error_code: str) -> None:
