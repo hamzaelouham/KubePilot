@@ -109,6 +109,7 @@ const adminResourceIds = new Set(adminNavItems.map((item) => item.id));
 const resourceTitles: Record<string, string> = {
   overview: "Overview",
   assistant: "AI Assistant",
+  "ai-agents": "AI Agents",
   workloads: "Workloads",
   marketplace: "Marketplace",
   "background-jobs": "Background jobs",
@@ -313,6 +314,10 @@ export function DashboardShell({
                 href={withCluster(`/assistant?namespace=${encodeURIComponent(activeNamespace)}`, activeCluster)}
                 className={`flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-base transition ${isActive("assistant") ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"}`}
               ><Sparkles className="size-4 shrink-0" />AI Assistant</Link>
+              <Link href={withCluster("/assistant/agents", activeCluster)} aria-current={isActive("ai-agents") ? "page" : undefined}
+                className={`ml-6 flex items-center gap-2 rounded-md px-3 py-2 text-sm ${isActive("ai-agents") ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent"}`}>
+                AI Agents
+              </Link>
 
               <Link
                 href="/marketplace"

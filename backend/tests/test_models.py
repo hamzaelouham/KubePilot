@@ -23,6 +23,10 @@ EXPECTED_TABLES = {
 	"application_settings",
 	"application_credentials",
 	"ai_model_configs",
+	"ai_agents",
+	"integration_connections",
+	"integration_oauth_states",
+	"integration_delivery_jobs",
 }
 
 

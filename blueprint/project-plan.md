@@ -34,6 +34,19 @@ Secondary users may include engineering managers and technical operators who nee
 - Direct AI provider architecture (post-MVP, feature 21) using Settings-managed OpenAI, OpenRouter, and Ollama/local models without Vercel AI Gateway; tool access follows each model's declared capabilities
 - Integrations and AI agent automation (post-MVP, feature 22) for Slack, Gmail, and Microsoft Outlook configuration under Settings, plus configurable Kubernetes workflows under the existing AI Assistant area after provider capability enforcement and audit visibility are complete
 
+AI Agents (22d) lives at `/assistant/agents`, nested under AI Assistant. Deliver it
+in five ordered slices: agent management; skills/capabilities/templates; manual
+execution; integration notifications; schedules/events. Agents are shared within
+the KubePilot installation and managed by admins. Manual execution uses the
+caller's current permissions, model capabilities, and assigned supported tools.
+Reusable skills contain instructions, not arbitrary executable code. Scheduled
+and event-driven runs use a designated owner whose permissions are rechecked on
+each run; unattended execution permits investigation and explicitly configured
+notifications only. Kubernetes/Helm changes require authenticated human approval.
+Instructions, skills, templates, and capability settings never grant permissions.
+Exact trigger types, schedule semantics, run retention, and background approval
+handoff contracts will be specified in 22d5 before implementation.
+
 Manage resources is delivered in four ordered items:
 
 - **19a - Kubernetes resources:** list, create through validated YAML, and delete pods, deployments, namespaces, services, and other common resource types explicitly identified in the implementation spec.
@@ -59,6 +72,7 @@ All four items live under the "Manage resources" sidebar entry. Admins and opera
 - Marketplace installation and release-action jobs (package and chart metadata, target cluster, namespace, release name, action, revision where applicable, status, error message, timestamps) and resolved Artifact Hub package metadata; feature 19 extends release management to externally installed releases and upgrades
 - KubePilot-managed global public Helm chart repository configuration (name and URL); 19c does not support credentials, and 19d requires explicit repository/chart/version selection for each upgrade without a persisted release-to-chart-source association
 - Centralized runtime application settings, encrypted provider credentials, allowlisted AI provider configuration, and an administrator-managed model registry with enabled/default, availability, and capability metadata
+- Shared AI agent definitions with identity, instructions, Settings-managed model reference, enabled state, and actor/timestamp metadata; later slices add reusable instruction skills, supported capability assignments, templates, notification bindings, trigger configuration, designated run owner, and bounded run history. Agent configuration is distinct from conversation history; no instructions, prompts, credentials, or raw tool data belong in audit payloads.
 
 Kubernetes remains the source of truth for live resources and Helm releases. Manage resources reads current cluster state; Marketplace installation history is not an inventory of every installed release. Persist only the application configuration, action/job metadata, and audit records needed to support management and progress reporting.
 
@@ -113,6 +127,7 @@ The interface should prioritize:
 - A responsive, desktop-first experience for operations work
 - A "Manage resources" sidebar entry at `/manage-resources`, using the existing application shell and selected cluster/namespace controls, with Kubernetes resources and Helm releases tabs plus repository configuration under the same section
 - Clear creation/deletion feedback, release action progress, confirmation of destructive targets, and loading, empty, denied, and error states; switching clusters refreshes the displayed scope and prevents actions from using a stale target
+- AI Assistant contains an AI Agents child page. Use `blueprint/reference/settings-ai-agents.png`, `settings-ai-agents-create.png`, and `settings-ai-agents-capabilities-templates.png` as visual references, adapting their navigation to Assistant. Reuse the existing shadcn/ui theme and AI Elements; provide searchable agent lists, responsive list/detail views, guided creation, capability tables, and template cards as their slices ship. Statistics must reflect actual data, with no fabricated usage or success rates.
 
 The long-term UI should evolve from an elegant dashboard foundation into a dense but readable operational workflow surface that supports investigation, change review, and escalation.
 
@@ -150,7 +165,7 @@ Confirmed decisions:
 - The primary users are DevOps, platform, and SRE operators.
 - The current dashboard is a polished front-end foundation for a real product.
 - Live Kubernetes integration, multi-cluster support, Settings, and the AI Assistant are shipped foundations.
-- The current milestone is direct-provider capability enforcement, safe provider/model/tool audit outcomes, and regression validation before external integrations and agent automation.
+- Direct providers and initial Slack/Gmail/Outlook connection and delivery foundations are shipped; the current milestone is AI Agents under Assistant, delivered through 22d1-22d5.
 
 Open assumptions or TODOs:
 

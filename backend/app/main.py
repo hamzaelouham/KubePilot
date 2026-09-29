@@ -14,6 +14,7 @@ from app.api.v1.helm_releases import router as helm_releases_router
 from app.api.v1.helm_repositories import router as helm_repositories_router
 from app.api.v1.resource_management import router as resource_management_router
 from app.api.v1.assistant import router as assistant_router
+from app.api.v1.agents import router as agents_router
 from app.api.v1.settings import router as settings_router
 from app.api.v1.integrations import router as integrations_router
 from app.kubernetes.resource_management import ResourceManagementError
@@ -206,6 +207,7 @@ def create_app() -> FastAPI:
     app.include_router(helm_repositories_router, prefix="/api/v1")
     app.include_router(resource_management_router, prefix="/api/v1")
     app.include_router(assistant_router, prefix="/api/v1")
+    app.include_router(agents_router, prefix="/api/v1")
     app.include_router(settings_router, prefix="/api/v1")
     app.include_router(integrations_router, prefix="/api/v1")
     return app

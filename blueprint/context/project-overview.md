@@ -1,6 +1,6 @@
 # KubePilot - Project Overview
 
-<!-- blueprint:source-hash e78ed6ace43586d1f1a35e439fcae4bb97db5289370d2f554ec77b2465cac165 -->
+<!-- blueprint:source-hash daa7226c1e2d3321d7b97be6ec01eb5fb42117d640591272c8fa03b41adc877d -->
 
 > A self-hosted Kubernetes operations platform for cluster visibility, troubleshooting, and safe resource management.
 
@@ -44,14 +44,20 @@ Features are ordered as tracked in `build-plan.md`; checked items are shipped.
 17. **UI polish and design consistency** - light operational palette, grouped navigation, shared shell, and cluster context.
 18. **KubePilot Marketplace** - Artifact Hub discovery, installation jobs, progress/history, and release actions.
 19. **Manage resources** - validated Kubernetes resource operations plus Helm release, repository, and upgrade workflows.
-20. **Centralized KubePilot Settings** - administrator-controlled provider/model configuration, credentials, and audit logs. Items 20a-20f are shipped; future integration connectors remain under feature 22.
+20. **Centralized KubePilot Settings** - shipped administrator-controlled provider/model configuration, credentials, and audit logs.
 21. **Direct AI provider architecture** - shipped Settings-backed OpenAI, OpenRouter, and Ollama/local model architecture without the AI Gateway, including capability enforcement and safe audit outcomes.
-22. **Integrations and AI agent automation** - partially started: the protected Integrations catalog UI is shipped, while Slack, Gmail, Outlook, and other connector delivery remain deferred; configurable Kubernetes AI agent workflows belong under the existing AI Assistant area, never Settings.
+22. **Integrations and AI agent automation** - integration foundations are shipped; AI Agents under Assistant remain planned. The parent remains unchecked until all slices are complete.
    - **22a. Secrets and API key management** - shipped admin-only CRUD-style management of KubePilot-registered provider and integration credentials using metadata-only reads, write-only create/replace, and confirmed deletion.
    - **22b. Integrations catalog UI foundation** - shipped frontend-only catalog, filters, search, status groupings, and local preview actions for Slack, Teams, Gmail, Outlook, GitHub, and Webhooks.
-   - **22c. Integration connections and delivery** - planned backend-authoritative connector work, split into connection lifecycle and delivery/status slices.
-     - **22c1. Integration connection lifecycle** - planned initial Slack, Gmail, and Microsoft Outlook connection registry, OAuth, encrypted token references, scoped permissions, testing, status, and audit contracts; Teams, GitHub, and Webhooks remain catalog-only until separately approved.
-     - **22c2. Integration delivery and status** - planned queued delivery, idempotency, bounded retries, safe provider errors, delivery history, and audit visibility.
+   - **22c. Integration connections and delivery** - shipped backend-authoritative connector lifecycle and delivery/status.
+     - **22c1. Integration connection lifecycle** - shipped Slack, Gmail, and Microsoft Outlook registry, OAuth, encrypted tokens, permission checks, connection tests, status, and audit; Teams, GitHub, and Webhooks remain catalog-only.
+     - **22c2. Integration delivery and status** - shipped queued delivery, idempotency, bounded retries, safe errors, history, and audit visibility.
+   - **22d. AI agent workflows in Assistant** - approved five-slice delivery; shared admin-managed agents, caller-scoped manual runs, and designated-owner automation.
+     - **22d1. Agent management** - next: create, edit, delete, enable/disable, identity, instructions, and Settings-managed model selection at `/assistant/agents`.
+     - **22d2. Skills, capabilities, and templates** - reusable instruction skills, supported tool assignments, effective permissions, and template-based creation.
+     - **22d3. Agent execution** - Vercel AI SDK ToolLoopAgent execution with AI Elements streaming, scoped tools, and human approvals.
+     - **22d4. Agent integrations** - explicit notification destinations through existing Slack/Gmail/Outlook connections and delivery status.
+     - **22d5. Schedules and events** - configure/pause triggers and inspect runs; recheck designated-owner permissions per run. Unattended actions are investigation and configured notifications only; resource changes require authenticated human approval.
 
 ## Data model
 
@@ -106,6 +112,14 @@ application identity, configuration, and bounded operational history.
 - Assistant proposal - UUID, actor/session, validated immutable action arguments and cluster, expiry, one-use decision state, and sanitized result. Conversations and raw tool data are not persisted in audit records.
 - Live Kubernetes entities include namespaces, workloads, pods, deployments, services, nodes, events, logs, and metrics; cached projections remain bounded and sanitized.
 
+### AI Agents (planned)
+
+- Shared installation-level agent definition: identity, instruction text, internal model reference, enabled state, creator/updater references, and timestamps. Admins manage these records.
+- Later slices add reusable instruction skills, supported tool assignments, templates, explicit notification destinations, schedules/event triggers, designated owner, and bounded run history. Exact persisted schemas are defined in each slice's spec.
+- Skills contain instructions, not executable code. Instructions and capability assignments cannot grant permissions. Manual runs intersect configured tools with model support and the caller's current backend permissions.
+- Scheduled/event runs recheck the designated owner's permissions. Existing session-bound proposals cannot be treated as background approval; 22d5 must specify the authenticated handoff.
+- Persisted agent configuration is distinct from conversation history. Audit records exclude instructions, prompts, credentials, and raw tool payloads.
+
 ## Tech stack
 
 - **Next.js 16, TypeScript, Tailwind CSS, shadcn/ui** - UI, app shell, and same-origin API routes.
@@ -134,9 +148,10 @@ controls. The existing theme system also supports light/dark selection.
 - `/dashboard/detail` - resource status, YAML, logs, and events.
 - `/marketplace` - Artifact Hub search, package details, install configuration, progress, and history.
 - `/manage-resources` - Kubernetes resources and Helm releases tabs, repository configuration, and upgrades.
-- `/assistant` - authenticated streaming investigation, scoped tool results, proposals, confirmations, and the future home for configurable agent workflows.
+- `/assistant` - authenticated streaming investigation, scoped tool results, proposals, and confirmations.
+- `/assistant/agents` (planned) - AI Agents child page under AI Assistant, with searchable list/detail layout and guided creation. Later slices add capabilities, templates, runs, integrations, and automation. Use the three supplied `blueprint/reference/settings-ai-agents*.png` references, adapting navigation to Assistant and reusing shadcn/ui themes and AI Elements. Show only real counts/statistics and ship responsive, accessible loading/empty/denied/error states.
 - `/settings` - protected administrator Settings shell for Providers, Models, Integrations catalog, Credentials, and Audit Logs.
-- `/settings/integrations` - frontend-only catalog foundation for connected and available external services; backend connection and delivery contracts remain in feature 22c.
+- `/settings/integrations` - catalog plus shipped Slack/Gmail/Outlook connection and delivery management; other catalog entries do not imply supported connectors.
 - `/settings/credentials` - admin-only inventory and CRUD-style management for KubePilot-registered provider and integration secrets without reveal/copy behavior.
 - `/api/*` - same-origin Next.js bridges that forward only the signed session cookie where backend access is needed.
 
@@ -159,4 +174,4 @@ backend ServiceAccount/RBAC and a background worker for Helm jobs.
 
 - Confirm whether the commercial offering is self-hosted only, managed, or both.
 - Carry the exact ServiceAccount/RBAC and protected-system-namespace policy into future operation specs.
-- Feature 22 remains partially implemented: 22c1 and 22c2 define the remaining Slack, Gmail, and Outlook connector boundaries and delivery contracts; 22d will define AI-agent workflow behavior under Assistant without expanding the credential store into arbitrary or Kubernetes secret management.
+- Specify exact trigger types, schedule semantics, run retention, and background approval handoff in 22d5 before implementation; no arbitrary or Kubernetes secret management is introduced.

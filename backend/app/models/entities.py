@@ -8,6 +8,21 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base, CreatedAt, PrimaryKey
 
 
+class AIAgent(Base):
+    __tablename__ = "ai_agents"
+
+    id: Mapped[PrimaryKey]
+    name: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    instructions: Mapped[str] = mapped_column(Text, nullable=False)
+    model_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("ai_model_configs.id", ondelete="SET NULL"), index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("user_accounts.id", ondelete="SET NULL"))
+    updated_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("user_accounts.id", ondelete="SET NULL"))
+    created_at: Mapped[CreatedAt]
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class AssistantProposal(Base):
     __tablename__ = "assistant_proposals"
 
