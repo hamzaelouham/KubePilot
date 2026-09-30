@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, LoaderCircle, Play, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ChevronDown, LoaderCircle, Play, Trash2 } from "lucide-react";
 import { z } from "zod";
 import { Agent, AgentContent, AgentHeader, AgentInstructions } from "@/components/ai-elements/agent";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -16,8 +16,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { agentRequest, agentSchema, AgentRequestError, applyTemplate, draftOf, emptyAgent, validateAgent, type AgentDefinition, type AgentDraft, type AgentErrors, type AgentModel, type AgentSkill, type AgentTemplate, type AgentTool } from "@/lib/assistant/agents";
 import { cn } from "@/lib/utils";
+import { getAgentModelState, getAgentToolStatus, groupAgentTools, selectedToolCount, toolStatusLabel } from "@/lib/assistant/agent-ui";
 import { AgentNotifications } from "./notifications";
 import { AgentAutomation } from "./automation";
 
@@ -48,6 +50,9 @@ export function AgentEditor({ original, models, editable, skills, tools, templat
   const canEdit = editable && !denied;
   const model = models.find(item => item.id === draft.model_id) ?? (original?.model_id === draft.model_id ? original.model : null);
   const choices = original?.model && !models.some(item => item.id === original.model_id) ? [...models, original.model] : models;
+  const modelState = getAgentModelState(model);
+  const toolGroups = groupAgentTools(tools);
+  const [openToolGroups, setOpenToolGroups] = useState<Set<string>>(() => new Set(["workloads"]));
 
   useEffect(() => { onDirty(dirty); }, [dirty, onDirty]);
   useEffect(() => {
@@ -67,6 +72,18 @@ export function AgentEditor({ original, models, editable, skills, tools, templat
     });
     setNotice("");
     if (!uncertain && !denied) setFailure(null);
+  }
+  function discardChanges() {
+    setDraft(JSON.parse(baseline) as AgentDraft);
+    setErrors({});
+    setFailure(null);
+    setNotice("Changes discarded.");
+    onDirty(false);
+  }
+  function leaveEditor() {
+    if (dirty && !window.confirm("Discard your unsaved agent changes?")) return;
+    if (dirty) discardChanges();
+    onCancel();
   }
   async function submit() {
     if (busy.current || !canEdit || uncertain) return;
@@ -138,28 +155,47 @@ export function AgentEditor({ original, models, editable, skills, tools, templat
       <FieldError id="agent-model-error" role="alert">{errors.model_id}</FieldError>
     </Field>
     {!choices.length && !modelsError && <Alert><AlertTitle>{original ? "Model missing" : "No models configured"}</AlertTitle><AlertDescription>{editable ? "Add a model in Settings before creating or enabling an agent." : "Ask an administrator to configure a model."}</AlertDescription></Alert>}
-    {model && <div className="flex flex-wrap gap-2"><Badge variant="outline">{model.enabled ? model.availability : "Model disabled"}</Badge><Badge variant="secondary">{model.capabilities.tools ? "Tool support" : "Conversational"}</Badge></div>}
+    <Alert className={cn(modelState.key === "ready" && "border-emerald-500/30 bg-emerald-500/5", modelState.key === "conversational" && "border-amber-500/30 bg-amber-500/5")}>
+      <AlertTitle>{modelState.label}</AlertTitle>
+      <AlertDescription>{modelState.description} {editable && modelState.key !== "ready" && <Link href="/settings/models" className="font-medium text-primary underline-offset-4 hover:underline">Manage models</Link>}</AlertDescription>
+    </Alert>
+    {model && <div className="flex flex-wrap gap-2"><Badge variant={modelState.key === "ready" ? "secondary" : "outline"}>{model.friendly_name} · {model.provider_name}</Badge><Badge variant="outline">{modelState.supportsTools ? "Tool support" : "Conversational"}</Badge></div>}
     <Field orientation="horizontal"><div className="flex flex-1 flex-col gap-1"><FieldLabel htmlFor="agent-enabled">Enable agent</FieldLabel><FieldDescription>Configuration only. This does not start a run or schedule.</FieldDescription></div>
-      <Switch id="agent-enabled" checked={draft.enabled} onCheckedChange={checked => change("enabled", checked)} disabled={!canEdit || pending} /></Field>
+      <Switch id="agent-enabled" checked={draft.enabled} onCheckedChange={checked => change("enabled", checked)} disabled={!canEdit || pending || (!draft.enabled && !modelState.canEnable)} /></Field>
   </FieldGroup>;
   const capabilityFields = <div className="flex flex-col gap-5">
     <div><h2 className="text-sm font-semibold">Skills and capabilities</h2><p className="mt-1 text-sm text-muted-foreground">Assignments describe future agent behavior. They do not grant access or execute tools.</p></div>
-    <div className="grid gap-3 md:grid-cols-2">
-      <Card><CardHeader><CardTitle className="text-base">Reusable skills</CardTitle><CardDescription>Select shared instruction blocks in their composition order.</CardDescription></CardHeader><CardContent className="flex flex-col gap-2">
-        {!skills.length ? <p className="text-sm text-muted-foreground">No skills are configured yet.</p> : skills.map(skill => <label key={skill.id} className="flex items-start gap-3 rounded-md border p-3 text-sm"><input type="checkbox" checked={draft.skill_ids.includes(skill.id)} disabled={!canEdit || pending} onChange={event => toggleAssignment("skill_ids", skill.id, event.target.checked)} /><span className="min-w-0"><span className="block font-medium">{skill.name}</span><span className="block text-muted-foreground">{skill.description}</span></span></label>)}
-      </CardContent></Card>
-      <Card><CardHeader><CardTitle className="text-base">Supported tools</CardTitle><CardDescription>Effective status is recomputed from the model and your current permissions.</CardDescription></CardHeader><CardContent className="flex flex-col gap-2">
-        {!tools.length ? <p className="text-sm text-muted-foreground">Tool catalog unavailable.</p> : tools.map(tool => {
-          const capability = original?.capabilities.find(item => item.id === tool.id);
-          const status = capability?.status ?? (!model ? "model_missing" : !model.enabled || model.availability !== "available" ? "model_unavailable" : !model.capabilities.tools ? "model_no_tools" : "pending_check");
-          const selected = draft.tool_ids.includes(tool.id);
-          return <label key={tool.id} className="flex items-start gap-3 rounded-md border p-3 text-sm"><input type="checkbox" checked={selected} disabled={!canEdit || pending} onChange={event => toggleAssignment("tool_ids", tool.id, event.target.checked)} /><span className="min-w-0 flex-1"><span className="flex flex-wrap items-center gap-2 font-medium"><span>{tool.label}</span><Badge variant={selected && status === "available" ? "secondary" : "outline"}>{selected ? status.replaceAll("_", " ") : "not configured"}</Badge></span><span className="block text-muted-foreground">{tool.description}</span></span></label>;
+    <section aria-labelledby="agent-skills-heading" className="rounded-xl border bg-card">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b p-4"><div><h3 id="agent-skills-heading" className="font-medium">Reusable skills</h3><p className="mt-1 text-sm text-muted-foreground">Select shared instruction blocks in their composition order.</p></div><Badge variant="outline">{draft.skill_ids.length} selected</Badge></div>
+      <div className="flex flex-col gap-2 p-4">
+        {!skills.length ? <p className="text-sm text-muted-foreground">No skills are configured yet.</p> : skills.map(skill => <label key={skill.id} className="flex min-h-12 items-start gap-3 rounded-lg border p-3 text-sm transition-colors has-[:focus-visible]:border-ring has-[:checked]:border-primary/40 has-[:checked]:bg-primary/5"><input className="mt-1 size-4 shrink-0" type="checkbox" checked={draft.skill_ids.includes(skill.id)} disabled={!canEdit || pending} onChange={event => toggleAssignment("skill_ids", skill.id, event.target.checked)} /><span className="min-w-0"><span className="block font-medium">{skill.name}</span><span className="block text-muted-foreground">{skill.description}</span></span></label>)}
+      </div>
+    </section>
+    <section aria-labelledby="agent-tools-heading" className="rounded-xl border bg-card">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b p-4"><div><h3 id="agent-tools-heading" className="font-medium">Supported tools</h3><p className="mt-1 text-sm text-muted-foreground">Effective status is recomputed from the model and your current permissions.</p></div><Badge variant="outline">{draft.tool_ids.length} selected</Badge></div>
+      {!toolGroups.length ? <p className="p-4 text-sm text-muted-foreground">Tool catalog unavailable.</p> : <div className="divide-y">
+        {toolGroups.map(group => {
+          const open = openToolGroups.has(group.id);
+          const selected = selectedToolCount(group.tools, draft.tool_ids);
+          return <Collapsible key={group.id} open={open} onOpenChange={value => setOpenToolGroups(previous => { const next = new Set(previous); if (value) next.add(group.id); else next.delete(group.id); return next; })}>
+            <CollapsibleTrigger className="flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/50"><span className="min-w-0 flex-1"><span className="block font-medium">{group.label}</span><span className="block text-sm text-muted-foreground">{group.description}</span></span><Badge variant={selected ? "secondary" : "outline"}>{selected} selected</Badge><ChevronDown aria-hidden="true" className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} /></CollapsibleTrigger>
+            <CollapsibleContent className="border-t px-4 py-3"><div className="flex flex-col gap-2">
+              {group.tools.map(tool => {
+                const capability = original?.capabilities.find(item => item.id === tool.id);
+                const status = getAgentToolStatus(capability, model);
+                const configured = draft.tool_ids.includes(tool.id);
+                const selectable = configured || status === "available" || status === "pending_check";
+                return <label key={tool.id} className="flex min-h-12 items-start gap-3 rounded-lg border p-3 text-sm transition-colors has-[:focus-visible]:border-ring has-[:checked]:border-primary/40 has-[:checked]:bg-primary/5"><input className="mt-1 size-4 shrink-0" type="checkbox" checked={configured} disabled={!canEdit || pending || !selectable} onChange={event => toggleAssignment("tool_ids", tool.id, event.target.checked)} /><span className="min-w-0 flex-1"><span className="flex flex-wrap items-center gap-2 font-medium"><span>{tool.label}</span><Badge variant={configured && status === "available" ? "secondary" : "outline"}>{toolStatusLabel(status, configured)}</Badge></span><span className="mt-1 block text-muted-foreground">{tool.description}</span>{configured && status !== "available" && <span className="mt-1 block text-xs text-amber-700 dark:text-amber-300">Configured, but unavailable with the current model or permissions.</span>}</span></label>;
+              })}
+            </div></CollapsibleContent>
+          </Collapsible>;
         })}
-      </CardContent></Card>
-    </div>
+      </div>}
+    </section>
   </div>;
   return <div className={cn("grid min-w-0 gap-6", creating && "xl:grid-cols-[minmax(0,1fr)_320px]")}>
     <form ref={form} onSubmit={event => { event.preventDefault(); void submit(); }} noValidate className="min-w-0">
+      {original && <div className="mb-3 flex items-center justify-between gap-3 xl:hidden"><Button type="button" variant="outline" size="sm" onClick={leaveEditor}><ArrowLeft data-icon="inline-start" />Back to agents</Button>{dirty && <Badge variant="outline">Unsaved changes</Badge>}</div>}
       <Card>
         <CardHeader><div className="flex items-center justify-between gap-3"><CardTitle>{creating ? ["Basic information", "Choose a model", "Review your agent"][step] : "Agent configuration"}</CardTitle><Badge variant={draft.enabled ? "secondary" : "outline"}>{draft.enabled ? "Enabled" : "Disabled"}</Badge></div>
           <CardDescription>{creating ? "Build a focused agent for your team’s Kubernetes work." : "Shared across this KubePilot installation. Changes are audited."}</CardDescription></CardHeader>
@@ -176,11 +212,11 @@ export function AgentEditor({ original, models, editable, skills, tools, templat
           {creating && step === 2 && <div className="flex flex-col gap-5"><AgentPreview draft={draft} model={model} /><Alert><AlertDescription>Creating this shared definition does not execute an AI request or change your cluster.</AlertDescription></Alert></div>}
           {original && <div className="grid grid-cols-1 gap-3 text-xs text-muted-foreground sm:grid-cols-2"><p>Created {new Date(original.created_at).toLocaleString()}</p><p>Updated {new Date(original.updated_at).toLocaleString()}</p></div>}
         </CardContent>
-        <CardFooter className="flex flex-wrap justify-between gap-3">
+        <CardFooter className="sticky bottom-3 z-10 flex flex-wrap justify-between gap-3 border-t bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
           {creating ? <Button type="button" variant="outline" disabled={pending} onClick={step ? () => setStep(step - 1) : onCancel}>{step ? <><ArrowLeft data-icon="inline-start" />Back</> : "Cancel"}</Button> : canEdit ?
-            <AlertDialog open={deleteOpen} onOpenChange={open => { if (!pending) setDeleteOpen(open); }}><AlertDialogTrigger render={<Button type="button" variant="outline" disabled={pending || uncertain} />}><Trash2 data-icon="inline-start" />Delete agent</AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete {original.name}?</AlertDialogTitle><AlertDialogDescription>This removes the shared definition for everyone. Audit records are retained. This cannot be undone.</AlertDialogDescription></AlertDialogHeader>{failure && <p role="alert" className="text-sm text-destructive">{failure.message}</p>}<AlertDialogFooter><AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel><AlertDialogAction variant="destructive" disabled={pending || uncertain || denied} onClick={() => void remove()}>{pending ? "Deleting…" : "Delete agent"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog> : <p className="text-sm text-muted-foreground">Only admins can change shared agents.</p>}
+            <div className="flex flex-wrap items-center gap-2"><AlertDialog open={deleteOpen} onOpenChange={open => { if (!pending) setDeleteOpen(open); }}><AlertDialogTrigger render={<Button type="button" variant="outline" disabled={pending || uncertain} />}><Trash2 data-icon="inline-start" />Delete agent</AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete {original.name}?</AlertDialogTitle><AlertDialogDescription>This removes the shared definition for everyone. Audit records are retained. This cannot be undone.</AlertDialogDescription></AlertDialogHeader>{failure && <p role="alert" className="text-sm text-destructive">{failure.message}</p>}<AlertDialogFooter><AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel><AlertDialogAction variant="destructive" disabled={pending || uncertain || denied} onClick={() => void remove()}>{pending ? "Deleting…" : "Delete agent"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>{dirty && <Button type="button" variant="ghost" disabled={pending || uncertain} onClick={discardChanges}>Discard changes</Button>}</div> : <p className="text-sm text-muted-foreground">Only admins can change shared agents.</p>}
           {original?.enabled && onRun && <Button type="button" variant="secondary" disabled={pending || uncertain} onClick={onRun}><Play data-icon="inline-start" />Run in Assistant</Button>}
-          {canEdit && <Button type="submit" disabled={pending || uncertain || (!creating && !dirty)}>{pending ? <><LoaderCircle className="animate-spin" data-icon="inline-start" />Saving…</> : creating ? step < 2 ? <>Next<ArrowRight data-icon="inline-end" /></> : "Create agent" : "Save changes"}</Button>}
+          <div className="ml-auto flex items-center gap-3">{original && <span role="status" className="text-xs text-muted-foreground">{dirty ? "Unsaved changes" : notice || "All changes saved"}</span>}{canEdit && <Button type="submit" disabled={pending || uncertain || (!creating && !dirty)}>{pending ? <><LoaderCircle className="animate-spin" data-icon="inline-start" />Saving…</> : creating ? step < 2 ? <>Next<ArrowRight data-icon="inline-end" /></> : "Create agent" : "Save changes"}</Button>}</div>
         </CardFooter>
       </Card>
     </form>

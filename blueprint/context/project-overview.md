@@ -1,6 +1,6 @@
 # KubePilot - Project Overview
 
-<!-- blueprint:source-hash 02066d2690beda7a31f5fc24e38fedbfc1056ae7ef362ad5de9562d63ce888b4 -->
+<!-- blueprint:source-hash 3db0457e707b586cb9c60761a1b2d47fad44af4099d33d4202b84c39cd6b3941 -->
 
 > A self-hosted Kubernetes operations platform for cluster visibility, troubleshooting, and safe resource management.
 
@@ -48,12 +48,13 @@ Features are ordered as tracked in `build-plan.md`; checked items are shipped.
    - **22c. Integration connections and delivery** - shipped backend-authoritative Slack, Gmail, and Outlook connection lifecycle and delivery/status foundations.
      - **22c1. Integration connection lifecycle** - shipped encrypted token references, OAuth/manual connection flows, scoped permissions, tests, safe status, and audit; Teams, GitHub, and Webhooks remain catalog-only.
      - **22c2. Integration delivery and status** - shipped queued delivery, idempotency, bounded retries, safe errors, history, and audit visibility.
-   - **22d. AI agent workflows in Assistant** - parent slice remains open; shared admin-managed agents and caller-scoped manual execution are shipped through 22d3.
+   - **22d. AI agent workflows in Assistant** - parent slice remains open; shared admin-managed agents, caller-scoped manual execution, integrations, schedules, and events are shipped through 22d5, with UI polish next.
      - **22d1. Agent management** - shipped shared agent CRUD, enable/disable, instructions, identity, and Settings-managed model selection at `/assistant/agents`.
      - **22d2. Skills, capabilities, and templates** - shipped reusable instruction skills, supported tool assignments, effective permissions, and template creation.
      - **22d3. Agent execution** - shipped manual ToolLoopAgent execution with AI Elements streaming, scoped tools, and human approvals.
      - **22d4. Agent integrations** - shipped explicit Slack/Gmail/Outlook notification destinations, encrypted targets, admin test delivery, status refresh, safe delivery metadata, and audited results.
-     - **22d5. Schedules and events** - next: configure/pause triggers and inspect runs while rechecking designated-owner permissions per run; unattended actions remain limited to investigation and configured notifications.
+     - **22d5. Schedules and events** - shipped simple schedules, Kubernetes event triggers, designated-owner permission rechecks, guarded read-only runs, configured notifications, retention, and Background Jobs visibility.
+     - **22d6. AI Agents UI polish** - next: improve responsive hierarchy, sticky actions, grouped capabilities, readable model/status states, and accessible loading, error, and disabled states without changing backend behavior.
 
 ## Data model
 
@@ -90,7 +91,7 @@ workflow state.
 
 - `AIAgent`: shared installation-level identity, description/instructions, internal model reference, enabled state, creator/updater references, and timestamps.
 - Agent skills contain bounded instructions; assignment rows connect agents to skills and supported tools. Templates provide safe draft values and cannot grant permissions or executable code.
-- Future 22d5 state adds trigger configuration, designated owner, and bounded run history. Exact trigger types, schedule semantics, retention, and background approval handoff remain open until that spec.
+- 22d5 adds trigger configuration, designated owner, bounded run history, retention, and guarded background execution. The exact fields and lifecycle are defined in its archived feature specification.
 - `AuditAction`: actor, action, target identity, result, and safe context; never raw prompts, credentials, notification bodies, or raw tool payloads.
 - `AssistantProposal`: UUID, actor/session, immutable validated action arguments and cluster, expiry, one-use decision state, and sanitized result. Conversations remain in the active browser view.
 - `InstallationJob` and Helm repository records support package/release actions with target cluster, namespace, release/action metadata, status, errors, timestamps, and public URL-only repository configuration.
@@ -123,7 +124,7 @@ empty, denied, and error states, and light/dark theme selection.
 - `/marketplace` - Artifact Hub search, package details, install configuration, progress, and history.
 - `/manage-resources` - Kubernetes resources, Helm releases, repository configuration, and upgrades.
 - `/assistant` - authenticated streaming investigation, scoped tool results, proposals, and confirmations.
-- `/assistant/agents` - searchable shared agent list/detail, guided creation, skills, capabilities, templates, execution, and notification destinations; 22d5 adds automation.
+- `/assistant/agents` - searchable shared agent list/detail, guided creation, skills, capabilities, templates, execution, notification destinations, and automation; 22d6 polishes the responsive management experience.
 - `/settings` - protected administrator Settings for Providers, Models, Integrations, Credentials, and Audit Logs.
 - `/settings/integrations` - catalog plus Slack/Gmail/Outlook connection and delivery management; catalog-only entries do not imply supported connectors.
 - `/settings/credentials` - admin-only metadata and write-only management of registered secrets.
@@ -146,5 +147,5 @@ Minikube manifests provide the local deployment path.
 
 - Confirm whether the commercial offering is self-hosted only, managed, or both.
 - Carry exact ServiceAccount/RBAC and protected-system-namespace policies into future operation specs.
-- Specify 22d5 trigger types, schedule semantics, run retention, and authenticated background approval handoff before implementation.
+- `project-plan.md` still contains the pre-implementation 22d5 TODO about trigger types, schedule semantics, retention, and background approval handoff; reconcile that stale wording in a later plan cleanup.
 - Add canonical development/build/start commands and the concrete health-check path to `project-plan.md`.

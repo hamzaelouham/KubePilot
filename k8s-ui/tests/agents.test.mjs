@@ -11,6 +11,7 @@ import { GET as GETAutomation, POST as POSTAutomation } from "../app/api/assista
 import { PUT as PUTAutomation, DELETE as DELETEAutomation } from "../app/api/assistant/agents/[agentId]/automations/[triggerId]/route.ts";
 import { GET as GETRetention, PUT as PUTRetention } from "../app/api/assistant/agents/automation/retention/route.ts";
 import { agentWriteSchema, validateAgent, draftOf, applyTemplate, filterAgents, agentRequest, AgentRequestError, agentListSchema, agentTemplateListSchema } from "../lib/assistant/agents.ts";
+import { getAgentModelState, getAgentToolStatus, groupAgentTools, selectedToolCount, toolStatusLabel } from "../lib/assistant/agent-ui.ts";
 
 const id = "11111111-1111-4111-8111-111111111111";
 const draft = { name: "Investigator", description: "Workload health", instructions: "Read evidence.\nExplain findings.", model_id: id, enabled: false, skill_ids: [], tool_ids: [] };
@@ -156,6 +157,26 @@ test("outages and deleted models permit editing disabled definitions but not re-
   const missing = { ...agent, model_id: null, model: null };
   assert.deepEqual(validateAgent(draftOf(missing), missing, []), {});
   assert.ok(validateAgent({ ...draftOf(missing), enabled: true }, missing, []).model_id);
+});
+
+test("agent UI state helpers keep model and capability presentation deterministic", () => {
+  assert.equal(getAgentModelState(null).key, "missing");
+  assert.equal(getAgentModelState({ ...model, enabled: false }).canEnable, false);
+  assert.equal(getAgentModelState({ ...model, capabilities: { ...model.capabilities, tools: false } }).key, "conversational");
+  assert.equal(getAgentModelState(model).key, "ready");
+  assert.equal(getAgentToolStatus({ actor_permitted: true }, model), "available");
+  assert.equal(getAgentToolStatus({ actor_permitted: false }, model), "permission_denied");
+  assert.equal(getAgentToolStatus(undefined, { ...model, enabled: false }), "model_unavailable");
+  const tools = [
+    { id: "listResources", label: "List resources", description: "Read resources", kind: "read", required_permission: "resources:read" },
+    { id: "getEvents", label: "Read events", description: "Read events", kind: "read", required_permission: "resources:read" },
+    { id: "futureTool", label: "Future tool", description: "Future", kind: "read", required_permission: "resources:read" },
+  ];
+  const groups = groupAgentTools(tools);
+  assert.deepEqual(groups.map(group => group.id), ["workloads", "signals", "other"]);
+  assert.equal(selectedToolCount(groups[0].tools, ["listResources", "futureTool"]), 1);
+  assert.equal(toolStatusLabel("model_unavailable", true), "model unavailable");
+  assert.equal(toolStatusLabel("available", false), "Not configured");
 });
 
 test("draft serialization excludes server identity; search preserves exact saved values", () => {

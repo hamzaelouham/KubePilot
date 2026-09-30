@@ -10,6 +10,7 @@ import {
   KeyRound,
   Layers,
   LayoutDashboard,
+  Menu,
   Network,
   Server,
   Settings,
@@ -18,9 +19,11 @@ import {
   Store,
   SquarePen,
   Sparkles,
+  X,
   Users,
   type LucideIcon,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { NotificationPopover } from "@/components/notification-popover";
 import { UserMenu } from "@/components/user-menu";
 import { ClusterContext } from "@/lib/cluster-context";
@@ -187,6 +190,12 @@ export function DashboardShell({
 
   const [manuallyOpened, setManuallyOpened] = useState<Set<string>>(() => new Set());
   const [manuallyClosed, setManuallyClosed] = useState<Set<string>>(() => new Set());
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  const navigateFromShell = (resource: string, namespace: string) => {
+    setMobileNavOpen(false);
+    onNavigate(resource, namespace);
+  };
 
   const groupContainsActive = (label: string) => groupForResource(activeResource) === label;
 
@@ -233,6 +242,9 @@ export function DashboardShell({
       <div className="min-h-screen overflow-x-clip bg-background text-foreground">
         <div className="border-b border-border bg-card">
           <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+            <Button type="button" variant="ghost" size="icon" className="md:hidden" aria-label={mobileNavOpen ? "Close navigation" : "Open navigation"} aria-expanded={mobileNavOpen} aria-controls="dashboard-navigation" onClick={() => setMobileNavOpen(open => !open)}>
+              {mobileNavOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
+            </Button>
             <Link href="/" className="flex min-w-0 items-center gap-2.5">
               <span className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <Boxes aria-hidden="true" className="size-5" />
@@ -294,12 +306,12 @@ export function DashboardShell({
       </div>
 
       <div className="mx-auto max-w-[1600px] px-0 py-0">
-        <div className="flex min-h-[calc(100vh-160px)]">
-          <aside className="w-56 shrink-0 border-r border-sidebar-border bg-sidebar p-4 lg:w-[286px]">
+        <div className="relative flex min-h-[calc(100vh-160px)]">
+          <aside id="dashboard-navigation" className={`${mobileNavOpen ? "absolute" : "hidden"} inset-y-0 left-0 z-40 w-72 shrink-0 border-r border-sidebar-border bg-sidebar p-4 shadow-xl md:static md:block md:w-56 md:shadow-none lg:w-[286px]`}>
             <nav className="space-y-4">
               <button
                 type="button"
-                onClick={() => onNavigate("overview", activeNamespace)}
+                onClick={() => navigateFromShell("overview", activeNamespace)}
                 className={`flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-base transition ${
                   isActive("overview")
                     ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
@@ -376,7 +388,7 @@ export function DashboardShell({
                         <button
                           key={item.id}
                           type="button"
-                          onClick={() => onNavigate(item.id, activeNamespace)}
+                          onClick={() => navigateFromShell(item.id, activeNamespace)}
                           className={`block w-full cursor-pointer rounded-md px-3 py-2 pl-10 text-left text-base transition ${
                             isActive(item.id)
                               ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
@@ -397,7 +409,7 @@ export function DashboardShell({
               <Select
                 value={activeNamespace || "__all__"}
                 onValueChange={(value) => {
-                  if (value) onNavigate(activeResource, value === "__all__" ? "" : value);
+                    if (value) navigateFromShell(activeResource, value === "__all__" ? "" : value);
                 }}
                 disabled={namespaceDisabled}
               >
@@ -454,7 +466,9 @@ export function DashboardShell({
             ) : null}
           </aside>
 
-          <main className="min-w-0 flex-1 bg-surface p-4 md:p-6">
+          {mobileNavOpen && <button type="button" aria-label="Close navigation" className="absolute inset-0 z-30 bg-foreground/20 md:hidden" onClick={() => setMobileNavOpen(false)} />}
+
+          <main className="relative z-0 min-w-0 flex-1 bg-surface p-4 md:p-6">
             <div className="min-w-0 rounded-2xl border border-border/70 bg-surface-elevated p-5 shadow-sm md:p-6">{children}</div>
           </main>
         </div>
