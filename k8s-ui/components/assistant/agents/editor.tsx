@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, LoaderCircle, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, LoaderCircle, Play, Trash2 } from "lucide-react";
 import { z } from "zod";
 import { Agent, AgentContent, AgentHeader, AgentInstructions } from "@/components/ai-elements/agent";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -23,10 +23,10 @@ type Props = {
   original: AgentDefinition | null; models: AgentModel[]; editable: boolean;
   skills: AgentSkill[]; tools: AgentTool[]; template?: AgentTemplate | null;
   modelsError: string; onSaved: (agent: AgentDefinition) => void;
-  onDeleted: () => void; onCancel: () => void; onDirty: (dirty: boolean) => void;
+  onDeleted: () => void; onCancel: () => void; onDirty: (dirty: boolean) => void; onRun?: () => void;
 };
 
-export function AgentEditor({ original, models, editable, skills, tools, template, modelsError, onSaved, onDeleted, onCancel, onDirty }: Props) {
+export function AgentEditor({ original, models, editable, skills, tools, template, modelsError, onSaved, onDeleted, onCancel, onDirty, onRun }: Props) {
   const initial = original ? draftOf(original) : template ? applyTemplate({ ...emptyAgent }, template) : { ...emptyAgent };
   const [draft, setDraft] = useState<AgentDraft>(() => initial);
   const [baseline, setBaseline] = useState(() => JSON.stringify(initial));
@@ -174,6 +174,7 @@ export function AgentEditor({ original, models, editable, skills, tools, templat
         <CardFooter className="flex flex-wrap justify-between gap-3">
           {creating ? <Button type="button" variant="outline" disabled={pending} onClick={step ? () => setStep(step - 1) : onCancel}>{step ? <><ArrowLeft data-icon="inline-start" />Back</> : "Cancel"}</Button> : canEdit ?
             <AlertDialog open={deleteOpen} onOpenChange={open => { if (!pending) setDeleteOpen(open); }}><AlertDialogTrigger render={<Button type="button" variant="outline" disabled={pending || uncertain} />}><Trash2 data-icon="inline-start" />Delete agent</AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete {original.name}?</AlertDialogTitle><AlertDialogDescription>This removes the shared definition for everyone. Audit records are retained. This cannot be undone.</AlertDialogDescription></AlertDialogHeader>{failure && <p role="alert" className="text-sm text-destructive">{failure.message}</p>}<AlertDialogFooter><AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel><AlertDialogAction variant="destructive" disabled={pending || uncertain || denied} onClick={() => void remove()}>{pending ? "Deleting…" : "Delete agent"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog> : <p className="text-sm text-muted-foreground">Only admins can change shared agents.</p>}
+          {original?.enabled && onRun && <Button type="button" variant="secondary" disabled={pending || uncertain} onClick={onRun}><Play data-icon="inline-start" />Run in Assistant</Button>}
           {canEdit && <Button type="submit" disabled={pending || uncertain || (!creating && !dirty)}>{pending ? <><LoaderCircle className="animate-spin" data-icon="inline-start" />Saving…</> : creating ? step < 2 ? <>Next<ArrowRight data-icon="inline-end" /></> : "Create agent" : "Save changes"}</Button>}
         </CardFooter>
       </Card>

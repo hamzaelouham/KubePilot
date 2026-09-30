@@ -18,23 +18,25 @@ import { AssistantTool } from "./tool-result";
 function AssistantSession({
   context,
   modelId,
-  onRefreshModels,
+  agentId,
+  onRetry,
   onBusyChange,
 }: {
   context: AssistantContext;
-  modelId: string;
-  onRefreshModels: () => void;
+  modelId?: string;
+  agentId?: string;
+  onRetry: () => void;
   onBusyChange: (busy: boolean) => void;
 }) {
   const [text, setText] = useState("");
-  const transport = useMemo(() => new DefaultChatTransport({ api: "/api/assistant", body: { context, modelId }, fetch: async (url, init) => {
+  const transport = useMemo(() => new DefaultChatTransport({ api: "/api/assistant", body: { context, ...(agentId ? { agentId } : { modelId }) }, fetch: async (url, init) => {
     const response = await fetch(url, init);
     if (!response.ok) {
       const body = await response.json().catch(() => null) as { message?: string } | null;
       throw new Error(body?.message ?? `Assistant request failed (${response.status}).`);
     }
     return response;
-  } }), [context, modelId]);
+  } }), [agentId, context, modelId]);
   const { messages, sendMessage, status, error, stop, setMessages, clearError } = useChat({ transport });
   const busy = status === "submitted" || status === "streaming";
   useEffect(() => {
@@ -50,7 +52,7 @@ function AssistantSession({
       {messages.map(message => <Message key={message.id} from={message.role}><MessageContent>{message.parts.map((part, index) => part.type === "text" ? <MessageResponse key={index} isAnimating={busy} components={{ img: () => null, a: ({ children }) => <span>{children}</span> }}>{part.text}</MessageResponse> : isToolUIPart(part) ? <AssistantTool key={part.toolCallId} part={part} cluster={context.cluster} disabled={busy} followUp={send} onResult={result => send(`The confirmation result for proposal ${result.proposal_id} is ${result.status}: ${JSON.stringify(result.result)}. Explain the outcome; if there is a job_id, check its status. Do not repeat the action.`)} /> : null)}</MessageContent></Message>)}
       {busy && <div role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner />Inspecting operational evidence…</div>}
     </ConversationContent><ConversationScrollButton /></Conversation>
-    {error && <Alert variant="destructive"><AlertDescription className="flex flex-wrap items-center justify-between gap-2"><span>{error.message}</span><Button variant="outline" size="sm" onClick={onRefreshModels}>Refresh models</Button></AlertDescription></Alert>}
+    {error && <Alert variant="destructive"><AlertDescription className="flex flex-wrap items-center justify-between gap-2"><span>{error.message}</span><Button variant="outline" size="sm" onClick={onRetry}>{agentId ? "Retry agent" : "Refresh models"}</Button></AlertDescription></Alert>}
     <PromptInput onSubmit={({ text: value }) => { send(value); setText(""); }}>
       <PromptInputBody><PromptInputTextarea aria-label="Ask KubePilot" placeholder="Why is my deployment unavailable?" value={text} onChange={event => setText(event.target.value)} maxLength={8000} disabled={busy} /></PromptInputBody>
       <PromptInputFooter><span className="text-xs text-muted-foreground">Do not paste credentials. Reads run directly; changes require confirmation.</span><PromptInputSubmit status={status} onStop={() => void stop()} disabled={!busy && !text.trim()} /></PromptInputFooter>
@@ -58,12 +60,13 @@ function AssistantSession({
   </div>;
 }
 
-export function AssistantConversation({ context }: { context: AssistantContext }) {
+export function AssistantConversation({ context, agentId }: { context: AssistantContext; agentId?: string }) {
   const [models, setModels] = useState<AssistantModel[]>([]);
   const [modelId, setModelId] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [sessionVersion, setSessionVersion] = useState(0);
 
   const loadModels = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -86,6 +89,13 @@ export function AssistantConversation({ context }: { context: AssistantContext }
   }, []);
 
   useEffect(() => {
+    if (agentId) {
+      setLoading(false);
+      setLoadError(undefined);
+      setModels([]);
+      setModelId(undefined);
+      return;
+    }
     const controller = new AbortController();
     fetchAssistantModels(controller.signal)
       .then((available) => {
@@ -105,16 +115,21 @@ export function AssistantConversation({ context }: { context: AssistantContext }
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, []);
+  }, [agentId]);
+
+  const retry = () => {
+    setSessionVersion(value => value + 1);
+    if (!agentId) void loadModels();
+  };
 
   return <div className="flex h-[calc(100dvh-280px)] min-h-[480px] min-w-0 flex-col gap-3">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <p className="text-sm text-muted-foreground">{context.cluster} / {context.namespace ?? "all namespaces"}{context.name ? ` / ${context.name}` : ""}{context.release ? ` / release ${context.release}` : ""}</p>
-      {loading ? <div role="status" aria-label="Loading models"><Skeleton className="h-7 w-40" /></div> : <AssistantModelSelector models={models} value={modelId} disabled={busy || Boolean(loadError)} onChange={setModelId} />}
+      {agentId ? <span className="rounded-md border px-2 py-1 text-xs font-medium text-muted-foreground">Selected agent</span> : loading ? <div role="status" aria-label="Loading models"><Skeleton className="h-7 w-40" /></div> : <AssistantModelSelector models={models} value={modelId} disabled={busy || Boolean(loadError)} onChange={setModelId} />}
     </div>
-    {loadError ? <Alert variant="destructive"><AlertDescription className="flex flex-wrap items-center justify-between gap-2"><span>{loadError}</span><Button variant="outline" size="sm" onClick={() => void loadModels()}>Retry</Button></AlertDescription></Alert> : null}
-    {!loading && !loadError && models.length === 0 ? <Alert><AlertDescription>No eligible Assistant models are configured. Ask an administrator to enable and check an available streaming model with tool support.</AlertDescription></Alert> : null}
-    {!loading && !loadError && models.length > 0 && !modelId ? <Alert><AlertDescription>Select an eligible model to begin. No default model is configured.</AlertDescription></Alert> : null}
-    {modelId ? <AssistantSession key={modelId} context={context} modelId={modelId} onBusyChange={setBusy} onRefreshModels={() => void loadModels()} /> : null}
+    {!agentId && loadError ? <Alert variant="destructive"><AlertDescription className="flex flex-wrap items-center justify-between gap-2"><span>{loadError}</span><Button variant="outline" size="sm" onClick={() => void loadModels()}>Retry</Button></AlertDescription></Alert> : null}
+    {!agentId && !loading && !loadError && models.length === 0 ? <Alert><AlertDescription>No eligible Assistant models are configured. Ask an administrator to enable and check an available streaming model with tool support.</AlertDescription></Alert> : null}
+    {!agentId && !loading && !loadError && models.length > 0 && !modelId ? <Alert><AlertDescription>Select an eligible model to begin. No default model is configured.</AlertDescription></Alert> : null}
+    {agentId ? <AssistantSession key={`agent-${agentId}-${sessionVersion}`} context={context} agentId={agentId} onBusyChange={setBusy} onRetry={retry} /> : modelId ? <AssistantSession key={`${modelId}-${sessionVersion}`} context={context} modelId={modelId} onBusyChange={setBusy} onRetry={retry} /> : null}
   </div>;
 }

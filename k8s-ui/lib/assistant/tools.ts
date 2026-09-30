@@ -3,7 +3,7 @@ import { z } from "zod";
 import { backendRequest } from "./backend";
 import { type AssistantContext, nameSchema, namespaceSchema, resourceSchema } from "./schemas";
 
-export function createTools(cookie: string, context: AssistantContext, signal: AbortSignal) {
+export function createTools(cookie: string, context: AssistantContext, signal: AbortSignal, allowedToolIds?: ReadonlySet<string>) {
   const send = (path: string, input: Record<string, unknown>) => backendRequest(cookie, `/assistant/${path}`, { namespace: context.namespace, ...input, cluster: context.cluster }, signal);
   const namespace = namespaceSchema.optional().describe("Defaults to the selected namespace. Omit for all namespaces when no namespace is selected.");
   const resource = z.object({ resource_type: resourceSchema, namespace });
@@ -11,7 +11,7 @@ export function createTools(cookie: string, context: AssistantContext, signal: A
   const target = z.object({ name: nameSchema, namespace: namespaceSchema.describe("Explicit target namespace, required for every proposed change.") });
   const read = (name: string, input: Record<string, unknown>) => send("read", { tool: name, ...input });
   const propose = (action: string, input: Record<string, unknown>) => send("proposals", { action, ...input });
-  return {
+  const tools = {
     listClusters: tool({ description: "List registered cluster names/status. All other tools are locked to the selected cluster; ask the user to switch in the header for another cluster.", inputSchema: z.object({}), execute: () => read("listClusters", {}) }),
     listNamespaces: tool({ description: "Discover namespaces in the selected cluster.", inputSchema: z.object({}), execute: () => read("listNamespaces", {}) }),
     listResources: tool({ description: "List up to 100 resources with safe status and owner references. Includes PVCs, Ingresses, and metadata-only Secrets/ConfigMaps. Truncated inventory is not complete.", inputSchema: resource, execute: input => send("observe/list", input) }),
@@ -33,4 +33,6 @@ export function createTools(cookie: string, context: AssistantContext, signal: A
     proposeRollback: tool({ description: "Propose rollback to the previous Helm revision. The reviewed revision must remain current at confirmation.", inputSchema: target, execute: input => propose("rollback", input) }),
     proposeUninstall: tool({ description: "Propose uninstalling a Helm release and its managed resources. Requires separate user confirmation.", inputSchema: target, execute: input => propose("uninstall", input) }),
   };
+  if (!allowedToolIds) return tools;
+  return Object.fromEntries(Object.entries(tools).filter(([id]) => allowedToolIds.has(id)));
 }

@@ -1,6 +1,6 @@
 # KubePilot - Project Overview
 
-<!-- blueprint:source-hash daa7226c1e2d3321d7b97be6ec01eb5fb42117d640591272c8fa03b41adc877d -->
+<!-- blueprint:source-hash 87cb4810e72c25b6ca70521903db0b0909acf64553ef4d9fbfc3eb48586d2392 -->
 
 > A self-hosted Kubernetes operations platform for cluster visibility, troubleshooting, and safe resource management.
 
@@ -46,16 +46,16 @@ Features are ordered as tracked in `build-plan.md`; checked items are shipped.
 19. **Manage resources** - validated Kubernetes resource operations plus Helm release, repository, and upgrade workflows.
 20. **Centralized KubePilot Settings** - shipped administrator-controlled provider/model configuration, credentials, and audit logs.
 21. **Direct AI provider architecture** - shipped Settings-backed OpenAI, OpenRouter, and Ollama/local model architecture without the AI Gateway, including capability enforcement and safe audit outcomes.
-22. **Integrations and AI agent automation** - integration foundations are shipped; AI Agents under Assistant remain planned. The parent remains unchecked until all slices are complete.
+22. **Integrations and AI agent automation** - integration foundations are shipped; AI Agents under Assistant are in progress. The parent remains unchecked until all slices are complete.
    - **22a. Secrets and API key management** - shipped admin-only CRUD-style management of KubePilot-registered provider and integration credentials using metadata-only reads, write-only create/replace, and confirmed deletion.
    - **22b. Integrations catalog UI foundation** - shipped frontend-only catalog, filters, search, status groupings, and local preview actions for Slack, Teams, Gmail, Outlook, GitHub, and Webhooks.
    - **22c. Integration connections and delivery** - shipped backend-authoritative connector lifecycle and delivery/status.
      - **22c1. Integration connection lifecycle** - shipped Slack, Gmail, and Microsoft Outlook registry, OAuth, encrypted tokens, permission checks, connection tests, status, and audit; Teams, GitHub, and Webhooks remain catalog-only.
      - **22c2. Integration delivery and status** - shipped queued delivery, idempotency, bounded retries, safe errors, history, and audit visibility.
    - **22d. AI agent workflows in Assistant** - approved five-slice delivery; shared admin-managed agents, caller-scoped manual runs, and designated-owner automation.
-     - **22d1. Agent management** - next: create, edit, delete, enable/disable, identity, instructions, and Settings-managed model selection at `/assistant/agents`.
-     - **22d2. Skills, capabilities, and templates** - reusable instruction skills, supported tool assignments, effective permissions, and template-based creation.
-     - **22d3. Agent execution** - Vercel AI SDK ToolLoopAgent execution with AI Elements streaming, scoped tools, and human approvals.
+     - **22d1. Agent management** - shipped create, edit, delete, enable/disable, identity, instructions, and Settings-managed model selection at `/assistant/agents`.
+     - **22d2. Skills, capabilities, and templates** - shipped reusable instruction skills, supported tool assignments, effective permissions, and template-based creation.
+     - **22d3. Agent execution** - next: Vercel AI SDK ToolLoopAgent execution with AI Elements streaming, scoped tools, and human approvals.
      - **22d4. Agent integrations** - explicit notification destinations through existing Slack/Gmail/Outlook connections and delivery status.
      - **22d5. Schedules and events** - configure/pause triggers and inspect runs; recheck designated-owner permissions per run. Unattended actions are investigation and configured notifications only; resource changes require authenticated human approval.
 
@@ -112,10 +112,10 @@ application identity, configuration, and bounded operational history.
 - Assistant proposal - UUID, actor/session, validated immutable action arguments and cluster, expiry, one-use decision state, and sanitized result. Conversations and raw tool data are not persisted in audit records.
 - Live Kubernetes entities include namespaces, workloads, pods, deployments, services, nodes, events, logs, and metrics; cached projections remain bounded and sanitized.
 
-### AI Agents (planned)
+### AI Agents (partially shipped)
 
-- Shared installation-level agent definition: identity, instruction text, internal model reference, enabled state, creator/updater references, and timestamps. Admins manage these records.
-- Later slices add reusable instruction skills, supported tool assignments, templates, explicit notification destinations, schedules/event triggers, designated owner, and bounded run history. Exact persisted schemas are defined in each slice's spec.
+- Shipped shared installation-level agent definition: identity, instruction text, internal model reference, enabled state, creator/updater references, and timestamps. Admins manage these records.
+- Shipped reusable instruction skills, supported tool assignments, effective permission projections, and templates. Later slices add explicit notification destinations, schedules/event triggers, designated owner, and bounded run history. Exact persisted schemas are defined in each slice's spec.
 - Skills contain instructions, not executable code. Instructions and capability assignments cannot grant permissions. Manual runs intersect configured tools with model support and the caller's current backend permissions.
 - Scheduled/event runs recheck the designated owner's permissions. Existing session-bound proposals cannot be treated as background approval; 22d5 must specify the authenticated handoff.
 - Persisted agent configuration is distinct from conversation history. Audit records exclude instructions, prompts, credentials, and raw tool payloads.
@@ -149,7 +149,7 @@ controls. The existing theme system also supports light/dark selection.
 - `/marketplace` - Artifact Hub search, package details, install configuration, progress, and history.
 - `/manage-resources` - Kubernetes resources and Helm releases tabs, repository configuration, and upgrades.
 - `/assistant` - authenticated streaming investigation, scoped tool results, proposals, and confirmations.
-- `/assistant/agents` (planned) - AI Agents child page under AI Assistant, with searchable list/detail layout and guided creation. Later slices add capabilities, templates, runs, integrations, and automation. Use the three supplied `blueprint/reference/settings-ai-agents*.png` references, adapting navigation to Assistant and reusing shadcn/ui themes and AI Elements. Show only real counts/statistics and ship responsive, accessible loading/empty/denied/error states.
+- `/assistant/agents` - shipped AI Agents child page under AI Assistant, with searchable list/detail layout, guided creation, skills, capabilities, and templates. Later slices add execution, integrations, and automation. Use the three supplied `blueprint/reference/settings-ai-agents*.png` references, adapting navigation to Assistant and reusing shadcn/ui themes and AI Elements. Show only real counts/statistics and ship responsive, accessible loading/empty/denied/error states.
 - `/settings` - protected administrator Settings shell for Providers, Models, Integrations catalog, Credentials, and Audit Logs.
 - `/settings/integrations` - catalog plus shipped Slack/Gmail/Outlook connection and delivery management; other catalog entries do not imply supported connectors.
 - `/settings/credentials` - admin-only inventory and CRUD-style management for KubePilot-registered provider and integration secrets without reveal/copy behavior.
@@ -162,16 +162,16 @@ customer-managed Kubernetes. The local topology is a standalone Next.js
 frontend, FastAPI backend, and PostgreSQL database deployed to Minikube with
 backend ServiceAccount/RBAC and a background worker for Helm jobs.
 
-- Development: `yarn dev` at `http://localhost:3000`.
-- Build: `yarn build`; production server: `yarn start`.
-- Backend: `cd backend && PYTHONPATH=. uvicorn app.main:app --host 127.0.0.1 --port 8000`.
-- Container/deployment: published Docker images, Kubernetes manifests under `backend/deploy/kubernetes/`, and `./deploy.sh` or the documented Minikube wrapper commands.
-- Required bootstrap configuration includes `KUBEPILOT_AUTH_SECRET`, database URL, cluster/admin settings, `KUBEPILOT_BACKEND_URL`, and the Kubernetes-managed encryption key. Mutable settings and provider credentials use PostgreSQL/encrypted storage.
-- Health path: `GET /api/v1/health`.
+- Development, build, production start, and backend commands: > TODO: record the canonical commands in `project-plan.md`.
+- Container/deployment: containerized Next.js, FastAPI, and PostgreSQL services with Kubernetes manifests, in-cluster configuration, and RBAC for Minikube and customer-managed Kubernetes.
+- Required bootstrap configuration includes cluster/admin configuration, database connection details, shared session signing and session settings, backend URL, and the Kubernetes-managed encryption key. Mutable settings and provider credentials use PostgreSQL/encrypted storage.
+- Health path: > TODO: specify the concrete health-check endpoint in `project-plan.md`.
 - The browser talks to Next.js; FastAPI is the only application component that talks to Kubernetes or executes Helm. Kubernetes credentials never reach the browser or AI provider adapters.
 
 ## Open questions
 
+- No direct scope or ordering contradictions were found between `project-plan.md` and `build-plan.md`.
 - Confirm whether the commercial offering is self-hosted only, managed, or both.
 - Carry the exact ServiceAccount/RBAC and protected-system-namespace policy into future operation specs.
 - Specify exact trigger types, schedule semantics, run retention, and background approval handoff in 22d5 before implementation; no arbitrary or Kubernetes secret management is introduced.
+- Add canonical development/build/start commands and the concrete health-check path to the deployment section of `project-plan.md`.

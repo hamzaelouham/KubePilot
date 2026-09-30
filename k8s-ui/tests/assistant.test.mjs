@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { MockLanguageModelV4 } from "ai/test";
 import { createAgentUIStreamResponse, simulateReadableStream } from "ai";
 import { createAssistant } from "../lib/assistant/agent.ts";
+import { resolveAgentRuntime } from "../lib/assistant/agent-runtime.ts";
 import { authenticate, boundedBody, sameOrigin, sessionCookie } from "../lib/assistant/backend.ts";
 import { POST } from "../app/api/assistant/route.ts";
 import { GET as listModels } from "../app/api/assistant/models/route.ts";
@@ -13,6 +14,7 @@ import { fetchAssistantModels } from "../lib/assistant/models.ts";
 const user = { id: "actor", role: "operator", must_change_password: false, password_expired: false };
 const scope = { cluster: "primary", namespace: "default" };
 const selectedModelId = "11111111-1111-4111-8111-111111111111";
+const selectedAgentId = "22222222-2222-4222-8222-222222222222";
 const assistantModel = (tools = true) => ({
   id: selectedModelId,
   provider_id: "openai",
@@ -135,6 +137,70 @@ test("real SDK agent chains observation, proposal and explanation without execut
   assert.ok(calls.every(call => call.body.cluster === "primary"));
   assert.ok(!Object.keys(agent.tools).some(key => /^(execute|approve)/i.test(key)));
   assert.ok(!JSON.stringify(model.doGenerateCalls).includes("kubepilot_session"));
+});
+
+test("agent runtime resolves the persisted model and intersects assigned capabilities", async t => {
+  const agent = {
+    id: selectedAgentId,
+    name: "Investigator",
+    description: "Investigate workload health",
+    instructions: "Use evidence before hypotheses.",
+    model_id: selectedModelId,
+    enabled: true,
+    created_by_id: null,
+    updated_by_id: null,
+    created_at: "2026-09-30T00:00:00Z",
+    updated_at: "2026-09-30T00:00:00Z",
+    skills: [{ id: "33333333-3333-4333-8333-333333333333", name: "Diagnosis", description: "Evidence first", instructions: "Cite observations." }],
+    skill_ids: ["33333333-3333-4333-8333-333333333333"],
+    tool_ids: ["listResources", "proposeScale", "proposeDelete"],
+    model: { id: selectedModelId, friendly_name: "GPT Test", provider_name: "OpenAI", enabled: true, availability: "available", capabilities: { streaming: true, tools: true } },
+    capabilities: [
+      { id: "listResources", label: "List resources", description: "Read resources", kind: "read", required_permission: "resources:read", configured: true, model_supported: true, actor_permitted: true, status: "available" },
+      { id: "proposeScale", label: "Propose scale", description: "Propose a scale", kind: "proposal", required_permission: "resources:update", configured: true, model_supported: true, actor_permitted: false, status: "permission_denied" },
+      { id: "proposeDelete", label: "Propose delete", description: "Propose a delete", kind: "proposal", required_permission: "resources:delete", configured: true, model_supported: true, actor_permitted: true, status: "available" },
+    ],
+  };
+  t.mock.method(globalThis, "fetch", async url => {
+    if (String(url).endsWith(`/api/v1/assistant/agents/${selectedAgentId}`)) return Response.json(agent);
+    if (String(url).endsWith("/api/v1/assistant/models")) return Response.json({ models: [assistantModel()] });
+    throw new Error(`unexpected request: ${url}`);
+  });
+  const resolved = await resolveAgentRuntime("kubepilot_session=signed", selectedAgentId);
+  assert.equal(resolved.metadata.id, selectedModelId);
+  assert.deepEqual([...resolved.config.effectiveToolIds], ["listResources", "proposeDelete"]);
+  assert.deepEqual(resolved.config.skillInstructions, ["Cite observations."]);
+});
+
+test("agent mode rejects a client model override before resolving the agent", async t => {
+  const paths = [];
+  t.mock.method(globalThis, "fetch", async url => { paths.push(String(url)); return Response.json(user); });
+  const response = await POST(request({
+    context: scope,
+    agentId: selectedAgentId,
+    modelId: selectedModelId,
+    messages: [{ id: "1", role: "user", parts: [{ type: "text", text: "Investigate the cluster" }] }],
+  }));
+  assert.equal(response.status, 422);
+  assert.equal(paths.length, 1);
+  assert.ok(paths[0].endsWith("/api/v1/auth/me"));
+});
+
+test("agent ToolLoopAgent exposes only effective tools and never approval execution", async () => {
+  const model = new MockLanguageModelV4({ doGenerate: [{ finishReason: { unified: "stop", raw: undefined }, usage, warnings: [], content: [{ type: "text", text: "Scoped result" }] }] });
+  const agent = createAssistant(model, "kubepilot_session=signed", scope, "operator", new AbortController().signal, true, {
+    name: "Investigator",
+    description: "Investigate workload health",
+    instructions: "Use evidence before hypotheses.",
+    skillInstructions: ["Cite observations."],
+    effectiveToolIds: new Set(["listResources", "proposeScale"]),
+  });
+  assert.deepEqual(Object.keys(agent.tools), ["listResources", "proposeScale"]);
+  assert.ok(!Object.keys(agent.tools).some(key => /^(execute|approve)/i.test(key)));
+  const result = await agent.generate({ prompt: "Investigate" });
+  assert.equal(result.text, "Scoped result");
+  assert.match(JSON.stringify(model.doGenerateCalls), /Use evidence before hypotheses/);
+  assert.match(JSON.stringify(model.doGenerateCalls), /cannot grant permissions/i);
 });
 
 test("AI SDK streaming helper emits the UI text protocol", async () => {

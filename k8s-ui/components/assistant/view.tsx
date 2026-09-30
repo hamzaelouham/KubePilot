@@ -11,7 +11,7 @@ import type { BackendUser } from "@/lib/auth-client";
 import type { AssistantContext } from "@/lib/assistant/schemas";
 import { AssistantConversation } from "./conversation";
 
-export function AssistantView({ user, initial }: { user: BackendUser; initial: Partial<AssistantContext> }) {
+export function AssistantView({ user, initial, agentId }: { user: BackendUser; initial: Partial<AssistantContext>; agentId?: string }) {
   const router = useRouter();
   const selection = useClusterSelection(initial.cluster, true);
   const [namespace, setNamespace] = useState(initial.namespace ?? "");
@@ -22,7 +22,7 @@ export function AssistantView({ user, initial }: { user: BackendUser; initial: P
     onSelectCluster={cluster => { selection.selectCluster(cluster); setNamespace(""); setResourceContext({ resource: undefined, name: undefined, release: undefined }); }}
     onNavigate={(resource, nextNamespace) => { if (resource === "assistant") { setNamespace(nextNamespace); setResourceContext({ resource: undefined, name: undefined, release: undefined }); } else router.push(withCluster(`/dashboard?resource=${encodeURIComponent(resource)}&namespace=${encodeURIComponent(nextNamespace)}`, selection.cluster)); }}>
     <div className="flex min-w-0 flex-col gap-4"><div><h1 className="text-2xl font-semibold tracking-tight">AI Assistant</h1><p className="mt-1 text-sm text-muted-foreground">Investigate, diagnose and safely operate Kubernetes with live evidence.</p></div>
-      {active ? <AssistantConversation key={JSON.stringify(context)} context={context} /> : <Alert><AlertDescription>{selection.loading ? "Loading clusters…" : selection.error ?? "Select an active cluster to begin."}{!selection.loading && <Button variant="outline" onClick={selection.refreshClusters}>Refresh clusters</Button>}</AlertDescription></Alert>}
+      {active ? <AssistantConversation key={`${agentId ?? "direct"}:${JSON.stringify(context)}`} context={context} agentId={agentId} /> : <Alert><AlertDescription>{selection.loading ? "Loading clusters…" : selection.error ?? "Select an active cluster to begin."}{!selection.loading && <Button variant="outline" onClick={selection.refreshClusters}>Refresh clusters</Button>}</AlertDescription></Alert>}
     </div>
   </DashboardShell>;
 }

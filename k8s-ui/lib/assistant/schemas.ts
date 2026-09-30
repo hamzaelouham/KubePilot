@@ -10,6 +10,7 @@ export const contextSchema = z.object({
   name: nameSchema.optional(),
   release: nameSchema.optional(),
 }).strict();
+export const agentIdSchema = z.string().uuid();
 export type AssistantContext = z.infer<typeof contextSchema>;
 export const proposalSchema = z.object({
   proposal_id: z.string().uuid(),

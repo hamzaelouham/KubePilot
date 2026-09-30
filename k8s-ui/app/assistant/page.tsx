@@ -1,6 +1,6 @@
 import { requireUsableBackendUser } from "@/lib/auth";
 import { AssistantView } from "@/components/assistant/view";
-import { contextSchema } from "@/lib/assistant/schemas";
+import { agentIdSchema, contextSchema } from "@/lib/assistant/schemas";
 
 export default async function AssistantPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const user = await requireUsableBackendUser();
@@ -9,5 +9,6 @@ export default async function AssistantPage({ searchParams }: { searchParams: Pr
     const result = schema.safeParse(query[key]);
     return result.success && result.data ? [[key, result.data]] : [];
   }));
-  return <AssistantView user={user} initial={contextSchema.partial().parse(initial)} />;
+  const agentId = agentIdSchema.safeParse(query.agent).data;
+  return <AssistantView user={user} initial={contextSchema.partial().parse(initial)} agentId={agentId} />;
 }
