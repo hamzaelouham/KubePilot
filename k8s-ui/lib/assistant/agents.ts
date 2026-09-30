@@ -71,6 +71,30 @@ export const notificationDeliverySchema = z.object({
   agent_destination_id: z.string().uuid().nullable().optional(),
   deduplicated: z.boolean().optional(),
 });
+export const automationTriggerWriteSchema = z.object({
+  trigger_type: z.enum(["schedule", "kubernetes_event"]),
+  cluster_id: z.string().uuid(),
+  namespace: z.string().trim().max(253).nullable(),
+  cron_expression: z.string().trim().max(128).nullable(),
+  timezone: z.string().trim().min(1).max(64),
+  event_kind: z.string().trim().max(64).nullable(),
+  event_name: z.string().trim().max(253).nullable(),
+  event_type: z.string().trim().max(32).nullable(),
+  event_reason: z.string().trim().max(128).nullable(),
+  owner_id: z.string().uuid(),
+  notification_destination_ids: z.array(z.string().uuid()).max(20),
+  enabled: z.boolean(),
+}).strict();
+export const automationTriggerSchema = automationTriggerWriteSchema.extend({
+  id: z.string().uuid(),
+  last_evaluated_at: z.string().nullable(),
+  created_by_id: z.string().uuid().nullable(),
+  updated_by_id: z.string().uuid().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+export const automationTriggerListSchema = z.object({ triggers: z.array(automationTriggerSchema) });
+export const agentRetentionSchema = z.object({ retention_days: z.number().int().min(1).max(365) });
 export type AgentDefinition = z.infer<typeof agentSchema>;
 export type AgentDraft = z.infer<typeof agentWriteSchema>;
 export type AgentModel = z.infer<typeof agentModelSchema>;
@@ -80,6 +104,8 @@ export type AgentTool = z.infer<typeof agentToolSchema>;
 export type AgentTemplate = z.infer<typeof agentTemplateSchema>;
 export type NotificationDestination = z.infer<typeof notificationDestinationSchema>;
 export type NotificationDestinationWrite = z.infer<typeof notificationDestinationWriteSchema>;
+export type AutomationTrigger = z.infer<typeof automationTriggerSchema>;
+export type AutomationTriggerWrite = z.infer<typeof automationTriggerWriteSchema>;
 export const emptyAgent: AgentDraft = { name: "", description: "", instructions: "", model_id: null, enabled: false, skill_ids: [], tool_ids: [] };
 export function draftOf(agent: AgentDraft): AgentDraft {
   return { name: agent.name, description: agent.description, instructions: agent.instructions, model_id: agent.model_id, enabled: agent.enabled, skill_ids: agent.skill_ids ?? [], tool_ids: agent.tool_ids ?? [] };

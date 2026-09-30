@@ -23,6 +23,68 @@ class AIAgent(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class AIAgentAutomationTrigger(Base):
+    __tablename__ = "ai_agent_automation_triggers"
+
+    id: Mapped[PrimaryKey]
+    agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("ai_agents.id", ondelete="CASCADE"), nullable=False, index=True)
+    cluster_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cluster_connections.id", ondelete="CASCADE"), nullable=False, index=True)
+    trigger_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    cron_expression: Mapped[str | None] = mapped_column(String(128))
+    timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="UTC", server_default="UTC")
+    namespace: Mapped[str | None] = mapped_column(String(253))
+    event_kind: Mapped[str | None] = mapped_column(String(64))
+    event_name: Mapped[str | None] = mapped_column(String(253))
+    event_type: Mapped[str | None] = mapped_column(String(32))
+    event_reason: Mapped[str | None] = mapped_column(String(128))
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("user_accounts.id", ondelete="RESTRICT"), nullable=False, index=True)
+    notification_destination_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    last_evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("user_accounts.id", ondelete="SET NULL"), index=True)
+    updated_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("user_accounts.id", ondelete="SET NULL"), index=True)
+    created_at: Mapped[CreatedAt]
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now().astimezone(),
+        server_default=text("now()"),
+    )
+
+    __table_args__ = (
+        Index("ix_ai_agent_automation_triggers_enabled_type", "enabled", "trigger_type"),
+        Index("ix_ai_agent_automation_triggers_agent_enabled", "agent_id", "enabled"),
+    )
+
+
+class AIAgentRun(Base):
+    __tablename__ = "ai_agent_runs"
+
+    id: Mapped[PrimaryKey]
+    trigger_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("ai_agent_automation_triggers.id", ondelete="SET NULL"), nullable=True, index=True)
+    agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("ai_agents.id", ondelete="CASCADE"), nullable=False, index=True)
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("user_accounts.id", ondelete="RESTRICT"), nullable=False, index=True)
+    cluster_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cluster_connections.id", ondelete="CASCADE"), nullable=False, index=True)
+    namespace: Mapped[str | None] = mapped_column(String(253))
+    trigger_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    scheduled_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    event_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("events.id", ondelete="SET NULL"), nullable=True, index=True)
+    dedupe_key: Mapped[str] = mapped_column(String(512), nullable=False, unique=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued", server_default="queued", index=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    result_code: Mapped[str | None] = mapped_column(String(64))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    log_output: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[CreatedAt]
+
+    __table_args__ = (
+        Index("ix_ai_agent_runs_status_created", "status", "created_at"),
+        Index("ix_ai_agent_runs_agent_created", "agent_id", "created_at"),
+    )
+
+
 class AIAgentNotificationDestination(Base):
     __tablename__ = "ai_agent_notification_destinations"
 
@@ -294,6 +356,8 @@ class Event(Base):
     namespace: Mapped[str | None] = mapped_column(String(253))
     kind: Mapped[str] = mapped_column(String(64), nullable=False)
     name: Mapped[str] = mapped_column(String(253), nullable=False)
+    event_type: Mapped[str | None] = mapped_column(String(32))
+    reason: Mapped[str | None] = mapped_column(String(128))
     message: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[CreatedAt]
 

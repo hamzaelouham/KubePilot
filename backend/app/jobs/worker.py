@@ -16,6 +16,7 @@ from app.core.config import Settings
 from app.db.session import create_session_factory
 from app.models.entities import InstallationJob
 from app.jobs.integration_delivery_worker import requeue_running_deliveries, run_pending_deliveries
+from app.services.agent_automation import requeue_running_runs, run_pending_agent_runs
 
 logger = logging.getLogger(__name__)
 
@@ -434,6 +435,7 @@ def _run_cycle(settings: Settings) -> None:
     try:
         run_pending_installations(database, settings)
         run_pending_deliveries(database, settings)
+        run_pending_agent_runs(database, settings)
     finally:
         database.close()
 

@@ -75,6 +75,14 @@ class AuditEvent:
     RESOURCE_CREATE_RESULT = "resource.create_result"
     RESOURCE_DELETE_REQUESTED = "resource.delete_requested"
     RESOURCE_DELETE_RESULT = "resource.delete_result"
+    AGENT_AUTOMATION_CREATED = "assistant.agent_automation.create"
+    AGENT_AUTOMATION_UPDATED = "assistant.agent_automation.update"
+    AGENT_AUTOMATION_DELETED = "assistant.agent_automation.delete"
+    AGENT_AUTOMATION_RUN_QUEUED = "assistant.agent_automation.run_queued"
+    AGENT_AUTOMATION_RUN_STARTED = "assistant.agent_automation.run_started"
+    AGENT_AUTOMATION_RUN_SUCCEEDED = "assistant.agent_automation.run_succeeded"
+    AGENT_AUTOMATION_RUN_FAILED = "assistant.agent_automation.run_failed"
+    AGENT_AUTOMATION_RETENTION_UPDATED = "assistant.agent_automation.retention_updated"
 
 
 def record_audit(

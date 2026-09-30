@@ -18,7 +18,7 @@ from app.core.dependencies import (
 )
 from app.core.rbac import Permission, require_permission
 from app.kubernetes.client import ClusterClient, create_cluster_client
-from app.models.entities import ClusterConnection, InstallationJob
+from app.models.entities import AIAgent, AIAgentRun, ClusterConnection, InstallationJob
 
 from .marketplace_schemas import (
     MarketplaceInstallationListResponse,
@@ -425,6 +425,28 @@ async def get_installation_status(
 ) -> MarketplaceInstallationStatus:
     job = database.get(InstallationJob, job_id)
     if job is None:
+        run = database.get(AIAgentRun, job_id)
+        if run is not None:
+            agent = database.get(AIAgent, run.agent_id)
+            cluster = database.get(ClusterConnection, run.cluster_id)
+            return MarketplaceInstallationStatus(
+                job_id=run.id,
+                package_name=agent.name if agent else "AI agent run",
+                cluster=cluster.name if cluster else "Unknown cluster",
+                namespace=run.namespace or "all namespaces",
+                release_name=agent.name if agent else "agent-run",
+                action="agent_run",
+                status=run.status,
+                error_message=run.error_message,
+                created_at=run.created_at,
+                started_at=run.started_at,
+                completed_at=run.completed_at,
+                job_type="agent_run",
+                trigger_type=run.trigger_type,
+                owner_id=run.owner_id,
+                result_code=run.result_code,
+                attempt_count=run.attempt_count,
+            )
         raise HTTPException(
             status_code=404,
             detail={
@@ -458,6 +480,9 @@ async def get_installation_logs(
 ) -> MarketplaceInstallationLogsResponse:
     job = database.get(InstallationJob, job_id)
     if job is None:
+        run = database.get(AIAgentRun, job_id)
+        if run is not None:
+            return MarketplaceInstallationLogsResponse(job_id=run.id, log_output=run.log_output)
         raise HTTPException(
             status_code=404,
             detail={
@@ -651,15 +676,28 @@ async def list_installations(
         statement = statement.where(InstallationJob.status == status)
         count_statement = count_statement.where(InstallationJob.status == status)
 
-    total = database.scalar(count_statement) or 0
+    installation_total = database.scalar(count_statement) or 0
     rows = database.scalars(
         statement.order_by(InstallationJob.created_at.desc(), InstallationJob.id.desc()).limit(
-            limit
-        ).offset(offset)
+            10_000
+        )
     ).all()
-    return MarketplaceInstallationListResponse(
-        items=[
-            MarketplaceInstallationStatus(
+    run_statement = select(AIAgentRun)
+    if status is not None:
+        run_statement = run_statement.where(AIAgentRun.status == status)
+    run_rows = database.scalars(run_statement.order_by(AIAgentRun.created_at.desc(), AIAgentRun.id.desc()).limit(10_000)).all()
+    agent_ids = {run.agent_id for run in run_rows}
+    cluster_ids = {run.cluster_id for run in run_rows}
+    agents = {
+        row.id: row
+        for row in database.scalars(select(AIAgent).where(AIAgent.id.in_(agent_ids))).all()
+    } if agent_ids else {}
+    clusters = {
+        row.id: row
+        for row in database.scalars(select(ClusterConnection).where(ClusterConnection.id.in_(cluster_ids))).all()
+    } if cluster_ids else {}
+    items = [
+        MarketplaceInstallationStatus(
                 job_id=job.id,
                 package_name=job.package_name or job.release_name,
                 cluster=job.cluster.name,
@@ -677,7 +715,29 @@ async def list_installations(
                     and _release_can_be_managed(database, job)
                 ),
             )
-            for job in rows
-        ],
-        total=total,
+        for job in rows
+    ]
+    items.extend(
+        MarketplaceInstallationStatus(
+            job_id=run.id,
+            package_name=agents[run.agent_id].name if run.agent_id in agents else "AI agent run",
+            cluster=clusters[run.cluster_id].name if run.cluster_id in clusters else "Unknown cluster",
+            namespace=run.namespace or "all namespaces",
+            release_name=agents[run.agent_id].name if run.agent_id in agents else "agent-run",
+            action="agent_run",
+            status=run.status,
+            error_message=run.error_message,
+            created_at=run.created_at,
+            started_at=run.started_at,
+            completed_at=run.completed_at,
+            job_type="agent_run",
+            trigger_type=run.trigger_type,
+            owner_id=run.owner_id,
+            result_code=run.result_code,
+            attempt_count=run.attempt_count,
+        )
+        for run in run_rows
     )
+    items.sort(key=lambda item: (item.created_at, str(item.job_id)), reverse=True)
+    total = installation_total + len(run_rows)
+    return MarketplaceInstallationListResponse(items=items[offset:offset + limit], total=total)

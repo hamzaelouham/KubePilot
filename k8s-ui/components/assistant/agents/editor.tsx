@@ -19,15 +19,17 @@ import { Separator } from "@/components/ui/separator";
 import { agentRequest, agentSchema, AgentRequestError, applyTemplate, draftOf, emptyAgent, validateAgent, type AgentDefinition, type AgentDraft, type AgentErrors, type AgentModel, type AgentSkill, type AgentTemplate, type AgentTool } from "@/lib/assistant/agents";
 import { cn } from "@/lib/utils";
 import { AgentNotifications } from "./notifications";
+import { AgentAutomation } from "./automation";
 
 type Props = {
   original: AgentDefinition | null; models: AgentModel[]; editable: boolean;
   skills: AgentSkill[]; tools: AgentTool[]; template?: AgentTemplate | null;
+  currentUserId: string;
   modelsError: string; onSaved: (agent: AgentDefinition) => void;
   onDeleted: () => void; onCancel: () => void; onDirty: (dirty: boolean) => void; onRun?: () => void;
 };
 
-export function AgentEditor({ original, models, editable, skills, tools, template, modelsError, onSaved, onDeleted, onCancel, onDirty, onRun }: Props) {
+export function AgentEditor({ original, models, editable, skills, tools, template, currentUserId, modelsError, onSaved, onDeleted, onCancel, onDirty, onRun }: Props) {
   const initial = original ? draftOf(original) : template ? applyTemplate({ ...emptyAgent }, template) : { ...emptyAgent };
   const [draft, setDraft] = useState<AgentDraft>(() => initial);
   const [baseline, setBaseline] = useState(() => JSON.stringify(initial));
@@ -170,6 +172,7 @@ export function AgentEditor({ original, models, editable, skills, tools, templat
           {(!creating || step === 1) && modelFields}
           {(!creating || step === 2) && capabilityFields}
           {!creating && original && <><Separator /><AgentNotifications agentId={original.id} agentEnabled={draft.enabled} editable={canEdit} /></>}
+          {!creating && original && <><Separator /><AgentAutomation agentId={original.id} agentEnabled={draft.enabled} editable={canEdit} currentUserId={currentUserId} /></>}
           {creating && step === 2 && <div className="flex flex-col gap-5"><AgentPreview draft={draft} model={model} /><Alert><AlertDescription>Creating this shared definition does not execute an AI request or change your cluster.</AlertDescription></Alert></div>}
           {original && <div className="grid grid-cols-1 gap-3 text-xs text-muted-foreground sm:grid-cols-2"><p>Created {new Date(original.created_at).toLocaleString()}</p><p>Updated {new Date(original.updated_at).toLocaleString()}</p></div>}
         </CardContent>

@@ -35,7 +35,7 @@ export function BackgroundJobsView({ user }: { user: BackendUser }) {
           <div>
             <h1 className="text-2xl font-semibold text-foreground">Background jobs</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Monitor long-running Kubernetes and Helm operations.
+              Monitor Kubernetes, Helm, and automated AI agent operations.
             </p>
           </div>
         </div>

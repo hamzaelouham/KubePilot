@@ -80,13 +80,18 @@ class MarketplaceInstallationStatus(BaseModel):
     cluster: str
     namespace: str
     release_name: str
-    action: Literal["install", "rollback", "uninstall", "upgrade"] = "install"
+    action: Literal["install", "rollback", "uninstall", "upgrade", "agent_run"] = "install"
     status: Literal["queued", "running", "succeeded", "failed", "cancelled"]
     error_message: Optional[str] = None
     created_at: datetime
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     can_manage_release: bool = False
+    job_type: Literal["installation", "agent_run"] = "installation"
+    trigger_type: Optional[str] = None
+    owner_id: Optional[UUID] = None
+    result_code: Optional[str] = None
+    attempt_count: int = 0
 
 
 class MarketplaceInstallationListResponse(BaseModel):

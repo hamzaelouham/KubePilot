@@ -1,6 +1,8 @@
 from .entities import (
     AuditAction,
     AIModelConfig,
+    AIAgentAutomationTrigger,
+    AIAgentRun,
     ApplicationCredential,
     ApplicationSetting,
     ClusterConnection,
@@ -21,6 +23,8 @@ from .entities import (
 __all__ = [
     "AuditAction",
     "AIModelConfig",
+    "AIAgentAutomationTrigger",
+    "AIAgentRun",
     "ApplicationCredential",
     "ApplicationSetting",
     "ClusterConnection",

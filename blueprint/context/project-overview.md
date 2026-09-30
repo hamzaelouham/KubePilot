@@ -1,25 +1,21 @@
 # KubePilot - Project Overview
 
-<!-- blueprint:source-hash 87cb4810e72c25b6ca70521903db0b0909acf64553ef4d9fbfc3eb48586d2392 -->
+<!-- blueprint:source-hash 02066d2690beda7a31f5fc24e38fedbfc1056ae7ef362ad5de9562d63ce888b4 -->
 
 > A self-hosted Kubernetes operations platform for cluster visibility, troubleshooting, and safe resource management.
 
 ## Problem
 
 Kubernetes operations teams need cluster health, failure investigation, and
-resource management without constantly switching between terminals and
+resource management without switching constantly between terminals and
 fragmented dashboards. KubePilot keeps Kubernetes as the operational source of
 truth while presenting scoped, decision-oriented workflows in one interface.
 
 ## Users
 
-- DevOps, platform, and SRE engineers operating clusters and investigating
-  workload failures.
-- Engineering managers and technical operators who need higher-level health
-  visibility.
-- Signed-in users operate through local authentication and role-based access;
-  admins manage users and application configuration, operators perform allowed
-  operational actions, and viewers remain read-only.
+- DevOps, platform, and SRE engineers operating clusters and investigating workload failures.
+- Engineering managers and technical operators who need higher-level health visibility.
+- Signed-in users operate through local RBAC: admins manage users and application configuration, operators perform allowed operational actions, and viewers remain read-only.
 
 ## Features
 
@@ -33,101 +29,80 @@ Features are ordered as tracked in `build-plan.md`; checked items are shipped.
 6. **Kubernetes connection and namespace discovery** - live cluster access and namespace inventory.
 7. **Core resource views** - pods, deployments, services, and nodes with real cluster context.
 8. **Resource details and troubleshooting** - status, YAML, logs, and events.
-9. **Minikube deployment** - containerized services and Kubernetes manifests/RBAC for local operation.
+9. **Minikube deployment** - containerized services, manifests, in-cluster configuration, and RBAC.
 10. **Real-time refresh and health updates** - refreshable data and alerting cues.
-11. **Live metrics and observability** - node, workload, storage, Metrics API, and UI utilization views.
+11. **Live metrics and observability** - node, workload, storage, Metrics API, and utilization views.
 12. **Users, authentication, and RBAC** - three roles, lifecycle controls, password policy, permissions, and audit logging.
 13. **Multi-cluster support** - registered cluster management, routing, selection, and scoped API calls.
-14. **AI-Powered SRE/DevOps Assistant** - native streaming investigation and human-approved operations through typed tools; FastAPI remains the only Kubernetes/Helm integration layer.
-15. **shadcn/ui and table migration** - reusable Data Table components while preserving the visual system.
+14. **AI-Powered SRE/DevOps Assistant** - streaming investigations and human-approved operations through typed tools; FastAPI remains the only Kubernetes/Helm integration layer.
+15. **shadcn/ui and table migration** - reusable Data Table components within the visual system.
 16. **Header and theme support** - shadcn header controls and light/dark themes.
 17. **UI polish and design consistency** - light operational palette, grouped navigation, shared shell, and cluster context.
 18. **KubePilot Marketplace** - Artifact Hub discovery, installation jobs, progress/history, and release actions.
 19. **Manage resources** - validated Kubernetes resource operations plus Helm release, repository, and upgrade workflows.
-20. **Centralized KubePilot Settings** - shipped administrator-controlled provider/model configuration, credentials, and audit logs.
-21. **Direct AI provider architecture** - shipped Settings-backed OpenAI, OpenRouter, and Ollama/local model architecture without the AI Gateway, including capability enforcement and safe audit outcomes.
-22. **Integrations and AI agent automation** - integration foundations are shipped; AI Agents under Assistant are in progress. The parent remains unchecked until all slices are complete.
-   - **22a. Secrets and API key management** - shipped admin-only CRUD-style management of KubePilot-registered provider and integration credentials using metadata-only reads, write-only create/replace, and confirmed deletion.
-   - **22b. Integrations catalog UI foundation** - shipped frontend-only catalog, filters, search, status groupings, and local preview actions for Slack, Teams, Gmail, Outlook, GitHub, and Webhooks.
-   - **22c. Integration connections and delivery** - shipped backend-authoritative connector lifecycle and delivery/status.
-     - **22c1. Integration connection lifecycle** - shipped Slack, Gmail, and Microsoft Outlook registry, OAuth, encrypted tokens, permission checks, connection tests, status, and audit; Teams, GitHub, and Webhooks remain catalog-only.
+20. **Centralized KubePilot Settings** - administrator-controlled provider/model configuration, credentials, preferences, and audit logs.
+21. **Direct AI provider architecture** - Settings-backed OpenAI, OpenRouter, and Ollama/local models without the AI Gateway, with capability enforcement and safe audit outcomes.
+22. **Integrations and AI agent automation** - parent milestone remains open while AI agent automation is completed.
+   - **22a. Secrets and API key management** - shipped admin-only metadata and write-only management of registered credentials.
+   - **22b. Integrations catalog UI foundation** - shipped catalog, filters, search, status groupings, and preview actions for supported and future connectors.
+   - **22c. Integration connections and delivery** - shipped backend-authoritative Slack, Gmail, and Outlook connection lifecycle and delivery/status foundations.
+     - **22c1. Integration connection lifecycle** - shipped encrypted token references, OAuth/manual connection flows, scoped permissions, tests, safe status, and audit; Teams, GitHub, and Webhooks remain catalog-only.
      - **22c2. Integration delivery and status** - shipped queued delivery, idempotency, bounded retries, safe errors, history, and audit visibility.
-   - **22d. AI agent workflows in Assistant** - approved five-slice delivery; shared admin-managed agents, caller-scoped manual runs, and designated-owner automation.
-     - **22d1. Agent management** - shipped create, edit, delete, enable/disable, identity, instructions, and Settings-managed model selection at `/assistant/agents`.
-     - **22d2. Skills, capabilities, and templates** - shipped reusable instruction skills, supported tool assignments, effective permissions, and template-based creation.
-     - **22d3. Agent execution** - next: Vercel AI SDK ToolLoopAgent execution with AI Elements streaming, scoped tools, and human approvals.
-     - **22d4. Agent integrations** - explicit notification destinations through existing Slack/Gmail/Outlook connections and delivery status.
-     - **22d5. Schedules and events** - configure/pause triggers and inspect runs; recheck designated-owner permissions per run. Unattended actions are investigation and configured notifications only; resource changes require authenticated human approval.
+   - **22d. AI agent workflows in Assistant** - parent slice remains open; shared admin-managed agents and caller-scoped manual execution are shipped through 22d3.
+     - **22d1. Agent management** - shipped shared agent CRUD, enable/disable, instructions, identity, and Settings-managed model selection at `/assistant/agents`.
+     - **22d2. Skills, capabilities, and templates** - shipped reusable instruction skills, supported tool assignments, effective permissions, and template creation.
+     - **22d3. Agent execution** - shipped manual ToolLoopAgent execution with AI Elements streaming, scoped tools, and human approvals.
+     - **22d4. Agent integrations** - shipped explicit Slack/Gmail/Outlook notification destinations, encrypted targets, admin test delivery, status refresh, safe delivery metadata, and audited results.
+     - **22d5. Schedules and events** - next: configure/pause triggers and inspect runs while rechecking designated-owner permissions per run; unattended actions remain limited to investigation and configured notifications.
 
 ## Data model
 
 Kubernetes is the source of truth for live cluster objects. PostgreSQL stores
-application identity, configuration, and bounded operational history.
+application identity, configuration, durable job metadata, and bounded audit or
+workflow state.
 
-### UserAccount
+### UserAccount and Session
 
-- `id` (UUID) - local user identity.
-- `email` (string, unique) - login identity.
-- `role` (enum: `admin`, `operator`, `viewer`) - application permissions.
-- `is_active` (boolean), password hash/state, and expiration metadata.
-- owns sessions, preferences, audit actor records, and assistant proposals.
+- `UserAccount`: `id` (UUID), unique `email`, password state/hash, `role` (`admin`, `operator`, `viewer`), active state, and password-expiration metadata.
+- `Session`: `id`, user relationship, signed-session token hash, expiry, and revocation state.
+- The browser receives only the signed HTTP-only session cookie; FastAPI resolves identity from PostgreSQL.
 
-### Session
+### ClusterConnection and UserPreference
 
-- `id` (UUID), user relationship, signed-session state, expiration, and revocation metadata.
-- The browser receives only the signed HTTP-only session cookie; Kubernetes credentials never cross the backend boundary.
+- `ClusterConnection`: `id`, name, kubeconfig reference or in-cluster configuration, active/status metadata, and cluster-scoped connection details.
+- Namespaces, live resources, events, metrics, Helm releases, jobs, and Assistant scopes resolve through the selected cluster.
+- `UserPreference`: unique `user_id`, default namespace, and supported view/theme settings JSON.
 
-### ClusterConnection
+### Runtime settings and credentials
 
-- `id` (UUID), `name` (string), `kubeconfig reference/configuration`, and active/status metadata.
-- Namespaces, live resources, events, metrics, Helm releases, jobs, and assistant scopes resolve through this identity.
+- Runtime settings store typed application preferences, default cluster/namespace behavior, AI defaults, feature toggles, and global appearance/provider configuration. Kubernetes bootstrap variables remain outside this store.
+- `EncryptedCredential`: registered credential key, encrypted secret material, creator/updater metadata, and timestamps. Values are write-only through normal APIs and encrypted with the Kubernetes-managed master key.
+- `AIProviderConfig`: allowlisted provider kind, validated endpoint/configuration, enabled state, and credential reference.
+- `AIModelConfig`: provider ownership, external model ID, friendly name, enabled/default state, capability flags such as `tools` and `streaming`, and availability status.
 
-### UserPreference
+### Integrations and delivery
 
-- `user_id` (unique foreign key), `default_namespace` (nullable string), and `view_settings` (JSON).
-- Stores supported user preferences such as theme without becoming a bootstrap configuration store.
+- `IntegrationConnection`: unique provider ID, connection status, encrypted access/refresh token references, granted scopes, external account metadata, error/test timestamps, and actor/timestamp metadata.
+- `IntegrationDeliveryJob`: provider, event type, encrypted bounded payload, safe destination hint, idempotency key, status (`queued`, `running`, `succeeded`, `failed`, `outcome_unknown`), attempt counters/timestamps, safe error code, actor, and optional agent/destination source IDs.
+- `AIAgentNotificationDestination`: agent foreign key, provider ID, label, encrypted normalized target, destination digest, safe hint, enabled state, actor IDs, and timestamps. It is unique per agent/provider/normalized destination; raw targets never return to the browser.
 
-### Runtime application settings
+### AI agents and operations
 
-- Typed persisted preferences for application name, default cluster/namespace behavior, operational preferences, AI defaults, feature toggles, and global appearance/provider configuration.
-- Kubernetes-managed bootstrap variables remain outside this store.
-
-### EncryptedCredential
-
-- Server-registered provider/integration credential key, encrypted secret material, creator/updater metadata, and timestamps.
-- Encryption uses a Kubernetes-managed master key; normal APIs are write-only for secret values.
-- Admins may list safe configured/updated metadata, create a missing value, rotate or replace it, and delete it; APIs never reveal stored plaintext and reject arbitrary credential identifiers.
-
-### AIProviderConfig and AIModelConfig
-
-- Provider identity, allowlisted provider kind, validated endpoint/configuration, enabled status, and credential reference.
-- Model identity, provider ownership, external model ID, enabled/default state, friendly name, capabilities (`tools`, `streaming`, optional reasoning/vision/large-context), and availability status.
-- The Assistant resolves only internal administrator-enabled models and never exposes provider credentials.
-
-### Operational and Kubernetes records
-
-- `AuditAction` - actor, action, resource/target identity, result, and safe context; never raw prompts or credentials.
-- `InstallationJob` - package/chart metadata, cluster, namespace, release, action, revision, status, errors, and timestamps; supports Marketplace and externally discovered Helm release actions.
-- Helm repository configuration - global public URL-only repository name/URL and actor/timestamps; no repository credentials in 19c.
-- Assistant proposal - UUID, actor/session, validated immutable action arguments and cluster, expiry, one-use decision state, and sanitized result. Conversations and raw tool data are not persisted in audit records.
-- Live Kubernetes entities include namespaces, workloads, pods, deployments, services, nodes, events, logs, and metrics; cached projections remain bounded and sanitized.
-
-### AI Agents (partially shipped)
-
-- Shipped shared installation-level agent definition: identity, instruction text, internal model reference, enabled state, creator/updater references, and timestamps. Admins manage these records.
-- Shipped reusable instruction skills, supported tool assignments, effective permission projections, and templates. Later slices add explicit notification destinations, schedules/event triggers, designated owner, and bounded run history. Exact persisted schemas are defined in each slice's spec.
-- Skills contain instructions, not executable code. Instructions and capability assignments cannot grant permissions. Manual runs intersect configured tools with model support and the caller's current backend permissions.
-- Scheduled/event runs recheck the designated owner's permissions. Existing session-bound proposals cannot be treated as background approval; 22d5 must specify the authenticated handoff.
-- Persisted agent configuration is distinct from conversation history. Audit records exclude instructions, prompts, credentials, and raw tool payloads.
+- `AIAgent`: shared installation-level identity, description/instructions, internal model reference, enabled state, creator/updater references, and timestamps.
+- Agent skills contain bounded instructions; assignment rows connect agents to skills and supported tools. Templates provide safe draft values and cannot grant permissions or executable code.
+- Future 22d5 state adds trigger configuration, designated owner, and bounded run history. Exact trigger types, schedule semantics, retention, and background approval handoff remain open until that spec.
+- `AuditAction`: actor, action, target identity, result, and safe context; never raw prompts, credentials, notification bodies, or raw tool payloads.
+- `AssistantProposal`: UUID, actor/session, immutable validated action arguments and cluster, expiry, one-use decision state, and sanitized result. Conversations remain in the active browser view.
+- `InstallationJob` and Helm repository records support package/release actions with target cluster, namespace, release/action metadata, status, errors, timestamps, and public URL-only repository configuration.
 
 ## Tech stack
 
-- **Next.js 16, TypeScript, Tailwind CSS, shadcn/ui** - UI, app shell, and same-origin API routes.
-- **FastAPI** - authentication, authorization, application APIs, Kubernetes, Helm, and background job boundaries.
-- **PostgreSQL and Alembic** - durable application metadata, sessions, settings, audit records, and jobs.
-- **Kubernetes Python client** - all live cluster access through FastAPI and scoped registered clusters.
-- **Vercel AI SDK and AI Elements** - streaming Assistant UI and ToolLoopAgent integration.
-- **Direct provider adapters** - server-side OpenAI, OpenRouter, and Ollama-compatible streaming; provider URLs are validated and credentials stay server-side.
+- **Next.js 16, TypeScript, Tailwind CSS, shadcn/ui** - UI, application shell, and same-origin API routes.
+- **FastAPI** - authentication, RBAC, application APIs, Kubernetes/Helm access, and background job boundaries.
+- **PostgreSQL and Alembic** - durable metadata, sessions, settings, audit records, and jobs.
+- **Kubernetes Python client** - all live cluster access through FastAPI and registered cluster scope.
+- **Vercel AI SDK and AI Elements** - Assistant streaming and ToolLoopAgent integration.
+- **Direct provider adapters** - server-side OpenAI, OpenRouter, and Ollama-compatible model access; credentials stay server-side.
 - **Artifact Hub and Helm** - public package discovery and validated backend release operations.
 
 ## Monetization
@@ -140,38 +115,36 @@ reliability.
 ## UI/UX
 
 The shipped direction is a calm, readable, light operational interface with
-strong status emphasis, responsive desktop-first layouts, and consistent shell
-controls. The existing theme system also supports light/dark selection.
+strong status emphasis, responsive desktop-first layouts, accessible loading,
+empty, denied, and error states, and light/dark theme selection.
 
 - `/` and `/login` - branded entry and local sign-in.
-- `/dashboard?resource=<type>&namespace=<name>` - health overview, navigation, cluster and namespace context.
-- `/dashboard/detail` - resource status, YAML, logs, and events.
+- `/dashboard` and `/dashboard/detail` - scoped cluster health, resources, status, YAML, logs, and events.
 - `/marketplace` - Artifact Hub search, package details, install configuration, progress, and history.
-- `/manage-resources` - Kubernetes resources and Helm releases tabs, repository configuration, and upgrades.
+- `/manage-resources` - Kubernetes resources, Helm releases, repository configuration, and upgrades.
 - `/assistant` - authenticated streaming investigation, scoped tool results, proposals, and confirmations.
-- `/assistant/agents` - shipped AI Agents child page under AI Assistant, with searchable list/detail layout, guided creation, skills, capabilities, and templates. Later slices add execution, integrations, and automation. Use the three supplied `blueprint/reference/settings-ai-agents*.png` references, adapting navigation to Assistant and reusing shadcn/ui themes and AI Elements. Show only real counts/statistics and ship responsive, accessible loading/empty/denied/error states.
-- `/settings` - protected administrator Settings shell for Providers, Models, Integrations catalog, Credentials, and Audit Logs.
-- `/settings/integrations` - catalog plus shipped Slack/Gmail/Outlook connection and delivery management; other catalog entries do not imply supported connectors.
-- `/settings/credentials` - admin-only inventory and CRUD-style management for KubePilot-registered provider and integration secrets without reveal/copy behavior.
+- `/assistant/agents` - searchable shared agent list/detail, guided creation, skills, capabilities, templates, execution, and notification destinations; 22d5 adds automation.
+- `/settings` - protected administrator Settings for Providers, Models, Integrations, Credentials, and Audit Logs.
+- `/settings/integrations` - catalog plus Slack/Gmail/Outlook connection and delivery management; catalog-only entries do not imply supported connectors.
+- `/settings/credentials` - admin-only metadata and write-only management of registered secrets.
 - `/api/*` - same-origin Next.js bridges that forward only the signed session cookie where backend access is needed.
 
 ## Deployment
 
-The target is a self-hosted deployment on-premise, in a private cloud, or in
-customer-managed Kubernetes. The local topology is a standalone Next.js
-frontend, FastAPI backend, and PostgreSQL database deployed to Minikube with
-backend ServiceAccount/RBAC and a background worker for Helm jobs.
+The target is self-hosted deployment on-premise, in a private cloud, or in
+customer-managed Kubernetes. The topology is a Next.js frontend, FastAPI
+backend, PostgreSQL database, and background worker for Helm/delivery jobs;
+Minikube manifests provide the local deployment path.
 
-- Development, build, production start, and backend commands: > TODO: record the canonical commands in `project-plan.md`.
-- Container/deployment: containerized Next.js, FastAPI, and PostgreSQL services with Kubernetes manifests, in-cluster configuration, and RBAC for Minikube and customer-managed Kubernetes.
-- Required bootstrap configuration includes cluster/admin configuration, database connection details, shared session signing and session settings, backend URL, and the Kubernetes-managed encryption key. Mutable settings and provider credentials use PostgreSQL/encrypted storage.
-- Health path: > TODO: specify the concrete health-check endpoint in `project-plan.md`.
-- The browser talks to Next.js; FastAPI is the only application component that talks to Kubernetes or executes Helm. Kubernetes credentials never reach the browser or AI provider adapters.
+- Bootstrap configuration includes cluster/admin settings, database connection details, shared session signing/session settings, backend URL, and the Kubernetes-managed encryption key.
+- Mutable provider/model settings and provider credentials use PostgreSQL-backed encrypted storage.
+- FastAPI is the only application component that reaches Kubernetes or executes Helm. Kubernetes credentials never reach the browser or AI providers.
+- Development/build/start commands and the concrete health-check endpoint are not specified in the plans: > TODO: add canonical commands and health path to `project-plan.md`.
+- Domain and hosting remain private or enterprise-ready, likely behind internal access controls.
 
 ## Open questions
 
-- No direct scope or ordering contradictions were found between `project-plan.md` and `build-plan.md`.
 - Confirm whether the commercial offering is self-hosted only, managed, or both.
-- Carry the exact ServiceAccount/RBAC and protected-system-namespace policy into future operation specs.
-- Specify exact trigger types, schedule semantics, run retention, and background approval handoff in 22d5 before implementation; no arbitrary or Kubernetes secret management is introduced.
-- Add canonical development/build/start commands and the concrete health-check path to the deployment section of `project-plan.md`.
+- Carry exact ServiceAccount/RBAC and protected-system-namespace policies into future operation specs.
+- Specify 22d5 trigger types, schedule semantics, run retention, and authenticated background approval handoff before implementation.
+- Add canonical development/build/start commands and the concrete health-check path to `project-plan.md`.

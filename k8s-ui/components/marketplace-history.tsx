@@ -23,7 +23,7 @@ const PAGE_SIZE = 10;
 
 type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 
-type JobAction = "install" | "rollback" | "uninstall";
+type JobAction = "install" | "rollback" | "uninstall" | "upgrade" | "agent_run";
 
 type Installation = {
   job_id: string;
@@ -38,6 +38,11 @@ type Installation = {
   started_at: string | null;
   completed_at: string | null;
   can_manage_release: boolean;
+  job_type?: "installation" | "agent_run";
+  trigger_type?: string | null;
+  owner_id?: string | null;
+  result_code?: string | null;
+  attempt_count?: number;
 };
 
 type PendingAction = {
@@ -83,7 +88,7 @@ function canActOn(job: Installation): boolean {
 const tableColumns: DataTableColumn<Installation>[] = [
   {
     accessorKey: "package_name",
-    header: "Package",
+    header: "Job",
     cell: ({ row }) => <span className="text-sm font-medium">{row.original.package_name}</span>,
   },
   {
@@ -98,8 +103,8 @@ const tableColumns: DataTableColumn<Installation>[] = [
   },
   {
     accessorKey: "action",
-    header: "Action",
-    cell: ({ row }) => <span className="text-sm capitalize">{row.original.action}</span>,
+    header: "Type",
+    cell: ({ row }) => <span className="text-sm capitalize">{row.original.action === "agent_run" ? "Agent run" : row.original.action}</span>,
   },
   {
     accessorKey: "status",
@@ -109,6 +114,11 @@ const tableColumns: DataTableColumn<Installation>[] = [
         {row.original.status}
       </Badge>
     ),
+  },
+  {
+    accessorKey: "result_code",
+    header: "Result",
+    cell: ({ row }) => <span className="text-sm text-muted-foreground">{row.original.result_code?.replaceAll("_", " ") ?? "—"}</span>,
   },
   {
     accessorKey: "created_at",
@@ -231,7 +241,7 @@ export function BackgroundJobsTable({ canManage }: { canManage: boolean }) {
           </p>
           <h2 className="text-xl font-semibold text-foreground">Background jobs</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Track Marketplace and Helm operations across your clusters.
+            Track Marketplace, Helm, and read-only AI agent operations across your clusters.
           </p>
         </div>
         <div className="flex items-center gap-3">

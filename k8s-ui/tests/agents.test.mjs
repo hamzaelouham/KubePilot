@@ -7,6 +7,9 @@ import { GET as GETTemplates } from "../app/api/assistant/agents/templates/route
 import { GET as GETNotifications, POST as POSTNotifications } from "../app/api/assistant/agents/[agentId]/notifications/route.ts";
 import { PUT as PUTNotification, DELETE as DELETENotification } from "../app/api/assistant/agents/[agentId]/notifications/[destinationId]/route.ts";
 import { POST as POSTNotificationTest } from "../app/api/assistant/agents/[agentId]/notifications/[destinationId]/test/route.ts";
+import { GET as GETAutomation, POST as POSTAutomation } from "../app/api/assistant/agents/[agentId]/automations/route.ts";
+import { PUT as PUTAutomation, DELETE as DELETEAutomation } from "../app/api/assistant/agents/[agentId]/automations/[triggerId]/route.ts";
+import { GET as GETRetention, PUT as PUTRetention } from "../app/api/assistant/agents/automation/retention/route.ts";
 import { agentWriteSchema, validateAgent, draftOf, applyTemplate, filterAgents, agentRequest, AgentRequestError, agentListSchema, agentTemplateListSchema } from "../lib/assistant/agents.ts";
 
 const id = "11111111-1111-4111-8111-111111111111";
@@ -17,6 +20,8 @@ const context = { params: Promise.resolve({ agentId: id }) };
 const destinationId = "22222222-2222-4222-8222-222222222222";
 const notificationContext = { params: Promise.resolve({ agentId: id, destinationId }) };
 const safeDestination = { id: destinationId, provider_id: "slack", label: "On-call", destination_hint: "…C123", enabled: true, connection_status: "connected", updated_at: "2026-09-30T00:00:00Z" };
+const trigger = { id: "33333333-3333-4333-8333-333333333333", trigger_type: "schedule", cluster_id: id, namespace: "production", cron_expression: "0 12 * * *", timezone: "UTC", event_kind: null, event_name: null, event_type: null, event_reason: null, owner_id: id, notification_destination_ids: [destinationId], enabled: false, last_evaluated_at: null, created_by_id: id, updated_by_id: id, created_at: "2026-09-30T00:00:00Z", updated_at: "2026-09-30T00:00:00Z" };
+const triggerWrite = { trigger_type: trigger.trigger_type, cluster_id: trigger.cluster_id, namespace: trigger.namespace, cron_expression: trigger.cron_expression, timezone: trigger.timezone, event_kind: trigger.event_kind, event_name: trigger.event_name, event_type: trigger.event_type, event_reason: trigger.event_reason, owner_id: trigger.owner_id, notification_destination_ids: trigger.notification_destination_ids, enabled: trigger.enabled };
 const delivery = { delivery_id: destinationId, provider_id: "slack", event_type: "agent_notification_test", destination_hint: "…C123", status: "queued", attempt_count: 0, max_attempts: 3, next_attempt_at: "2026-09-30T00:00:00Z", last_error_code: null, created_at: "2026-09-30T00:00:00Z", started_at: null, completed_at: null, agent_id: id, agent_destination_id: destinationId, deduplicated: false };
 function request(method = "POST", body = draft, origin = "http://localhost:3000") {
   return new Request("http://localhost:3000/api/assistant/agents", { method, headers: { host: "localhost:3000", origin, cookie: "kubepilot_session=signed; unrelated=secret", "content-type": "application/json" }, body: ["GET", "DELETE"].includes(method) ? undefined : JSON.stringify(body) });
@@ -27,6 +32,9 @@ function catalogRequest(method = "GET", body = { name: "Skill", description: "Re
 
 function notificationRequest(method = "GET", body = { provider_id: "slack", label: "On-call", destination: "C123", enabled: true }, origin = "http://localhost:3000") {
   return new Request(`http://localhost:3000/api/assistant/agents/${id}/notifications`, { method, headers: { host: "localhost:3000", origin, cookie: "kubepilot_session=signed; unrelated=secret", "content-type": "application/json" }, body: method === "GET" ? undefined : JSON.stringify(body) });
+}
+function automationRequest(method = "GET", body = triggerWrite, origin = "http://localhost:3000") {
+  return new Request(`http://localhost:3000/api/assistant/agents/${id}/automations`, { method, headers: { host: "localhost:3000", origin, cookie: "kubepilot_session=signed; unrelated=secret", "content-type": "application/json" }, body: method === "GET" ? undefined : JSON.stringify(body) });
 }
 
 test("agent bridges forward the signed cookie only and never cache", async t => {
@@ -83,6 +91,29 @@ test("notification mutations reject foreign origins and invalid identifiers befo
   assert.equal((await POSTNotifications(notificationRequest("POST", undefined, "https://attacker.test"), { params: Promise.resolve({ agentId: id }) })).status, 403);
   assert.equal((await POSTNotificationTest(new Request("http://localhost:3000/api/assistant/agents/x/notifications/y/test", { method: "POST", headers: { host: "localhost:3000", origin: "http://localhost:3000", cookie: "kubepilot_session=signed" } }), { params: Promise.resolve({ agentId: "not-a-uuid", destinationId }) })).status, 422);
   assert.equal(globalThis.fetch.mock.callCount(), 0);
+});
+
+test("automation bridges preserve safe trigger and retention contracts", async t => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (url, options) => {
+    calls.push({ url: String(url), options });
+    if (String(url).endsWith("/retention")) return Response.json({ retention_days: 30 });
+    if (options.method === "DELETE") return Response.json({ id: trigger.id });
+    return Response.json(options.method === "GET" ? { triggers: [trigger] } : trigger);
+  });
+  const triggerContext = { params: Promise.resolve({ agentId: id, triggerId: trigger.id }) };
+  assert.equal((await GETAutomation(automationRequest(), { params: Promise.resolve({ agentId: id }) })).status, 200);
+  assert.equal((await POSTAutomation(automationRequest("POST"), { params: Promise.resolve({ agentId: id }) })).status, 200);
+  assert.equal((await PUTAutomation(automationRequest("PUT"), triggerContext)).status, 200);
+  assert.equal((await DELETEAutomation(automationRequest("DELETE"), triggerContext)).status, 200);
+  assert.equal((await GETRetention(new Request("http://localhost:3000/api/assistant/agents/automation/retention", { headers: { host: "localhost:3000", cookie: "kubepilot_session=signed" } }))).status, 200);
+  assert.equal((await PUTRetention(new Request("http://localhost:3000/api/assistant/agents/automation/retention", { method: "PUT", headers: { host: "localhost:3000", origin: "http://localhost:3000", cookie: "kubepilot_session=signed", "content-type": "application/json" }, body: JSON.stringify({ retention_days: 14 }) }))).status, 200);
+  for (const { options } of calls) {
+    assert.equal(options.headers.cookie, "kubepilot_session=signed");
+    assert.equal(options.cache, "no-store");
+    assert.equal(options.headers.authorization, undefined);
+  }
+  assert.ok(calls.some(call => call.url.endsWith(`/assistant/agents/${id}/automations/${trigger.id}`)));
 });
 
 test("mutations reject foreign origins, forged fields, oversized payloads and invalid ids before fetching", async t => {

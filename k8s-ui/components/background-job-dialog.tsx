@@ -88,7 +88,7 @@ export function BackgroundJobDialog({
                 <div className="min-w-0">
                   <DialogTitle className="truncate">{job.package_name}</DialogTitle>
                   <DialogDescription className="mt-1">
-                    {job.action} operation for release {job.release_name}
+                    {job.action === "agent_run" ? `${job.trigger_type === "kubernetes_event" ? "Kubernetes event" : "Scheduled"} agent run` : `${job.action} operation for release ${job.release_name}`}
                   </DialogDescription>
                 </div>
               </div>
@@ -104,7 +104,7 @@ export function BackgroundJobDialog({
               </div>
               <Detail label="Cluster" value={job.cluster} />
               <Detail label="Namespace" value={job.namespace} />
-              <Detail label="Release" value={job.release_name} />
+              {job.action === "agent_run" ? <><Detail label="Trigger" value={job.trigger_type === "kubernetes_event" ? "Kubernetes event" : "Schedule"} /><Detail label="Result" value={job.result_code?.replaceAll("_", " ") ?? "Pending"} /><Detail label="Attempt" value={String(job.attempt_count ?? 0)} /></> : <Detail label="Release" value={job.release_name} />}
               <Detail label="Created" value={formatDate(job.created_at)} />
               <Detail label="Started" value={formatDate(job.started_at)} />
               <Detail label="Completed" value={formatDate(job.completed_at)} />
