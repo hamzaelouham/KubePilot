@@ -2,15 +2,20 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { GET, POST } from "../app/api/assistant/agents/route.ts";
 import { PUT, DELETE } from "../app/api/assistant/agents/[agentId]/route.ts";
-import { agentWriteSchema, validateAgent, draftOf, filterAgents, agentRequest, AgentRequestError, agentListSchema } from "../lib/assistant/agents.ts";
+import { GET as GETSkills, POST as POSTSkills } from "../app/api/assistant/agents/skills/route.ts";
+import { GET as GETTemplates } from "../app/api/assistant/agents/templates/route.ts";
+import { agentWriteSchema, validateAgent, draftOf, applyTemplate, filterAgents, agentRequest, AgentRequestError, agentListSchema, agentTemplateListSchema } from "../lib/assistant/agents.ts";
 
 const id = "11111111-1111-4111-8111-111111111111";
-const draft = { name: "Investigator", description: "Workload health", instructions: "Read evidence.\nExplain findings.", model_id: id, enabled: false };
+const draft = { name: "Investigator", description: "Workload health", instructions: "Read evidence.\nExplain findings.", model_id: id, enabled: false, skill_ids: [], tool_ids: [] };
 const model = { id, friendly_name: "Test", provider_name: "OpenAI", enabled: true, availability: "available", capabilities: { streaming: true, tools: true } };
 const agent = { ...draft, id, model, created_by_id: id, updated_by_id: id, created_at: "2026-09-29T00:00:00Z", updated_at: "2026-09-29T00:00:00Z" };
 const context = { params: Promise.resolve({ agentId: id }) };
 function request(method = "POST", body = draft, origin = "http://localhost:3000") {
   return new Request("http://localhost:3000/api/assistant/agents", { method, headers: { host: "localhost:3000", origin, cookie: "kubepilot_session=signed; unrelated=secret", "content-type": "application/json" }, body: ["GET", "DELETE"].includes(method) ? undefined : JSON.stringify(body) });
+}
+function catalogRequest(method = "GET", body = { name: "Skill", description: "Read", instructions: "Read safely." }, origin = "http://localhost:3000") {
+  return new Request("http://localhost:3000/api/assistant/agents/skills", { method, headers: { host: "localhost:3000", origin, cookie: "kubepilot_session=signed; unrelated=secret", "content-type": "application/json" }, body: method === "GET" ? undefined : JSON.stringify(body) });
 }
 
 test("agent bridges forward the signed cookie only and never cache", async t => {
@@ -26,6 +31,19 @@ test("agent bridges forward the signed cookie only and never cache", async t => 
     assert.equal(options.headers.authorization, undefined);
   }
   assert.ok(calls[2].url.endsWith(`/assistant/agents/${id}`));
+});
+
+test("skill and template bridges preserve the same trust boundary", async t => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (url, options) => { calls.push({ url, options }); return Response.json({ skills: [] }); });
+  assert.equal((await GETSkills(catalogRequest())).status, 200);
+  assert.equal((await POSTSkills(catalogRequest("POST"))).status, 200);
+  assert.equal((await GETTemplates(catalogRequest())).status, 200);
+  for (const { options } of calls) {
+    assert.equal(options.headers.cookie, "kubepilot_session=signed");
+    assert.equal(options.cache, "no-store");
+    assert.equal(options.headers.authorization, undefined);
+  }
 });
 
 test("mutations reject foreign origins, forged fields, oversized payloads and invalid ids before fetching", async t => {
@@ -75,6 +93,16 @@ test("draft serialization excludes server identity; search preserves exact saved
   assert.equal(filterAgents([agent], "  HEALTH ").length, 1);
   assert.equal(filterAgents([agent], "absent").length, 0);
   assert.equal(agent.name, "Investigator");
+});
+
+test("template contracts apply safe values to a draft without persistence", () => {
+  const template = { id: "workload-investigator", name: "Workload investigator", description: "Trace health", instructions: "Use live evidence.", tool_ids: ["listResources", "getEvents"] };
+  assert.deepEqual(agentTemplateListSchema.parse({ templates: [template] }).templates[0], template);
+  const applied = applyTemplate({ ...draft, name: "Existing", skill_ids: [id], tool_ids: [] }, template);
+  assert.equal(applied.name, template.name);
+  assert.equal(applied.instructions, template.instructions);
+  assert.deepEqual(applied.skill_ids, []);
+  assert.deepEqual(applied.tool_ids, template.tool_ids);
 });
 
 test("client distinguishes access denial, unexpected data, and uncertain mutation without retry", async t => {

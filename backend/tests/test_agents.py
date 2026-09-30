@@ -13,9 +13,10 @@ from app.core.config import Settings
 from app.core.dependencies import get_database_session
 from app.main import create_app
 from app.models.base import Base
-from app.models.entities import AIAgent, AIModelConfig, AuditAction, Session, UserAccount
+from app.models.entities import AIAgent, AIAgentSkill, AIAgentSkillAssignment, AIModelConfig, AuditAction, Session, UserAccount
 
 PATH = "/api/v1/assistant/agents"
+SKILLS = f"{PATH}/skills"
 
 
 @pytest.fixture
@@ -137,3 +138,115 @@ def test_body_limit_and_invalid_identifier(api):
     assert api.client.post(PATH, json=payload(api, instructions="a" * 256_001)).status_code == 413
     assert api.client.get(PATH + "/not-a-uuid").status_code == 422
     assert api.client.get(PATH + "/" + str(uuid4())).status_code == 404
+
+
+def skill_payload(**changes):
+    return dict(
+        name="Evidence reader",
+        description="Read operational evidence",
+        instructions="Inspect only the evidence supplied by trusted tools.",
+    ) | changes
+
+
+def test_skill_crud_safe_audit_and_assigned_count(api):
+    response = api.client.post(SKILLS, json=skill_payload(name="  Evidence reader  "))
+    assert response.status_code == 201, response.text
+    row = response.json()
+    assert row["name"] == "Evidence reader"
+    assert row["created_by_id"] == str(api.user.id)
+    assert row["assigned_agent_count"] == 0
+    assert api.client.get(f'{SKILLS}/{row["id"]}').json()["instructions"].startswith("Inspect")
+    updated = api.client.put(f'{SKILLS}/{row["id"]}', json=skill_payload(description="Updated evidence"))
+    assert updated.status_code == 200 and updated.json()["description"] == "Updated evidence"
+    assert api.client.get(SKILLS).json()["skills"][0]["assigned_agent_count"] == 0
+    assert api.client.delete(f'{SKILLS}/{row["id"]}').json() == {"id": row["id"]}
+    assert api.client.get(f'{SKILLS}/{row["id"]}').status_code == 404
+    with api.db() as db:
+        audits = db.scalars(select(AuditAction)).all()
+        assert [audit.action for audit in audits] == [
+            "assistant.agent_skill.create",
+            "assistant.agent_skill.update",
+            "assistant.agent_skill.delete",
+        ]
+        assert "Inspect only" not in str([audit.context for audit in audits])
+
+
+@pytest.mark.parametrize("role", ["viewer", "operator"])
+def test_non_admin_reads_but_cannot_mutate_skills(api, role):
+    with api.db() as db:
+        db.get(UserAccount, api.user.id).role = role
+        db.commit()
+    assert api.client.get(SKILLS).status_code == 200
+    assert api.client.post(SKILLS, json=skill_payload()).status_code == 403
+
+
+def test_skill_validation_conflict_and_assigned_delete_guard(api):
+    row = api.client.post(SKILLS, json=skill_payload()).json()
+    assert api.client.post(SKILLS, json=skill_payload()).status_code == 409
+    assert api.client.post(SKILLS, json=skill_payload(name=" ")).status_code == 422
+    agent = create(api, name="Skill user")
+    with api.db() as db:
+        db.add(AIAgentSkillAssignment(agent_id=UUID(agent["id"]), skill_id=UUID(row["id"]), position=0))
+        db.commit()
+    assert api.client.get(SKILLS).json()["skills"][0]["assigned_agent_count"] == 1
+    response = api.client.delete(f'{SKILLS}/{row["id"]}')
+    assert response.status_code == 409
+    assert response.json()["code"] == "skill_in_use"
+
+
+def test_skill_mutation_rolls_back_when_audit_fails(api, monkeypatch):
+    def broken(*args, **kwargs):
+        raise RuntimeError("audit unavailable")
+
+    monkeypatch.setattr("app.services.agents.record_audit", broken)
+    assert api.client.post(SKILLS, json=skill_payload()).status_code == 500
+    assert api.client.get(SKILLS).json() == {"skills": []}
+
+
+def test_agent_assignments_and_effective_capabilities_use_existing_rbac(api):
+    with api.db() as db:
+        db.get(AIModelConfig, api.model.id).supports_tools = True
+        db.commit()
+    skill = api.client.post(SKILLS, json=skill_payload()).json()
+    row = create(api, name="Capability agent", skill_ids=[skill["id"]], tool_ids=["listResources", "proposeDelete"])
+    assert row["skill_ids"] == [skill["id"]]
+    assert row["tool_ids"] == ["listResources", "proposeDelete"]
+    assert row["skills"][0]["name"] == "Evidence reader"
+    capabilities = {item["id"]: item for item in row["capabilities"]}
+    assert capabilities["listResources"]["status"] == "available"
+    assert capabilities["proposeDelete"]["status"] == "available"
+    assert capabilities["getEvents"]["status"] == "not_configured"
+
+    assert api.client.post(PATH, json=payload(api, name="Duplicate assignment", skill_ids=[skill["id"], skill["id"]])).status_code == 422
+    assert api.client.post(PATH, json=payload(api, name="Unknown tool", tool_ids=["not-a-tool"])).status_code == 422
+
+    with api.db() as db:
+        db.get(UserAccount, api.user.id).role = "viewer"
+        db.commit()
+    detail = api.client.get(f'{PATH}/{row["id"]}').json()
+    capabilities = {item["id"]: item for item in detail["capabilities"]}
+    assert capabilities["listResources"]["status"] == "available"
+    assert capabilities["proposeDelete"]["status"] == "permission_denied"
+
+    with api.db() as db:
+        db.get(AIModelConfig, api.model.id).availability = "unavailable"
+        db.commit()
+    updated = api.client.get(f'{PATH}/{row["id"]}').json()
+    assert updated["tool_ids"] == ["listResources", "proposeDelete"]
+    assert {item["id"]: item for item in updated["capabilities"]}["listResources"]["status"] == "model_unavailable"
+
+
+def test_templates_are_authenticated_safe_and_deterministic(api):
+    first = api.client.get(f"{PATH}/templates")
+    second = api.client.get(f"{PATH}/templates")
+    assert first.status_code == 200
+    assert first.json() == second.json()
+    templates = first.json()["templates"]
+    assert {template["id"] for template in templates} == {
+        "workload-investigator",
+        "cluster-observer",
+        "helm-reviewer",
+    }
+    supported = {item["id"] for item in api.client.get(f"{PATH}/tools").json()["tools"]}
+    assert all(set(template["tool_ids"]) <= supported for template in templates)
+    assert all("credential" not in str(template).lower() for template in templates)

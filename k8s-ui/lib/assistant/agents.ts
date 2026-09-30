@@ -7,6 +7,8 @@ export const agentWriteSchema = z.object({
   instructions: text,
   model_id: z.string().uuid().nullable(),
   enabled: z.boolean(),
+  skill_ids: z.array(z.string().uuid()).default([]),
+  tool_ids: z.array(z.string().min(1)).default([]),
 }).strict();
 export const agentModelSchema = z.object({
   id: z.string().uuid(), friendly_name: z.string(), provider_name: z.string(),
@@ -17,15 +19,38 @@ export const agentSchema = agentWriteSchema.extend({
   id: z.string().uuid(), model: agentModelSchema.nullable(),
   created_by_id: z.string().uuid().nullable(), updated_by_id: z.string().uuid().nullable(),
   created_at: z.string(), updated_at: z.string(),
+  skills: z.array(z.object({ id: z.string().uuid(), name: z.string(), description: z.string(), instructions: z.string() })).default([]),
+  capabilities: z.array(z.object({
+    id: z.string(), label: z.string(), description: z.string(), kind: z.string(), required_permission: z.string(),
+    configured: z.boolean(), model_supported: z.boolean(), actor_permitted: z.boolean(), status: z.string(),
+  })).default([]),
 });
 export const agentListSchema = z.object({ agents: z.array(agentSchema) });
 export const agentModelsSchema = z.object({ models: z.array(agentModelSchema) });
+export const agentSkillSchema = z.object({
+  id: z.string().uuid(), name: z.string(), description: z.string(), instructions: z.string(),
+  created_by_id: z.string().uuid().nullable(), updated_by_id: z.string().uuid().nullable(),
+  created_at: z.string(), updated_at: z.string(), assigned_agent_count: z.number().int().nonnegative(),
+});
+export const agentSkillWriteSchema = z.object({ name: text, description: text, instructions: text }).strict();
+export const agentSkillListSchema = z.object({ skills: z.array(agentSkillSchema) });
+export const agentToolSchema = z.object({ id: z.string(), label: z.string(), description: z.string(), kind: z.string(), required_permission: z.string() });
+export const agentToolListSchema = z.object({ tools: z.array(agentToolSchema) });
+export const agentTemplateSchema = z.object({ id: z.string(), name: z.string(), description: z.string(), instructions: z.string(), tool_ids: z.array(z.string()) });
+export const agentTemplateListSchema = z.object({ templates: z.array(agentTemplateSchema) });
 export type AgentDefinition = z.infer<typeof agentSchema>;
 export type AgentDraft = z.infer<typeof agentWriteSchema>;
 export type AgentModel = z.infer<typeof agentModelSchema>;
-export const emptyAgent: AgentDraft = { name: "", description: "", instructions: "", model_id: null, enabled: false };
+export type AgentSkill = z.infer<typeof agentSkillSchema>;
+export type AgentSkillWrite = z.infer<typeof agentSkillWriteSchema>;
+export type AgentTool = z.infer<typeof agentToolSchema>;
+export type AgentTemplate = z.infer<typeof agentTemplateSchema>;
+export const emptyAgent: AgentDraft = { name: "", description: "", instructions: "", model_id: null, enabled: false, skill_ids: [], tool_ids: [] };
 export function draftOf(agent: AgentDraft): AgentDraft {
-  return { name: agent.name, description: agent.description, instructions: agent.instructions, model_id: agent.model_id, enabled: agent.enabled };
+  return { name: agent.name, description: agent.description, instructions: agent.instructions, model_id: agent.model_id, enabled: agent.enabled, skill_ids: agent.skill_ids ?? [], tool_ids: agent.tool_ids ?? [] };
+}
+export function applyTemplate(draft: AgentDraft, template: AgentTemplate): AgentDraft {
+  return { ...draft, name: template.name, description: template.description, instructions: template.instructions, skill_ids: [], tool_ids: [...template.tool_ids] };
 }
 export type AgentErrors = Partial<Record<keyof AgentDraft, string>>;
 export function validateAgent(draft: AgentDraft, original: AgentDefinition | null, models: AgentModel[], step = 2): AgentErrors {
@@ -46,7 +71,7 @@ export function filterAgents(agents: AgentDefinition[], search: string) {
 export class AgentRequestError extends Error {
   constructor(public status: number, public code: string, message: string) { super(message); }
 }
-export async function agentRequest<T>(path: string, schema: z.ZodType<T>, method = "GET", body?: AgentDraft, signal?: AbortSignal): Promise<T> {
+export async function agentRequest<T, B = AgentDraft>(path: string, schema: z.ZodType<T>, method = "GET", body?: B, signal?: AbortSignal): Promise<T> {
   let response: Response;
   try {
     response = await fetch(path, { method, cache: "no-store", headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined, signal });

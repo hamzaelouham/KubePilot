@@ -16,18 +16,20 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { agentRequest, agentSchema, AgentRequestError, draftOf, emptyAgent, validateAgent, type AgentDefinition, type AgentDraft, type AgentErrors, type AgentModel } from "@/lib/assistant/agents";
+import { agentRequest, agentSchema, AgentRequestError, applyTemplate, draftOf, emptyAgent, validateAgent, type AgentDefinition, type AgentDraft, type AgentErrors, type AgentModel, type AgentSkill, type AgentTemplate, type AgentTool } from "@/lib/assistant/agents";
 import { cn } from "@/lib/utils";
 
 type Props = {
   original: AgentDefinition | null; models: AgentModel[]; editable: boolean;
+  skills: AgentSkill[]; tools: AgentTool[]; template?: AgentTemplate | null;
   modelsError: string; onSaved: (agent: AgentDefinition) => void;
   onDeleted: () => void; onCancel: () => void; onDirty: (dirty: boolean) => void;
 };
 
-export function AgentEditor({ original, models, editable, modelsError, onSaved, onDeleted, onCancel, onDirty }: Props) {
-  const [draft, setDraft] = useState<AgentDraft>(() => original ? draftOf(original) : { ...emptyAgent });
-  const [baseline, setBaseline] = useState(() => JSON.stringify(original ? draftOf(original) : emptyAgent));
+export function AgentEditor({ original, models, editable, skills, tools, template, modelsError, onSaved, onDeleted, onCancel, onDirty }: Props) {
+  const initial = original ? draftOf(original) : template ? applyTemplate({ ...emptyAgent }, template) : { ...emptyAgent };
+  const [draft, setDraft] = useState<AgentDraft>(() => initial);
+  const [baseline, setBaseline] = useState(() => JSON.stringify(initial));
   const [step, setStep] = useState(original ? 2 : 0);
   const [errors, setErrors] = useState<AgentErrors>({});
   const [failure, setFailure] = useState<AgentRequestError | null>(null);
@@ -52,6 +54,14 @@ export function AgentEditor({ original, models, editable, modelsError, onSaved, 
   function change<K extends keyof AgentDraft>(key: K, value: AgentDraft[K]) {
     setDraft(previous => ({ ...previous, [key]: value }));
     setErrors(previous => ({ ...previous, [key]: undefined }));
+    setNotice("");
+    if (!uncertain && !denied) setFailure(null);
+  }
+  function toggleAssignment(key: "skill_ids" | "tool_ids", value: string, checked: boolean) {
+    setDraft(previous => {
+      const current = previous[key] as string[];
+      return { ...previous, [key]: checked ? [...current, value] : current.filter(item => item !== value) };
+    });
     setNotice("");
     if (!uncertain && !denied) setFailure(null);
   }
@@ -129,6 +139,22 @@ export function AgentEditor({ original, models, editable, modelsError, onSaved, 
     <Field orientation="horizontal"><div className="flex flex-1 flex-col gap-1"><FieldLabel htmlFor="agent-enabled">Enable agent</FieldLabel><FieldDescription>Configuration only. This does not start a run or schedule.</FieldDescription></div>
       <Switch id="agent-enabled" checked={draft.enabled} onCheckedChange={checked => change("enabled", checked)} disabled={!canEdit || pending} /></Field>
   </FieldGroup>;
+  const capabilityFields = <div className="flex flex-col gap-5">
+    <div><h2 className="text-sm font-semibold">Skills and capabilities</h2><p className="mt-1 text-sm text-muted-foreground">Assignments describe future agent behavior. They do not grant access or execute tools.</p></div>
+    <div className="grid gap-3 md:grid-cols-2">
+      <Card><CardHeader><CardTitle className="text-base">Reusable skills</CardTitle><CardDescription>Select shared instruction blocks in their composition order.</CardDescription></CardHeader><CardContent className="flex flex-col gap-2">
+        {!skills.length ? <p className="text-sm text-muted-foreground">No skills are configured yet.</p> : skills.map(skill => <label key={skill.id} className="flex items-start gap-3 rounded-md border p-3 text-sm"><input type="checkbox" checked={draft.skill_ids.includes(skill.id)} disabled={!canEdit || pending} onChange={event => toggleAssignment("skill_ids", skill.id, event.target.checked)} /><span className="min-w-0"><span className="block font-medium">{skill.name}</span><span className="block text-muted-foreground">{skill.description}</span></span></label>)}
+      </CardContent></Card>
+      <Card><CardHeader><CardTitle className="text-base">Supported tools</CardTitle><CardDescription>Effective status is recomputed from the model and your current permissions.</CardDescription></CardHeader><CardContent className="flex flex-col gap-2">
+        {!tools.length ? <p className="text-sm text-muted-foreground">Tool catalog unavailable.</p> : tools.map(tool => {
+          const capability = original?.capabilities.find(item => item.id === tool.id);
+          const status = capability?.status ?? (!model ? "model_missing" : !model.enabled || model.availability !== "available" ? "model_unavailable" : !model.capabilities.tools ? "model_no_tools" : "pending_check");
+          const selected = draft.tool_ids.includes(tool.id);
+          return <label key={tool.id} className="flex items-start gap-3 rounded-md border p-3 text-sm"><input type="checkbox" checked={selected} disabled={!canEdit || pending} onChange={event => toggleAssignment("tool_ids", tool.id, event.target.checked)} /><span className="min-w-0 flex-1"><span className="flex flex-wrap items-center gap-2 font-medium"><span>{tool.label}</span><Badge variant={selected && status === "available" ? "secondary" : "outline"}>{selected ? status.replaceAll("_", " ") : "not configured"}</Badge></span><span className="block text-muted-foreground">{tool.description}</span></span></label>;
+        })}
+      </CardContent></Card>
+    </div>
+  </div>;
   return <div className={cn("grid min-w-0 gap-6", creating && "xl:grid-cols-[minmax(0,1fr)_320px]")}>
     <form ref={form} onSubmit={event => { event.preventDefault(); void submit(); }} noValidate className="min-w-0">
       <Card>
@@ -141,6 +167,7 @@ export function AgentEditor({ original, models, editable, modelsError, onSaved, 
           {(!creating || step === 0) && basic}
           {!creating && <Separator />}
           {(!creating || step === 1) && modelFields}
+          {(!creating || step === 2) && capabilityFields}
           {creating && step === 2 && <div className="flex flex-col gap-5"><AgentPreview draft={draft} model={model} /><Alert><AlertDescription>Creating this shared definition does not execute an AI request or change your cluster.</AlertDescription></Alert></div>}
           {original && <div className="grid grid-cols-1 gap-3 text-xs text-muted-foreground sm:grid-cols-2"><p>Created {new Date(original.created_at).toLocaleString()}</p><p>Updated {new Date(original.updated_at).toLocaleString()}</p></div>}
         </CardContent>
