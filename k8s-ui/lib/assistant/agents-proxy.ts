@@ -123,3 +123,18 @@ export async function proxyAgentRetention(request: Request) {
     return Response.json({ code: "service_unavailable", message: "Agent automation service unavailable. Refresh before retrying." }, { status: 503 });
   }
 }
+
+export async function proxyAgentRuns(request: Request, agentId: string) {
+  try {
+    z.string().uuid().parse(agentId);
+    const cookie = sessionCookie(request);
+    if (!cookie) throw new AssistantError(401, "authentication_required", "Sign in to view agent activity.");
+    const response = await fetch(`${backendUrl()}/api/v1/assistant/agents/${agentId}/runs${new URL(request.url).search}`, { headers: { cookie }, cache: "no-store", signal: AbortSignal.timeout(45000) });
+    if (response.status >= 500) return Response.json({ code: "service_unavailable", message: "Agent activity service unavailable. Refresh before retrying." }, { status: 503 });
+    return Response.json(await response.json(), { status: response.status, headers: { "cache-control": "no-store" } });
+  } catch (error) {
+    if (error instanceof AssistantError) return Response.json({ code: error.code, message: error.message }, { status: error.status });
+    if (error instanceof z.ZodError) return Response.json({ code: "validation_error", message: "The agent identity is invalid." }, { status: 422 });
+    return Response.json({ code: "service_unavailable", message: "Agent activity service unavailable. Refresh before retrying." }, { status: 503 });
+  }
+}

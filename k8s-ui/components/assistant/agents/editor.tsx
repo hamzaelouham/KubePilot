@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, ChevronDown, LoaderCircle, Play, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ChevronDown, LoaderCircle, Play, Trash2, Bot, MoreHorizontal } from "lucide-react";
 import { z } from "zod";
 import { Agent, AgentContent, AgentHeader, AgentInstructions } from "@/components/ai-elements/agent";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -15,13 +15,15 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Separator } from "@/components/ui/separator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { agentRequest, agentSchema, AgentRequestError, applyTemplate, draftOf, emptyAgent, validateAgent, type AgentDefinition, type AgentDraft, type AgentErrors, type AgentModel, type AgentSkill, type AgentTemplate, type AgentTool } from "@/lib/assistant/agents";
 import { cn } from "@/lib/utils";
 import { getAgentModelState, getAgentToolStatus, groupAgentTools, selectedToolCount, toolStatusLabel } from "@/lib/assistant/agent-ui";
 import { AgentNotifications } from "./notifications";
 import { AgentAutomation } from "./automation";
+import { AgentActivity } from "./activity";
 
 type Props = {
   original: AgentDefinition | null; models: AgentModel[]; editable: boolean;
@@ -163,16 +165,19 @@ export function AgentEditor({ original, models, editable, skills, tools, templat
     <Field orientation="horizontal"><div className="flex flex-1 flex-col gap-1"><FieldLabel htmlFor="agent-enabled">Enable agent</FieldLabel><FieldDescription>Configuration only. This does not start a run or schedule.</FieldDescription></div>
       <Switch id="agent-enabled" checked={draft.enabled} onCheckedChange={checked => change("enabled", checked)} disabled={!canEdit || pending || (!draft.enabled && !modelState.canEnable)} /></Field>
   </FieldGroup>;
-  const capabilityFields = <div className="flex flex-col gap-5">
-    <div><h2 className="text-sm font-semibold">Skills and capabilities</h2><p className="mt-1 text-sm text-muted-foreground">Assignments describe future agent behavior. They do not grant access or execute tools.</p></div>
+  const skillFields = <div className="flex flex-col gap-5">
+    <div><h2 className="text-sm font-semibold">Reusable skills</h2><p className="mt-1 text-sm text-muted-foreground">Skills guide behavior and response structure; they do not grant permissions or execute tools.</p></div>
     <section aria-labelledby="agent-skills-heading" className="rounded-xl border bg-card">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b p-4"><div><h3 id="agent-skills-heading" className="font-medium">Reusable skills</h3><p className="mt-1 text-sm text-muted-foreground">Select shared instruction blocks in their composition order.</p></div><Badge variant="outline">{draft.skill_ids.length} selected</Badge></div>
       <div className="flex flex-col gap-2 p-4">
         {!skills.length ? <p className="text-sm text-muted-foreground">No skills are configured yet.</p> : skills.map(skill => <label key={skill.id} className="flex min-h-12 items-start gap-3 rounded-lg border p-3 text-sm transition-colors has-[:focus-visible]:border-ring has-[:checked]:border-primary/40 has-[:checked]:bg-primary/5"><input className="mt-1 size-4 shrink-0" type="checkbox" checked={draft.skill_ids.includes(skill.id)} disabled={!canEdit || pending} onChange={event => toggleAssignment("skill_ids", skill.id, event.target.checked)} /><span className="min-w-0"><span className="block font-medium">{skill.name}</span><span className="block text-muted-foreground">{skill.description}</span></span></label>)}
       </div>
     </section>
+  </div>;
+  const toolFields = <div className="flex flex-col gap-5">
+    <div><h2 className="text-sm font-semibold">Tools</h2><p className="mt-1 text-sm text-muted-foreground">Effective status is recomputed from the model and your current permissions.</p></div>
     <section aria-labelledby="agent-tools-heading" className="rounded-xl border bg-card">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b p-4"><div><h3 id="agent-tools-heading" className="font-medium">Supported tools</h3><p className="mt-1 text-sm text-muted-foreground">Effective status is recomputed from the model and your current permissions.</p></div><Badge variant="outline">{draft.tool_ids.length} selected</Badge></div>
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b p-4"><div><h3 id="agent-tools-heading" className="font-medium">Supported capabilities</h3><p className="mt-1 text-sm text-muted-foreground">Select only the read-only tools this agent should use.</p></div><Badge variant="outline">{draft.tool_ids.length} selected</Badge></div>
       {!toolGroups.length ? <p className="p-4 text-sm text-muted-foreground">Tool catalog unavailable.</p> : <div className="divide-y">
         {toolGroups.map(group => {
           const open = openToolGroups.has(group.id);
@@ -193,9 +198,12 @@ export function AgentEditor({ original, models, editable, skills, tools, templat
       </div>}
     </section>
   </div>;
+  const capabilityFields = <>{skillFields}{toolFields}</>;
+  const overviewFields = <div className="flex flex-col gap-6">{basic}<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><SummaryCard label={`${draft.tool_ids.length} tools selected`} /><SummaryCard label={`${draft.skill_ids.length} skills`} /><SummaryCard label="Read-only" /><SummaryCard label="No automation configured" /></div></div>;
   return <div className={cn("grid min-w-0 gap-6", creating && "xl:grid-cols-[minmax(0,1fr)_320px]")}>
     <form ref={form} onSubmit={event => { event.preventDefault(); void submit(); }} noValidate className="min-w-0">
       {original && <div className="mb-3 flex items-center justify-between gap-3 xl:hidden"><Button type="button" variant="outline" size="sm" onClick={leaveEditor}><ArrowLeft data-icon="inline-start" />Back to agents</Button>{dirty && <Badge variant="outline">Unsaved changes</Badge>}</div>}
+      {!creating && <div className="mb-4 flex flex-wrap items-start justify-between gap-4 rounded-xl border bg-card p-4 shadow-sm"><div className="flex min-w-0 items-start gap-3"><div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Bot className="size-6" /></div><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-semibold tracking-tight">{draft.name}</h1><Badge variant={draft.enabled ? "secondary" : "outline"}>{draft.enabled ? "Enabled" : "Disabled"}</Badge></div><p className="mt-1 max-w-2xl text-sm text-muted-foreground">{draft.description}</p><div className="mt-3 flex flex-wrap gap-2"><Badge variant="outline">{model?.friendly_name ?? "Model unavailable"}</Badge><Badge variant="outline">{draft.tool_ids.length} tools</Badge><Badge variant="outline">Read-only policy</Badge><Badge variant="outline">Last run: Activity</Badge></div></div></div><div className="flex shrink-0 items-center gap-2"><Button type="button" variant="secondary" onClick={onRun} disabled={!onRun || pending || uncertain}><Play data-icon="inline-start" />Run test</Button><DropdownMenu><DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon" aria-label="More agent actions"><MoreHorizontal /></Button>} /><DropdownMenuContent align="end"><DropdownMenuItem onClick={discardChanges} disabled={!dirty || pending}>Discard unsaved changes</DropdownMenuItem><DropdownMenuItem onClick={() => void reconcile()} disabled={pending}>Refresh stored state</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></div>}
       <Card>
         <CardHeader><div className="flex items-center justify-between gap-3"><CardTitle>{creating ? ["Basic information", "Choose a model", "Review your agent"][step] : "Agent configuration"}</CardTitle><Badge variant={draft.enabled ? "secondary" : "outline"}>{draft.enabled ? "Enabled" : "Disabled"}</Badge></div>
           <CardDescription>{creating ? "Build a focused agent for your team’s Kubernetes work." : "Shared across this KubePilot installation. Changes are audited."}</CardDescription></CardHeader>
@@ -203,12 +211,7 @@ export function AgentEditor({ original, models, editable, skills, tools, templat
           {creating && <ol aria-label="Creation progress" className="flex flex-wrap gap-4">{["Basic information", "Model", "Review"].map((label, index) => <li key={label} aria-current={step === index ? "step" : undefined} className={cn("flex items-center gap-2 text-sm", step === index ? "font-medium text-primary" : "text-muted-foreground")}><span className={cn("flex size-7 items-center justify-center rounded-full", step === index ? "bg-primary text-primary-foreground" : "bg-muted")}>{step > index ? <Check className="size-4" /> : index + 1}</span>{label}</li>)}</ol>}
           {failure && <Alert variant="destructive"><AlertTitle>{denied ? "Access denied" : failure.status === 404 ? "Agent no longer exists" : "Changes not confirmed"}</AlertTitle><AlertDescription>{failure.message}{uncertain && <Button type="button" variant="outline" disabled={pending} onClick={() => void reconcile()}>Refresh stored state</Button>}</AlertDescription></Alert>}
           {notice && <p role="status" className="text-sm text-muted-foreground">{notice}</p>}
-          {(!creating || step === 0) && basic}
-          {!creating && <Separator />}
-          {(!creating || step === 1) && modelFields}
-          {(!creating || step === 2) && capabilityFields}
-          {!creating && original && <><Separator /><AgentNotifications agentId={original.id} agentEnabled={draft.enabled} editable={canEdit} /></>}
-          {!creating && original && <><Separator /><AgentAutomation agentId={original.id} agentEnabled={draft.enabled} editable={canEdit} currentUserId={currentUserId} /></>}
+          {creating ? <>{(step === 0) && basic}{step === 1 && modelFields}{step === 2 && <>{modelFields}{capabilityFields}</>}</> : <Tabs defaultValue="overview" className="min-w-0"><TabsList variant="line" className="grid w-full grid-cols-3 gap-1 sm:grid-cols-6"><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="tools">Tools <Badge variant="outline" className="ml-1">{draft.tool_ids.length}</Badge></TabsTrigger><TabsTrigger value="skills">Skills <Badge variant="outline" className="ml-1">{draft.skill_ids.length}</Badge></TabsTrigger><TabsTrigger value="automation">Automation</TabsTrigger><TabsTrigger value="notifications">Notifications</TabsTrigger><TabsTrigger value="activity">Activity</TabsTrigger></TabsList><TabsContent value="overview" className="mt-5">{overviewFields}{modelFields}</TabsContent><TabsContent value="tools" className="mt-5">{toolFields}</TabsContent><TabsContent value="skills" className="mt-5">{skillFields}</TabsContent><TabsContent value="automation" className="mt-5"><AgentAutomation agentId={original.id} agentEnabled={draft.enabled} editable={canEdit} currentUserId={currentUserId} /></TabsContent><TabsContent value="notifications" className="mt-5"><AgentNotifications agentId={original.id} agentEnabled={draft.enabled} editable={canEdit} /></TabsContent><TabsContent value="activity" className="mt-5"><AgentActivity agentId={original.id} /></TabsContent></Tabs>}
           {creating && step === 2 && <div className="flex flex-col gap-5"><AgentPreview draft={draft} model={model} /><Alert><AlertDescription>Creating this shared definition does not execute an AI request or change your cluster.</AlertDescription></Alert></div>}
           {original && <div className="grid grid-cols-1 gap-3 text-xs text-muted-foreground sm:grid-cols-2"><p>Created {new Date(original.created_at).toLocaleString()}</p><p>Updated {new Date(original.updated_at).toLocaleString()}</p></div>}
         </CardContent>
@@ -226,4 +229,8 @@ export function AgentEditor({ original, models, editable, skills, tools, templat
 
 function AgentPreview({ draft, model }: { draft: AgentDraft; model: AgentModel | null | undefined }) {
   return <Agent className="min-w-0 break-words"><AgentHeader name={draft.name || "Your new agent"} /><AgentContent><p className="text-sm leading-relaxed text-muted-foreground">{draft.description || "Add a description to explain how this agent helps your team."}</p><div className="my-4 flex flex-wrap gap-2"><Badge variant="outline">{model?.friendly_name ?? "No model selected"}</Badge><Badge variant="secondary">{draft.enabled ? "Enabled" : "Disabled"}</Badge></div>{draft.instructions && <AgentInstructions className="whitespace-pre-wrap">{draft.instructions}</AgentInstructions>}</AgentContent></Agent>;
+}
+
+function SummaryCard({ label }: { label: string }) {
+  return <div className="rounded-lg border bg-muted/20 p-3"><p className="text-sm font-medium">{label}</p><p className="mt-1 text-xs text-muted-foreground">Current configuration</p></div>;
 }

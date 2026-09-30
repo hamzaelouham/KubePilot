@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ChevronDown,
+  ChevronRight,
   Boxes,
   BriefcaseBusiness,
   Database,
@@ -19,6 +20,8 @@ import {
   Store,
   SquarePen,
   Sparkles,
+  MessagesSquare,
+  Bot,
   X,
   Users,
   type LucideIcon,
@@ -191,6 +194,7 @@ export function DashboardShell({
   const [manuallyOpened, setManuallyOpened] = useState<Set<string>>(() => new Set());
   const [manuallyClosed, setManuallyClosed] = useState<Set<string>>(() => new Set());
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(activeResource === "assistant" || activeResource === "ai-agents");
 
   const navigateFromShell = (resource: string, namespace: string) => {
     setMobileNavOpen(false);
@@ -322,14 +326,23 @@ export function DashboardShell({
                 Dashboard
               </button>
 
-              <Link
-                href={withCluster(`/assistant?namespace=${encodeURIComponent(activeNamespace)}`, activeCluster)}
-                className={`flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-base transition ${isActive("assistant") ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"}`}
-              ><Sparkles className="size-4 shrink-0" />AI Assistant</Link>
-              <Link href={withCluster("/assistant/agents", activeCluster)} aria-current={isActive("ai-agents") ? "page" : undefined}
-                className={`ml-6 flex items-center gap-2 rounded-md px-3 py-2 text-sm ${isActive("ai-agents") ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent"}`}>
-                AI Agents
-              </Link>
+              <Collapsible open={assistantOpen} onOpenChange={setAssistantOpen}>
+                <CollapsibleTrigger className={`flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-base transition ${isActive("assistant") || isActive("ai-agents") ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"}`}>
+                  <Sparkles className="size-4 shrink-0" />
+                  <span className="flex-1">AI Assistant</span>
+                  {assistantOpen ? <ChevronDown className="size-4 shrink-0" /> : <ChevronRight className="size-4 shrink-0" />}
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-1 space-y-1">
+                  <Link href={withCluster(`/assistant?namespace=${encodeURIComponent(activeNamespace)}`, activeCluster)} aria-current={isActive("assistant") ? "page" : undefined}
+                    className={`ml-6 flex items-center gap-2 rounded-md px-3 py-2 text-sm ${isActive("assistant") ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent"}`}>
+                    <MessagesSquare className="size-4 shrink-0" />Group chat
+                  </Link>
+                  <Link href={withCluster("/assistant/agents", activeCluster)} aria-current={isActive("ai-agents") ? "page" : undefined}
+                    className={`ml-6 flex items-center gap-2 rounded-md px-3 py-2 text-sm ${isActive("ai-agents") ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent"}`}>
+                    <Bot className="size-4 shrink-0" />AI agents
+                  </Link>
+                </CollapsibleContent>
+              </Collapsible>
 
               <Link
                 href="/marketplace"

@@ -95,6 +95,10 @@ export const automationTriggerSchema = automationTriggerWriteSchema.extend({
 });
 export const automationTriggerListSchema = z.object({ triggers: z.array(automationTriggerSchema) });
 export const agentRetentionSchema = z.object({ retention_days: z.number().int().min(1).max(365) });
+export const agentRunSchema = z.object({
+  id: z.string().uuid(), trigger_id: z.string().uuid().nullable(), agent_id: z.string().uuid(), owner_id: z.string().uuid(), cluster_id: z.string().uuid(), namespace: z.string().nullable(), trigger_type: z.enum(["schedule", "kubernetes_event"]), scheduled_for: z.string().nullable(), event_id: z.string().uuid().nullable(), status: z.enum(["queued", "running", "succeeded", "failed", "cancelled"]), attempt_count: z.number().int(), result_code: z.string().nullable(), error_message: z.string().nullable(), created_at: z.string(), started_at: z.string().nullable(), completed_at: z.string().nullable(),
+});
+export const agentRunListSchema = z.object({ runs: z.array(agentRunSchema), total: z.number().int().nonnegative() });
 export type AgentDefinition = z.infer<typeof agentSchema>;
 export type AgentDraft = z.infer<typeof agentWriteSchema>;
 export type AgentModel = z.infer<typeof agentModelSchema>;
@@ -106,6 +110,7 @@ export type NotificationDestination = z.infer<typeof notificationDestinationSche
 export type NotificationDestinationWrite = z.infer<typeof notificationDestinationWriteSchema>;
 export type AutomationTrigger = z.infer<typeof automationTriggerSchema>;
 export type AutomationTriggerWrite = z.infer<typeof automationTriggerWriteSchema>;
+export type AgentRun = z.infer<typeof agentRunSchema>;
 export const emptyAgent: AgentDraft = { name: "", description: "", instructions: "", model_id: null, enabled: false, skill_ids: [], tool_ids: [] };
 export function draftOf(agent: AgentDraft): AgentDraft {
   return { name: agent.name, description: agent.description, instructions: agent.instructions, model_id: agent.model_id, enabled: agent.enabled, skill_ids: agent.skill_ids ?? [], tool_ids: agent.tool_ids ?? [] };
