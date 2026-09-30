@@ -33,6 +33,7 @@ Secondary users may include engineering managers and technical operators who nee
 - Centralized Settings (post-MVP, feature 20) for application preferences, appearance, AI providers and models, encrypted credentials, and audit logs
 - Direct AI provider architecture (post-MVP, feature 21) using Settings-managed OpenAI, OpenRouter, and Ollama/local models without Vercel AI Gateway; tool access follows each model's declared capabilities
 - Integrations and AI agent automation (post-MVP, feature 22) for Slack, Gmail, and Microsoft Outlook configuration under Settings, plus configurable Kubernetes workflows under the existing AI Assistant area after provider capability enforcement and audit visibility are complete
+- In-chat Assistant mode switching (22d7) so operators can choose direct model chat or an enabled configured agent without leaving the shared streaming conversation experience; server-side model/agent boundaries, agent-scoped tools, permissions, and human approvals remain authoritative
 
 AI Agents (22d) lives at `/assistant/agents`, nested under AI Assistant. Deliver it
 in five ordered slices: agent management; skills/capabilities/templates; manual
@@ -128,6 +129,7 @@ The interface should prioritize:
 - A "Manage resources" sidebar entry at `/manage-resources`, using the existing application shell and selected cluster/namespace controls, with Kubernetes resources and Helm releases tabs plus repository configuration under the same section
 - Clear creation/deletion feedback, release action progress, confirmation of destructive targets, and loading, empty, denied, and error states; switching clusters refreshes the displayed scope and prevents actions from using a stale target
 - AI Assistant contains an AI Agents child page. Use `blueprint/reference/settings-ai-agents.png`, `settings-ai-agents-create.png`, and `settings-ai-agents-capabilities-templates.png` as visual references, adapting their navigation to Assistant. Reuse the existing shadcn/ui theme and AI Elements; provide searchable agent lists, responsive list/detail views, guided creation, capability tables, and template cards as their slices ship. Statistics must reflect actual data, with no fabricated usage or success rates.
+- The Assistant conversation keeps one shared streaming surface while making its mode explicit: direct chat exposes an eligible model selector, and agent chat exposes an enabled-agent selector with agent identity/status metadata; switching mode warns before clearing incompatible conversation context.
 
 The long-term UI should evolve from an elegant dashboard foundation into a dense but readable operational workflow surface that supports investigation, change review, and escalation.
 

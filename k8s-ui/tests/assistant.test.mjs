@@ -10,6 +10,7 @@ import { GET as listModels } from "../app/api/assistant/models/route.ts";
 import { POST as confirm } from "../app/api/assistant/proposals/[id]/route.ts";
 import { resolveAssistantModel } from "../lib/assistant/model-resolver.ts";
 import { fetchAssistantModels } from "../lib/assistant/models.ts";
+import { assistantIdentity, assistantSelectionUrl, parseAssistantSelection } from "../lib/assistant/mode.ts";
 
 const user = { id: "actor", role: "operator", must_change_password: false, password_expired: false };
 const scope = { cluster: "primary", namespace: "default" };
@@ -25,6 +26,21 @@ const assistantModel = (tools = true) => ({
   is_default: true,
 });
 const usage = { inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined }, outputTokens: { total: 10, text: 10, reasoning: undefined } };
+
+test("Assistant mode state keeps direct model and agent selections exclusive", () => {
+  assert.deepEqual(parseAssistantSelection(new URLSearchParams()), { mode: "direct", modelId: undefined });
+  assert.deepEqual(parseAssistantSelection(new URLSearchParams(`mode=agent&agent=${selectedAgentId}&model=${selectedModelId}`)), { mode: "agent", agentId: selectedAgentId });
+  assert.deepEqual(parseAssistantSelection(new URLSearchParams(`mode=direct&model=${selectedModelId}&agent=${selectedAgentId}`)), { mode: "direct", modelId: selectedModelId });
+  assert.deepEqual(assistantIdentity("direct", selectedModelId, selectedAgentId), { modelId: selectedModelId });
+  assert.deepEqual(assistantIdentity("agent", selectedModelId, selectedAgentId), { agentId: selectedAgentId });
+});
+
+test("Assistant mode URLs preserve context while replacing incompatible selection", () => {
+  const direct = assistantSelectionUrl("direct", selectedModelId, undefined, "namespace=default&agent=stale");
+  assert.equal(direct, `?namespace=default&mode=direct&model=${selectedModelId}`);
+  const agent = assistantSelectionUrl("agent", undefined, selectedAgentId, direct);
+  assert.equal(agent, `?namespace=default&mode=agent&agent=${selectedAgentId}`);
+});
 const request = (body, origin = "http://localhost:3000", host = "localhost:3000", url = "http://localhost:3000/api/assistant") => {
   const headers = new Headers({ cookie: "kubepilot_session=signed; unrelated=private", "content-type": "application/json" });
   if (origin !== null) headers.set("origin", origin);

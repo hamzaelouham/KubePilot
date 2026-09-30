@@ -1,6 +1,6 @@
 # KubePilot - Project Overview
 
-<!-- blueprint:source-hash 3db0457e707b586cb9c60761a1b2d47fad44af4099d33d4202b84c39cd6b3941 -->
+<!-- blueprint:source-hash 75643c5b759f54780aa4c060593f0b2735d86a7e52de96586c56f3833c12f6f1 -->
 
 > A self-hosted Kubernetes operations platform for cluster visibility, troubleshooting, and safe resource management.
 
@@ -42,19 +42,20 @@ Features are ordered as tracked in `build-plan.md`; checked items are shipped.
 19. **Manage resources** - validated Kubernetes resource operations plus Helm release, repository, and upgrade workflows.
 20. **Centralized KubePilot Settings** - administrator-controlled provider/model configuration, credentials, preferences, and audit logs.
 21. **Direct AI provider architecture** - Settings-backed OpenAI, OpenRouter, and Ollama/local models without the AI Gateway, with capability enforcement and safe audit outcomes.
-22. **Integrations and AI agent automation** - parent milestone remains open while AI agent automation is completed.
+22. **Integrations and AI agent automation** - shipped Slack, Gmail, and Microsoft Outlook configuration plus configurable Kubernetes AI agent workflows under the existing AI Assistant area.
    - **22a. Secrets and API key management** - shipped admin-only metadata and write-only management of registered credentials.
    - **22b. Integrations catalog UI foundation** - shipped catalog, filters, search, status groupings, and preview actions for supported and future connectors.
    - **22c. Integration connections and delivery** - shipped backend-authoritative Slack, Gmail, and Outlook connection lifecycle and delivery/status foundations.
      - **22c1. Integration connection lifecycle** - shipped encrypted token references, OAuth/manual connection flows, scoped permissions, tests, safe status, and audit; Teams, GitHub, and Webhooks remain catalog-only.
      - **22c2. Integration delivery and status** - shipped queued delivery, idempotency, bounded retries, safe errors, history, and audit visibility.
-   - **22d. AI agent workflows in Assistant** - parent slice remains open; shared admin-managed agents, caller-scoped manual execution, integrations, schedules, and events are shipped through 22d5, with UI polish next.
+   - **22d. AI agent workflows in Assistant** - shipped shared admin-managed agents, caller-scoped manual execution, integrations, schedules, events, UI polish, and in-chat mode switching.
      - **22d1. Agent management** - shipped shared agent CRUD, enable/disable, instructions, identity, and Settings-managed model selection at `/assistant/agents`.
      - **22d2. Skills, capabilities, and templates** - shipped reusable instruction skills, supported tool assignments, effective permissions, and template creation.
      - **22d3. Agent execution** - shipped manual ToolLoopAgent execution with AI Elements streaming, scoped tools, and human approvals.
      - **22d4. Agent integrations** - shipped explicit Slack/Gmail/Outlook notification destinations, encrypted targets, admin test delivery, status refresh, safe delivery metadata, and audited results.
      - **22d5. Schedules and events** - shipped simple schedules, Kubernetes event triggers, designated-owner permission rechecks, guarded read-only runs, configured notifications, retention, and Background Jobs visibility.
-     - **22d6. AI Agents UI polish** - next: improve responsive hierarchy, sticky actions, grouped capabilities, readable model/status states, and accessible loading, error, and disabled states without changing backend behavior.
+     - **22d6. AI Agents UI polish** - shipped responsive hierarchy, sticky actions, grouped capabilities, readable model/status states, and accessible loading, error, and disabled states without changing backend behavior.
+     - **22d7. In-chat model and agent mode switching** - shipped direct model and enabled-agent selection in the shared Assistant conversation surface, with server-side identity exclusivity and preserved tool, permission, and approval boundaries.
 
 ## Data model
 
@@ -92,6 +93,7 @@ workflow state.
 - `AIAgent`: shared installation-level identity, description/instructions, internal model reference, enabled state, creator/updater references, and timestamps.
 - Agent skills contain bounded instructions; assignment rows connect agents to skills and supported tools. Templates provide safe draft values and cannot grant permissions or executable code.
 - 22d5 adds trigger configuration, designated owner, bounded run history, retention, and guarded background execution. The exact fields and lifecycle are defined in its archived feature specification.
+- 22d7 adds no persisted conversation data: mode, model, and agent selection remain URL/UI state, while agent configuration and execution authorization continue to resolve server-side.
 - `AuditAction`: actor, action, target identity, result, and safe context; never raw prompts, credentials, notification bodies, or raw tool payloads.
 - `AssistantProposal`: UUID, actor/session, immutable validated action arguments and cluster, expiry, one-use decision state, and sanitized result. Conversations remain in the active browser view.
 - `InstallationJob` and Helm repository records support package/release actions with target cluster, namespace, release/action metadata, status, errors, timestamps, and public URL-only repository configuration.
@@ -123,7 +125,7 @@ empty, denied, and error states, and light/dark theme selection.
 - `/dashboard` and `/dashboard/detail` - scoped cluster health, resources, status, YAML, logs, and events.
 - `/marketplace` - Artifact Hub search, package details, install configuration, progress, and history.
 - `/manage-resources` - Kubernetes resources, Helm releases, repository configuration, and upgrades.
-- `/assistant` - authenticated streaming investigation, scoped tool results, proposals, and confirmations.
+- `/assistant` - authenticated streaming investigation with direct model or configured-agent mode, scoped tool results, proposals, and confirmations.
 - `/assistant/agents` - searchable shared agent list/detail, guided creation, skills, capabilities, templates, execution, notification destinations, and automation; 22d6 polishes the responsive management experience.
 - `/settings` - protected administrator Settings for Providers, Models, Integrations, Credentials, and Audit Logs.
 - `/settings/integrations` - catalog plus Slack/Gmail/Outlook connection and delivery management; catalog-only entries do not imply supported connectors.
