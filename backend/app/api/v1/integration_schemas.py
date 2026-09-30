@@ -69,6 +69,9 @@ class IntegrationDeliveryItem(BaseModel):
     created_at: datetime
     started_at: datetime | None
     completed_at: datetime | None
+    agent_id: UUID | None = None
+    agent_destination_id: UUID | None = None
+    deduplicated: bool = False
 
 
 class IntegrationDeliveryListResponse(BaseModel):

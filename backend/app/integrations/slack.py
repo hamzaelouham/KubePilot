@@ -25,6 +25,9 @@ class SlackAdapter(IntegrationAdapter):
     client_secret_credential_key = "integration.slack.client_secret"
     required_scopes = ("chat:write",)
 
+    def normalize_destination(self, destination: str) -> str:
+        return destination.strip().upper()
+
     def validate_destination(self, destination: str) -> None:
         if not re.fullmatch(r"[CGD][A-Z0-9]+", destination):
             raise IntegrationProviderError("integration_delivery_invalid")

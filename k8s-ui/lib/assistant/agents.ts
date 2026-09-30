@@ -38,6 +38,39 @@ export const agentToolSchema = z.object({ id: z.string(), label: z.string(), des
 export const agentToolListSchema = z.object({ tools: z.array(agentToolSchema) });
 export const agentTemplateSchema = z.object({ id: z.string(), name: z.string(), description: z.string(), instructions: z.string(), tool_ids: z.array(z.string()) });
 export const agentTemplateListSchema = z.object({ templates: z.array(agentTemplateSchema) });
+export const notificationDestinationWriteSchema = z.object({
+  provider_id: z.enum(["slack", "gmail", "outlook"]),
+  label: text.refine(value => [...value].length <= 128, "Use 128 characters or fewer."),
+  destination: text.refine(value => [...value].length <= 512, "Use 512 characters or fewer."),
+  enabled: z.boolean(),
+}).strict();
+export const notificationDestinationSchema = z.object({
+  id: z.string().uuid(),
+  provider_id: z.enum(["slack", "gmail", "outlook"]),
+  label: z.string(),
+  destination_hint: z.string(),
+  enabled: z.boolean(),
+  connection_status: z.string(),
+  updated_at: z.string(),
+});
+export const notificationDestinationListSchema = z.object({ destinations: z.array(notificationDestinationSchema) });
+export const notificationDeliverySchema = z.object({
+  delivery_id: z.string().uuid(),
+  provider_id: z.string(),
+  event_type: z.string(),
+  destination_hint: z.string(),
+  status: z.enum(["queued", "running", "succeeded", "failed", "outcome_unknown"]),
+  attempt_count: z.number().int().nonnegative(),
+  max_attempts: z.number().int().positive(),
+  next_attempt_at: z.string(),
+  last_error_code: z.string().nullable(),
+  created_at: z.string(),
+  started_at: z.string().nullable(),
+  completed_at: z.string().nullable(),
+  agent_id: z.string().uuid().nullable().optional(),
+  agent_destination_id: z.string().uuid().nullable().optional(),
+  deduplicated: z.boolean().optional(),
+});
 export type AgentDefinition = z.infer<typeof agentSchema>;
 export type AgentDraft = z.infer<typeof agentWriteSchema>;
 export type AgentModel = z.infer<typeof agentModelSchema>;
@@ -45,6 +78,8 @@ export type AgentSkill = z.infer<typeof agentSkillSchema>;
 export type AgentSkillWrite = z.infer<typeof agentSkillWriteSchema>;
 export type AgentTool = z.infer<typeof agentToolSchema>;
 export type AgentTemplate = z.infer<typeof agentTemplateSchema>;
+export type NotificationDestination = z.infer<typeof notificationDestinationSchema>;
+export type NotificationDestinationWrite = z.infer<typeof notificationDestinationWriteSchema>;
 export const emptyAgent: AgentDraft = { name: "", description: "", instructions: "", model_id: null, enabled: false, skill_ids: [], tool_ids: [] };
 export function draftOf(agent: AgentDraft): AgentDraft {
   return { name: agent.name, description: agent.description, instructions: agent.instructions, model_id: agent.model_id, enabled: agent.enabled, skill_ids: agent.skill_ids ?? [], tool_ids: agent.tool_ids ?? [] };

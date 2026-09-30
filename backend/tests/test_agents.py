@@ -4,16 +4,32 @@ from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
+from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import sessionmaker
 
 from app.api.v1.routes import _signed_cookie
+from app.api.v1 import agents as agents_api
 from app.core.config import Settings
 from app.core.dependencies import get_database_session
 from app.main import create_app
 from app.models.base import Base
-from app.models.entities import AIAgent, AIAgentSkill, AIAgentSkillAssignment, AIModelConfig, AuditAction, Session, UserAccount
+from app.models.entities import (
+    AIAgent,
+    AIAgentNotificationDestination,
+    AIAgentSkill,
+    AIAgentSkillAssignment,
+    AIModelConfig,
+    AuditAction,
+    IntegrationConnection,
+    IntegrationDeliveryJob,
+    Session,
+    UserAccount,
+)
+from app.services.credential_encryption import CredentialEncryption
+from app.services.agent_notifications import enqueue_agent_notification
+from app.services.integration_delivery import DeliveryServiceError
 
 PATH = "/api/v1/assistant/agents"
 SKILLS = f"{PATH}/skills"
@@ -21,7 +37,12 @@ SKILLS = f"{PATH}/skills"
 
 @pytest.fixture
 def api(tmp_path):
-    settings = Settings(auth_secret="x" * 32, database_url=f"sqlite:///{tmp_path / 'agents.db'}", worker_enabled=False)
+    settings = Settings(
+        auth_secret="x" * 32,
+        database_url=f"sqlite:///{tmp_path / 'agents.db'}",
+        encryption_key=Fernet.generate_key().decode("ascii"),
+        worker_enabled=False,
+    )
     engine = create_engine(settings.database_url)
     event.listen(engine, "connect", lambda db, _: db.execute("PRAGMA foreign_keys=ON"))
     Base.metadata.create_all(engine)
@@ -44,7 +65,7 @@ def api(tmp_path):
     app.dependency_overrides[get_database_session] = database
     client = TestClient(app, raise_server_exceptions=False)
     client.cookies.set("kubepilot_session", cookie)
-    yield SimpleNamespace(client=client, db=factory, user=user, model=model, session=session)
+    yield SimpleNamespace(client=client, db=factory, engine=engine, user=user, model=model, session=session, settings=settings)
     client.close(); engine.dispose()
 
 
@@ -56,6 +77,10 @@ def create(api, **changes):
     response = api.client.post(PATH, json=payload(api, **changes))
     assert response.status_code == 201, response.text
     return response.json()
+
+
+def notification_payload(**changes):
+    return dict(provider_id="slack", label="Primary channel", destination="C123", enabled=True) | changes
 
 
 def test_persisted_crud_safe_audit_and_case_sensitive_names(api):
@@ -78,6 +103,171 @@ def test_persisted_crud_safe_audit_and_case_sensitive_names(api):
         assert len(audits) == 4
         assert all(a.action.startswith("assistant.agent.") for a in audits)
         assert "Read evidence" not in str([a.context for a in audits])
+
+
+def test_agent_notification_destinations_are_encrypted_scoped_and_testable(api):
+    agent = create(api, name="Notification agent", enabled=True)
+    encryption = CredentialEncryption.from_settings(api.settings)
+    with api.db() as db:
+        db.add(
+            IntegrationConnection(
+                provider="slack",
+                status="connected",
+                access_token_ciphertext=encryption.encrypt("access-token"),
+                granted_scopes=["chat:write"],
+            )
+        )
+        db.commit()
+
+    path = f'{PATH}/{agent["id"]}/notifications'
+    response = api.client.post(path, json=notification_payload())
+    assert response.status_code == 201, response.text
+    destination = response.json()
+    assert destination["provider_id"] == "slack"
+    assert destination["destination_hint"] != "C123"
+    assert "C123" not in response.text
+
+    with api.db() as db:
+        stored = db.scalar(select(AIAgentNotificationDestination))
+        assert stored is not None
+        assert stored.destination_ciphertext != "C123"
+        assert stored.destination_digest
+        assert stored.agent_id == UUID(agent["id"])
+
+    assert api.client.post(path, json=notification_payload()).status_code == 409
+    updated = api.client.put(
+        f'{path}/{destination["id"]}',
+        json=notification_payload(destination="C456", enabled=False, label="Backup channel"),
+    )
+    assert updated.status_code == 200
+    assert updated.json()["enabled"] is False
+    assert "C456" not in updated.text
+
+    assert api.client.post(f'{path}/{destination["id"]}/test').status_code == 409
+    reenabled = api.client.put(
+        f'{path}/{destination["id"]}',
+        json=notification_payload(destination="C456", enabled=True, label="Backup channel"),
+    )
+    assert reenabled.status_code == 200
+    queued = api.client.post(f'{path}/{destination["id"]}/test')
+    assert queued.status_code == 200, queued.text
+    assert queued.json()["status"] == "queued"
+    assert queued.json()["agent_id"] == agent["id"]
+    with api.db() as db:
+        job = db.scalar(select(IntegrationDeliveryJob))
+        assert job is not None and job.agent_destination_id == UUID(destination["id"])
+        assert "KubePilot agent notification test" not in (job.payload_ciphertext or "")
+
+
+def test_agent_notification_destinations_reject_invalid_targets_and_non_admin_mutations(api):
+    agent = create(api, name="Restricted notification agent")
+    path = f'{PATH}/{agent["id"]}/notifications'
+    assert api.client.post(path, json=notification_payload(destination="not-a-channel")).status_code == 422
+    assert api.client.post(path, json=notification_payload(provider_id="teams")).status_code == 422
+
+    with api.db() as db:
+        db.get(UserAccount, api.user.id).role = "viewer"
+        db.commit()
+    assert api.client.get(path).status_code == 200
+    assert api.client.post(path, json=notification_payload()).status_code == 403
+
+
+def test_agent_notification_dispatch_is_idempotent_and_audited_without_content(api):
+    agent = create(api, name="Dispatch agent", enabled=True)
+    encryption = CredentialEncryption.from_settings(api.settings)
+    with api.db() as db:
+        db.add(
+            IntegrationConnection(
+                provider="slack",
+                status="connected",
+                access_token_ciphertext=encryption.encrypt("access-token"),
+                granted_scopes=["chat:write"],
+            )
+        )
+        db.commit()
+    path = f'{PATH}/{agent["id"]}/notifications'
+    destination = api.client.post(path, json=notification_payload()).json()
+    with api.db() as db:
+        first = enqueue_agent_notification(
+            db,
+            api.settings,
+            actor_id=api.user.id,
+            agent_id=UUID(agent["id"]),
+            destination_id=UUID(destination["id"]),
+            event_type="agent.alert",
+            body="private notification body",
+            idempotency_key="agent-alert-1",
+        )
+        second = enqueue_agent_notification(
+            db,
+            api.settings,
+            actor_id=api.user.id,
+            agent_id=UUID(agent["id"]),
+            destination_id=UUID(destination["id"]),
+            event_type="agent.alert",
+            body="private notification body",
+            idempotency_key="agent-alert-1",
+        )
+        assert first["deduplicated"] is False
+        assert second["deduplicated"] is True
+        assert first["delivery_id"] == second["delivery_id"]
+        job = db.get(IntegrationDeliveryJob, first["delivery_id"])
+        assert job is not None and job.agent_id == UUID(agent["id"])
+        assert "private notification body" not in (job.payload_ciphertext or "")
+        audits = db.scalars(select(AuditAction)).all()
+        assert "private notification body" not in str([audit.context for audit in audits])
+
+
+def test_agent_notification_test_maps_delivery_service_errors(api, monkeypatch):
+    agent = create(api, name="Delivery race agent", enabled=True)
+    destination_id = uuid4()
+
+    def revoked_connection(*_args, **_kwargs):
+        raise DeliveryServiceError(
+            "integration_delivery_not_connected",
+            "The integration is not connected",
+            status_code=409,
+        )
+
+    monkeypatch.setattr(agents_api, "queue_test_delivery", revoked_connection)
+    response = api.client.post(f'{PATH}/{agent["id"]}/notifications/{destination_id}/test')
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "code": "integration_delivery_not_connected",
+        "message": "The integration is not connected",
+    }
+
+
+def test_agent_notification_listing_batches_connection_status_lookup(api):
+    agent = create(api, name="Batch notification agent")
+    path = f'{PATH}/{agent["id"]}/notifications'
+    api.client.post(path, json=notification_payload(destination="C123"))
+    api.client.post(path, json=notification_payload(destination="C456", label="Backup channel"))
+    api.client.post(
+        path,
+        json=notification_payload(
+            provider_id="gmail",
+            label="Email recipient",
+            destination="alerts@example.com",
+        ),
+    )
+
+    statements: list[str] = []
+
+    def capture(_connection, _cursor, statement, _parameters, _context, _executemany):
+        if "integration_connections" in statement.lower():
+            statements.append(statement)
+
+    event.listen(api.engine, "before_cursor_execute", capture)
+    try:
+        response = api.client.get(path)
+    finally:
+        event.remove(api.engine, "before_cursor_execute", capture)
+
+    assert response.status_code == 200, response.text
+    assert len(response.json()["destinations"]) == 3
+    assert len(statements) == 1
 
 
 @pytest.mark.parametrize("role", ["viewer", "operator"])

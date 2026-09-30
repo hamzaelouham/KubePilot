@@ -25,6 +25,9 @@ class GmailAdapter(IntegrationAdapter):
     client_secret_credential_key = "integration.google.client_secret"
     required_scopes = ("https://www.googleapis.com/auth/gmail.send", "openid", "email")
 
+    def normalize_destination(self, destination: str) -> str:
+        return destination.strip().casefold()
+
     def validate_destination(self, destination: str) -> None:
         if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", destination):
             raise IntegrationProviderError("integration_delivery_invalid")

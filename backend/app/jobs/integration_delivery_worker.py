@@ -7,7 +7,7 @@ from sqlalchemy import select, update
 from app.core.audit import AuditEvent, record_audit
 from app.core.config import Settings
 from app.models.entities import IntegrationDeliveryJob
-from app.services.integration_delivery import BACKOFFS, DeliveryDispatchError, dispatch_delivery
+from app.services.integration_delivery import BACKOFFS, DeliveryDispatchError, dispatch_delivery, source_context
 
 
 def requeue_running_deliveries(database) -> None:
@@ -71,7 +71,12 @@ def _process_delivery(database, settings: Settings, row: IntegrationDeliveryJob)
         "integration_delivery",
         str(row.id),
         result="running",
-        context={"provider": row.provider, "status": "running", "attempt_count": row.attempt_count},
+        context={
+            "provider": row.provider,
+            "status": "running",
+            "attempt_count": row.attempt_count,
+            **source_context(row.agent_id, row.agent_destination_id),
+        },
     )
     database.commit()
     try:
@@ -100,6 +105,7 @@ def _process_delivery(database, settings: Settings, row: IntegrationDeliveryJob)
                     "status": "queued",
                     "attempt_count": row.attempt_count,
                     "error_code": error.code,
+                    **source_context(row.agent_id, row.agent_destination_id),
                 },
             )
             database.commit()
@@ -122,7 +128,12 @@ def _process_delivery(database, settings: Settings, row: IntegrationDeliveryJob)
         "integration_delivery",
         str(row.id),
         result="success",
-        context={"provider": row.provider, "status": "succeeded", "attempt_count": row.attempt_count},
+        context={
+            "provider": row.provider,
+            "status": "succeeded",
+            "attempt_count": row.attempt_count,
+            **source_context(row.agent_id, row.agent_destination_id),
+        },
     )
     database.commit()
 
@@ -150,6 +161,7 @@ def _finish_failure(database, row, error_code: str, *, outcome_unknown: bool = F
             "status": row.status,
             "attempt_count": row.attempt_count,
             "error_code": error_code,
+            **source_context(row.agent_id, row.agent_destination_id),
         },
     )
     database.commit()

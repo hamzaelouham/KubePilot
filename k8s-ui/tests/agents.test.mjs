@@ -4,6 +4,9 @@ import { GET, POST } from "../app/api/assistant/agents/route.ts";
 import { PUT, DELETE } from "../app/api/assistant/agents/[agentId]/route.ts";
 import { GET as GETSkills, POST as POSTSkills } from "../app/api/assistant/agents/skills/route.ts";
 import { GET as GETTemplates } from "../app/api/assistant/agents/templates/route.ts";
+import { GET as GETNotifications, POST as POSTNotifications } from "../app/api/assistant/agents/[agentId]/notifications/route.ts";
+import { PUT as PUTNotification, DELETE as DELETENotification } from "../app/api/assistant/agents/[agentId]/notifications/[destinationId]/route.ts";
+import { POST as POSTNotificationTest } from "../app/api/assistant/agents/[agentId]/notifications/[destinationId]/test/route.ts";
 import { agentWriteSchema, validateAgent, draftOf, applyTemplate, filterAgents, agentRequest, AgentRequestError, agentListSchema, agentTemplateListSchema } from "../lib/assistant/agents.ts";
 
 const id = "11111111-1111-4111-8111-111111111111";
@@ -11,11 +14,19 @@ const draft = { name: "Investigator", description: "Workload health", instructio
 const model = { id, friendly_name: "Test", provider_name: "OpenAI", enabled: true, availability: "available", capabilities: { streaming: true, tools: true } };
 const agent = { ...draft, id, model, created_by_id: id, updated_by_id: id, created_at: "2026-09-29T00:00:00Z", updated_at: "2026-09-29T00:00:00Z" };
 const context = { params: Promise.resolve({ agentId: id }) };
+const destinationId = "22222222-2222-4222-8222-222222222222";
+const notificationContext = { params: Promise.resolve({ agentId: id, destinationId }) };
+const safeDestination = { id: destinationId, provider_id: "slack", label: "On-call", destination_hint: "…C123", enabled: true, connection_status: "connected", updated_at: "2026-09-30T00:00:00Z" };
+const delivery = { delivery_id: destinationId, provider_id: "slack", event_type: "agent_notification_test", destination_hint: "…C123", status: "queued", attempt_count: 0, max_attempts: 3, next_attempt_at: "2026-09-30T00:00:00Z", last_error_code: null, created_at: "2026-09-30T00:00:00Z", started_at: null, completed_at: null, agent_id: id, agent_destination_id: destinationId, deduplicated: false };
 function request(method = "POST", body = draft, origin = "http://localhost:3000") {
   return new Request("http://localhost:3000/api/assistant/agents", { method, headers: { host: "localhost:3000", origin, cookie: "kubepilot_session=signed; unrelated=secret", "content-type": "application/json" }, body: ["GET", "DELETE"].includes(method) ? undefined : JSON.stringify(body) });
 }
 function catalogRequest(method = "GET", body = { name: "Skill", description: "Read", instructions: "Read safely." }, origin = "http://localhost:3000") {
   return new Request("http://localhost:3000/api/assistant/agents/skills", { method, headers: { host: "localhost:3000", origin, cookie: "kubepilot_session=signed; unrelated=secret", "content-type": "application/json" }, body: method === "GET" ? undefined : JSON.stringify(body) });
+}
+
+function notificationRequest(method = "GET", body = { provider_id: "slack", label: "On-call", destination: "C123", enabled: true }, origin = "http://localhost:3000") {
+  return new Request(`http://localhost:3000/api/assistant/agents/${id}/notifications`, { method, headers: { host: "localhost:3000", origin, cookie: "kubepilot_session=signed; unrelated=secret", "content-type": "application/json" }, body: method === "GET" ? undefined : JSON.stringify(body) });
 }
 
 test("agent bridges forward the signed cookie only and never cache", async t => {
@@ -44,6 +55,34 @@ test("skill and template bridges preserve the same trust boundary", async t => {
     assert.equal(options.cache, "no-store");
     assert.equal(options.headers.authorization, undefined);
   }
+});
+
+test("notification bridges expose safe destinations and preserve the delivery boundary", async t => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (url, options) => {
+    calls.push({ url, options });
+    if (String(url).endsWith("/test")) return Response.json(delivery);
+    if (options.method === "DELETE") return Response.json({ id: destinationId });
+    return Response.json(options.method === "GET" ? { destinations: [safeDestination] } : safeDestination);
+  });
+  assert.equal((await GETNotifications(notificationRequest(), { params: Promise.resolve({ agentId: id }) })).status, 200);
+  assert.equal((await POSTNotifications(notificationRequest("POST"), { params: Promise.resolve({ agentId: id }) })).status, 200);
+  assert.equal((await PUTNotification(notificationRequest("PUT"), notificationContext)).status, 200);
+  assert.equal((await DELETENotification(notificationRequest("DELETE"), notificationContext)).status, 200);
+  assert.equal((await POSTNotificationTest(new Request("http://localhost:3000/api/assistant/agents/x/notifications/y/test", { method: "POST", headers: { host: "localhost:3000", origin: "http://localhost:3000", cookie: "kubepilot_session=signed" } }), notificationContext)).status, 200);
+  for (const { options } of calls) {
+    assert.equal(options.headers.cookie, "kubepilot_session=signed");
+    assert.equal(options.cache, "no-store");
+    assert.equal(options.headers.authorization, undefined);
+  }
+  assert.ok(calls.some(call => String(call.url).endsWith(`/assistant/agents/${id}/notifications/${destinationId}/test`)));
+});
+
+test("notification mutations reject foreign origins and invalid identifiers before fetching", async t => {
+  t.mock.method(globalThis, "fetch", () => { throw new Error("must not fetch"); });
+  assert.equal((await POSTNotifications(notificationRequest("POST", undefined, "https://attacker.test"), { params: Promise.resolve({ agentId: id }) })).status, 403);
+  assert.equal((await POSTNotificationTest(new Request("http://localhost:3000/api/assistant/agents/x/notifications/y/test", { method: "POST", headers: { host: "localhost:3000", origin: "http://localhost:3000", cookie: "kubepilot_session=signed" } }), { params: Promise.resolve({ agentId: "not-a-uuid", destinationId }) })).status, 422);
+  assert.equal(globalThis.fetch.mock.callCount(), 0);
 });
 
 test("mutations reject foreign origins, forged fields, oversized payloads and invalid ids before fetching", async t => {

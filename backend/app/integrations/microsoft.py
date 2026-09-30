@@ -24,6 +24,9 @@ class OutlookAdapter(IntegrationAdapter):
     client_secret_credential_key = "integration.microsoft.client_secret"
     required_scopes = ("Mail.Send", "User.Read", "offline_access", "openid", "profile", "email")
 
+    def normalize_destination(self, destination: str) -> str:
+        return destination.strip().casefold()
+
     def validate_destination(self, destination: str) -> None:
         if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", destination):
             raise IntegrationProviderError("integration_delivery_invalid")

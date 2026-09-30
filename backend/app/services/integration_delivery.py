@@ -56,6 +56,8 @@ class IntegrationDeliveryRequest:
     body: str
     subject: str | None = None
     actor_id: UUID | None = None
+    agent_id: UUID | None = None
+    agent_destination_id: UUID | None = None
 
 
 def enqueue_delivery(
@@ -107,13 +109,15 @@ def enqueue_delivery(
         provider=request.provider_id,
         idempotency_key=request.idempotency_key,
         event_type=request.event_type,
-        destination_hint=_destination_hint(request.destination),
+        destination_hint=destination_hint(request.destination),
         payload_ciphertext=payload_ciphertext,
         status="queued",
         attempt_count=0,
         max_attempts=MAX_ATTEMPTS,
         next_attempt_at=_now(),
         actor_id=request.actor_id,
+        agent_id=request.agent_id,
+        agent_destination_id=request.agent_destination_id,
     )
     database.add(job)
     try:
@@ -140,7 +144,12 @@ def enqueue_delivery(
         "integration_delivery",
         str(job.id),
         result="queued",
-        context={"provider": request.provider_id, "status": "queued", "attempt_count": 0},
+        context={
+            "provider": request.provider_id,
+            "status": "queued",
+            "attempt_count": 0,
+            **source_context(request.agent_id, request.agent_destination_id),
+        },
     )
     database.commit()
     return {**delivery_metadata(job), "deduplicated": False}
@@ -212,7 +221,12 @@ def retry_delivery(database: SQLAlchemySession, actor_id: UUID, delivery_id: UUI
         "integration_delivery",
         str(row.id),
         result="queued",
-        context={"provider": row.provider, "status": "queued", "attempt_count": 0},
+        context={
+            "provider": row.provider,
+            "status": "queued",
+            "attempt_count": 0,
+            **source_context(row.agent_id, row.agent_destination_id),
+        },
     )
     database.commit()
     return delivery_metadata(row)
@@ -264,6 +278,8 @@ def delivery_metadata(row: IntegrationDeliveryJob) -> dict[str, Any]:
         "created_at": row.created_at,
         "started_at": row.started_at,
         "completed_at": row.completed_at,
+        "agent_id": row.agent_id,
+        "agent_destination_id": row.agent_destination_id,
     }
 
 
@@ -297,11 +313,20 @@ def _decrypt_payload(settings: Settings, ciphertext: str) -> dict[str, Any]:
     return payload
 
 
-def _destination_hint(destination: str) -> str:
+def destination_hint(destination: str) -> str:
     if "@" in destination:
         local, domain = destination.split("@", 1)
         return f"{local[:1]}***@{domain}"
     return f"…{destination[-4:]}" if len(destination) > 4 else "…"
+
+
+def source_context(agent_id: UUID | None, destination_id: UUID | None) -> dict[str, str]:
+    context: dict[str, str] = {}
+    if agent_id is not None:
+        context["agent_id"] = str(agent_id)
+    if destination_id is not None:
+        context["agent_destination_id"] = str(destination_id)
+    return context
 
 
 def _delivery_error_code(code: str) -> str:

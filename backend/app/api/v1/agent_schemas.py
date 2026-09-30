@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
@@ -67,6 +68,40 @@ class AgentItem(AgentWrite):
     updated_at: datetime
     skills: list[AgentSkillReference]
     capabilities: list[AgentCapability]
+
+
+class AgentNotificationDestinationWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider_id: Literal["slack", "gmail", "outlook"]
+    label: str = Field(min_length=1, max_length=128)
+    destination: str = Field(min_length=1, max_length=512)
+    enabled: StrictBool = True
+
+    @field_validator("label", "destination", mode="before")
+    @classmethod
+    def clean_destination_text(cls, value):
+        if not isinstance(value, str) or not value.strip() or "\x00" in value:
+            raise ValueError("Nonblank destination text is required")
+        return value.strip()
+
+
+class AgentNotificationDestinationItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    provider_id: Literal["slack", "gmail", "outlook"]
+    label: str
+    destination_hint: str
+    enabled: bool
+    connection_status: str
+    updated_at: datetime
+
+
+class AgentNotificationDestinationList(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    destinations: list[AgentNotificationDestinationItem]
 
 
 class AgentList(BaseModel):
