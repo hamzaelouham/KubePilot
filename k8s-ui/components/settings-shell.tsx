@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { useClusterSelection } from "@/lib/use-cluster-selection";
 import type { BackendUser } from "@/lib/auth-client";
+import { scrollPageToTop } from "@/lib/navigation";
 
 const sections = [
   { label: "AI Providers", href: "/settings/providers" },
@@ -49,6 +50,7 @@ export function SettingsShell({ user, children }: { user: BackendUser; children:
             <Link
               key={section.href}
               href={section.href}
+              onClick={scrollPageToTop}
               aria-current={pathname === section.href ? "page" : undefined}
               className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm ${pathname === section.href ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
             >

@@ -32,6 +32,7 @@ import { UserMenu } from "@/components/user-menu";
 import { ClusterContext } from "@/lib/cluster-context";
 import { withCluster } from "@/lib/cluster-query";
 import { ADMIN_ROLE, type BackendUser } from "@/lib/auth-client";
+import { scrollPageToTop } from "@/lib/navigation";
 import {
   Collapsible,
   CollapsibleContent,
@@ -464,6 +465,7 @@ export function DashboardShell({
                       <Link
                         key={item.id}
                         href={item.href}
+                        onClick={scrollPageToTop}
                         className={`flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 pl-10 text-left text-base transition ${
                             isActive(item.id)
                               ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
