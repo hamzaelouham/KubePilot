@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from app.assistant.schemas import StrictModel
 
@@ -23,6 +23,13 @@ class ConversationSelection(StrictModel):
     mode: ConversationMode = "direct"
     model_id: UUID | None = None
     agent_id: UUID | None = None
+
+    @field_validator("model_id", "agent_id", mode="before")
+    @classmethod
+    def parse_json_uuid(cls, value: UUID | str | None) -> UUID | str | None:
+        # FastAPI passes decoded JSON to Pydantic's strict Python validator;
+        # UUIDs therefore arrive as strings even though they are typed IDs.
+        return UUID(value) if isinstance(value, str) else value
 
     @model_validator(mode="after")
     def exclusive_selection(self):

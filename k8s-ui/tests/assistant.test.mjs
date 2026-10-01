@@ -12,7 +12,7 @@ import { resolveAssistantModel } from "../lib/assistant/model-resolver.ts";
 import { fetchAssistantModels } from "../lib/assistant/models.ts";
 import { assistantIdentity, assistantSelectionUrl, parseAssistantSelection } from "../lib/assistant/mode.ts";
 import { proposalSchema } from "../lib/assistant/schemas.ts";
-import { conversationSaveSchema, messagesFromConversation } from "../lib/assistant/conversations.ts";
+import { conversationCreateSchema, conversationSaveSchema, messagesFromConversation } from "../lib/assistant/conversations.ts";
 
 test("proposal results accept only known one-action approval states", () => {
   const valid = {
@@ -84,6 +84,19 @@ test("conversation history restores ordered visible parts without creating appro
   assert.equal(conversationSaveSchema.parse({ mode: "agent", model_id: null, agent_id: selectedAgentId, context: scope, messages }).messages.length, 2);
   assert.equal(messages[1].parts[0].output.status, "pending");
 });
+
+test("conversation creation keeps the selected model in the backend field shape", () => {
+  const payload = conversationCreateSchema.parse({
+    title: null,
+    mode: "direct",
+    model_id: selectedModelId,
+    agent_id: null,
+    context: scope,
+  });
+  assert.equal(payload.model_id, selectedModelId);
+  assert.equal("modelId" in payload, false);
+});
+
 const request = (body, origin = "http://localhost:3000", host = "localhost:3000", url = "http://localhost:3000/api/assistant") => {
   const headers = new Headers({ cookie: "kubepilot_session=signed; unrelated=private", "content-type": "application/json" });
   if (origin !== null) headers.set("origin", origin);

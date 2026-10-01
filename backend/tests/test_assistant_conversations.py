@@ -7,13 +7,15 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
+from pydantic import ValidationError
 
 from app.api.v1.routes import _signed_cookie
+from app.api.v1.conversation_schemas import ConversationCreateRequest
 from app.core.audit import AuditEvent
 from app.core.config import Settings
 from app.main import create_app
 from app.models.base import Base
-from app.models.entities import AssistantConversation, AssistantConversationPart, AssistantProposal, AuditAction, ClusterConnection, Session, UserAccount
+from app.models.entities import AIModelConfig, AssistantConversation, AssistantConversationPart, AssistantProposal, AuditAction, ClusterConnection, Session, UserAccount
 
 
 @pytest.fixture
@@ -55,6 +57,15 @@ def conversation_body():
     }
 
 
+def test_conversation_schema_accepts_json_uuid_strings_but_rejects_invalid_ids():
+    model_id = str(uuid4())
+    parsed = ConversationCreateRequest.model_validate({**conversation_body(), "model_id": model_id})
+    assert parsed.model_id == UUID(model_id)
+
+    with pytest.raises(ValidationError):
+        ConversationCreateRequest.model_validate({**conversation_body(), "model_id": "not-a-uuid"})
+
+
 def test_user_conversation_round_trip_is_sanitized_and_ordered(conversation_api):
     created = conversation_api.client.post("/api/v1/assistant/conversations", json=conversation_body())
     assert created.status_code == 201, created.text
@@ -81,6 +92,22 @@ def test_user_conversation_round_trip_is_sanitized_and_ordered(conversation_api)
     assert detail.status_code == 200
     assert detail.json()["owner"] is None
     assert conversation_api.client.get("/api/v1/assistant/conversations?search=health").json()["total"] == 1
+
+
+def test_create_accepts_selected_model_id_from_json(conversation_api):
+    with conversation_api.db() as database:
+        model = AIModelConfig(provider_id="openai", external_model_id="gpt-test", friendly_name="GPT Test")
+        database.add(model)
+        database.commit()
+        model_id = str(model.id)
+
+    response = conversation_api.client.post(
+        "/api/v1/assistant/conversations",
+        json={**conversation_body(), "model_id": model_id},
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["model_id"] == model_id
 
 
 def test_user_scope_and_admin_management_are_separate_and_audited(conversation_api):
