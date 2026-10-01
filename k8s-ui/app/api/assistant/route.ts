@@ -2,7 +2,7 @@ import { createAgentUIStreamResponse } from "ai";
 import { z } from "zod";
 import { createAssistant } from "@/lib/assistant/agent";
 import { resolveAgentRuntime, type ResolvedAgentRuntime } from "@/lib/assistant/agent-runtime";
-import { AssistantError, authenticate, boundedBody, errorResponse, sameOrigin, sessionCookie } from "@/lib/assistant/backend";
+import { AssistantError, authenticate, backendRequest, boundedBody, errorResponse, sameOrigin, sessionCookie } from "@/lib/assistant/backend";
 import { contextSchema, scrubHistory } from "@/lib/assistant/schemas";
 import { resolveAssistantRuntime } from "@/lib/assistant/model-resolver";
 
@@ -12,6 +12,7 @@ export const maxDuration = 120;
 const messageSchema = z.object({ id: z.string().max(100), role: z.enum(["user", "assistant"]), parts: z.array(z.record(z.string(), z.unknown())).max(100) });
 const requestSchema = z.object({
   context: contextSchema,
+  conversationId: z.string().uuid().optional(),
   modelId: z.string().uuid().optional(),
   agentId: z.string().uuid().optional(),
   id: z.string().max(100).optional(),
@@ -34,6 +35,7 @@ export async function POST(request: Request) {
         throw new AssistantError(422, "invalid_message", "Only text and KubePilot tool results are supported.");
       }
     }
+    if (body.conversationId) await backendRequest(cookie, `/assistant/conversations/${body.conversationId}`);
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(110000)]);
     const resolved = body.agentId
       ? await resolveAgentRuntime(cookie, body.agentId)

@@ -106,3 +106,5 @@
     * [x] 22d7. **In-chat model and agent mode switching** - let users switch between direct model chat and enabled configured agents from the Assistant header, while preserving server-side model/agent exclusivity, agent-scoped tools, human approvals, and accessible loading, empty, denied, and error states.
 
 * [x] 23. **Human-in-the-loop AI agent actions** - extend the typed Assistant tool and proposal system so every agent side effect, including allowlisted Kubernetes/Helm fixes and outbound notifications, requires explicit per-action approval from an authenticated user; read-only investigation and post-action verification may remain autonomous, while scheduled and event-driven runs cannot execute side effects themselves.
+
+* [x] 24. **Persistent Assistant conversations and admin retention** - add account-backed ChatGPT-style conversation history so users can resume chats across devices with their selected model/agent and cluster context, while administrators can inspect, manage, purge, and configure retention for sanitized conversation records without weakening per-action approval boundaries.

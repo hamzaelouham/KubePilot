@@ -35,6 +35,7 @@ Secondary users may include engineering managers and technical operators who nee
 - Integrations and AI agent automation (post-MVP, feature 22) for Slack, Gmail, and Microsoft Outlook configuration under Settings, plus configurable Kubernetes workflows under the existing AI Assistant area after provider capability enforcement and audit visibility are complete
 - In-chat Assistant mode switching (22d7) so operators can choose direct model chat or an enabled configured agent without leaving the shared streaming conversation experience; server-side model/agent boundaries, agent-scoped tools, permissions, and human approvals remain authoritative
 - Human-in-the-loop AI agent actions (post-MVP, feature 23) so every agent side effect, including Kubernetes/Helm changes and outbound notifications, requires explicit per-action approval from an authenticated user before execution or delivery
+- Persistent Assistant conversations and admin retention (post-MVP, feature 24) so authenticated users can resume account-backed chats across devices while administrators control retention and conversation records
 
 AI Agents (22d) lives at `/assistant/agents`, nested under AI Assistant. Deliver it
 in five ordered slices: agent management; skills/capabilities/templates; manual
@@ -52,6 +53,10 @@ scheduled execution may bypass this boundary.
 Instructions, skills, templates, and capability settings never grant permissions.
 Exact trigger types, schedule semantics, run retention, and background approval
 handoff contracts will be specified in 22d5 before implementation.
+Assistant conversations are account-backed rather than browser-only: users can
+resume their own chats across devices, while administrators can inspect, manage,
+delete, and purge any conversation and configure retention. Persisted messages
+and tool results remain sanitized and never become an approval authority.
 
 Manage resources is delivered in four ordered items:
 
@@ -74,6 +79,7 @@ All four items live under the "Manage resources" sidebar entry. Admins and opera
 - User-defined settings such as default namespace and view preferences
 - Audit records for admin actions and resource operations
 - Assistant action proposals: UUID, actor/session identifiers, immutable validated action arguments and target cluster, expiration, one-use execution/denial state and sanitized result. Conversations remain in the active browser view for V1; prompts and raw tool data are not persisted in audit records.
+- Assistant conversations and messages: owner-scoped conversation identity/title, selected mode/model/agent, cluster and namespace context, ordered sanitized message/tool parts, proposal references and timestamps; retention is administrator-configurable and expired records are purged with audited administrative control.
 - Application-level session and RBAC metadata for local access control
 - Marketplace installation and release-action jobs (package and chart metadata, target cluster, namespace, release name, action, revision where applicable, status, error message, timestamps) and resolved Artifact Hub package metadata; feature 19 extends release management to externally installed releases and upgrades
 - KubePilot-managed global public Helm chart repository configuration (name and URL); 19c does not support credentials, and 19d requires explicit repository/chart/version selection for each upgrade without a persisted release-to-chart-source association
@@ -135,6 +141,7 @@ The interface should prioritize:
 - Clear creation/deletion feedback, release action progress, confirmation of destructive targets, and loading, empty, denied, and error states; switching clusters refreshes the displayed scope and prevents actions from using a stale target
 - AI Assistant contains an AI Agents child page. Use `blueprint/reference/settings-ai-agents.png`, `settings-ai-agents-create.png`, and `settings-ai-agents-capabilities-templates.png` as visual references, adapting their navigation to Assistant. Reuse the existing shadcn/ui theme and AI Elements; provide searchable agent lists, responsive list/detail views, guided creation, capability tables, and template cards as their slices ship. Statistics must reflect actual data, with no fabricated usage or success rates.
 - The Assistant conversation keeps one shared streaming surface while making its mode explicit: direct chat exposes an eligible model selector, and agent chat exposes an enabled-agent selector with agent identity/status metadata; switching mode warns before clearing incompatible conversation context.
+- The Assistant gains a ChatGPT-style conversation history and resume flow: users can create, rename, reopen, and delete their own chats across devices; administrators have full conversation and retention control through an audited management surface.
 
 The long-term UI should evolve from an elegant dashboard foundation into a dense but readable operational workflow surface that supports investigation, change review, and escalation.
 

@@ -6,7 +6,7 @@ from uuid import UUID
 
 import json
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
@@ -20,7 +20,7 @@ from app.assistant.schemas import ChatCompletionsRequest, Decision, Observation,
 from app.core.audit import AuditEvent, record_audit
 from app.core.config import Settings
 from app.core.dependencies import AuthenticatedActor, get_database_session, get_settings
-from app.core.rbac import Permission, require_permission
+from app.core.rbac import Permission, has_permission, require_permission
 from app.kubernetes.resource_management import ResourceManagementError
 from app.models.entities import AssistantProposal
 from app.services.ai_models import list_eligible_models
@@ -33,11 +33,39 @@ from app.services.ai_runtime import (
     resolve_runtime_model,
 )
 from app.api.v1.settings_schemas import EligibleModelsResponse
+from app.api.v1.conversation_schemas import (
+    ConversationCreateRequest,
+    ConversationDetail,
+    ConversationListResponse,
+    ConversationPurgeResponse,
+    ConversationRenameRequest,
+    ConversationRetentionResponse,
+    ConversationSaveRequest,
+    ConversationSummary,
+)
+from app.services.assistant_conversations import (
+    ConversationError,
+    conversation_retention_days,
+    create_conversation,
+    delete_conversation,
+    get_conversation,
+    list_conversations,
+    purge_expired_conversations,
+    rename_conversation,
+    save_conversation,
+    set_conversation_retention,
+)
 
 router = APIRouter(prefix="/assistant", tags=["assistant"])
 Actor = Annotated[AuthenticatedActor, Depends(require_permission(Permission.RESOURCES_READ))]
 Database = Annotated[Session, Depends(get_database_session)]
 Configuration = Annotated[Settings, Depends(get_settings)]
+AdminReadActor = Annotated[AuthenticatedActor, Depends(require_permission(Permission.SETTINGS_READ))]
+AdminWriteActor = Annotated[AuthenticatedActor, Depends(require_permission(Permission.SETTINGS_WRITE))]
+
+
+def _conversation_http_error(error: ConversationError) -> HTTPException:
+    return HTTPException(status_code=error.status_code, detail={"code": error.code, "message": str(error)})
 
 
 async def audited(database, actor, tool, cluster, operation):
@@ -171,6 +199,105 @@ def get_proposal(proposal_id: UUID, actor: Actor, database: Database):
     if proposal is None or proposal.actor_id != actor.user_id or proposal.session_id != actor.session_id:
         raise ResourceManagementError(404, "proposal_not_found", "Proposal not found for this session")
     return summary(proposal)
+
+
+@router.get("/conversations", response_model=ConversationListResponse)
+def conversations(
+    actor: Actor,
+    database: Database,
+    search: str | None = Query(default=None, max_length=120),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> ConversationListResponse:
+    try:
+        return list_conversations(
+            database,
+            actor.user_id,
+            admin=has_permission(actor.role, Permission.SETTINGS_READ),
+            search=search,
+            limit=limit,
+            offset=offset,
+        )
+    except ConversationError as error:
+        raise _conversation_http_error(error) from error
+
+
+@router.post("/conversations", response_model=ConversationDetail, status_code=201)
+def create_conversation_route(body: ConversationCreateRequest, actor: Actor, database: Database) -> ConversationDetail:
+    try:
+        return create_conversation(database, actor.user_id, body)
+    except ConversationError as error:
+        raise _conversation_http_error(error) from error
+
+
+@router.get("/conversations/retention", response_model=ConversationRetentionResponse)
+def get_conversation_retention(actor: AdminReadActor, database: Database) -> ConversationRetentionResponse:
+    value = conversation_retention_days(database)
+    record_audit(database, AuditEvent.ASSISTANT_CONVERSATION_RETENTION_VIEWED, actor.user_id, "application_setting", "assistant.conversation_retention_days", result="succeeded")
+    database.commit()
+    return ConversationRetentionResponse(retention_days=value)
+
+
+@router.put("/conversations/retention", response_model=ConversationRetentionResponse)
+def update_conversation_retention(body: ConversationRetentionResponse, actor: AdminWriteActor, database: Database) -> ConversationRetentionResponse:
+    try:
+        return set_conversation_retention(database, actor.user_id, body.retention_days)
+    except ConversationError as error:
+        raise _conversation_http_error(error) from error
+
+
+@router.post("/conversations/purge", response_model=ConversationPurgeResponse)
+def purge_conversations(actor: AdminWriteActor, database: Database) -> ConversationPurgeResponse:
+    return purge_expired_conversations(database, actor.user_id)
+
+
+@router.get("/conversations/{conversation_id}", response_model=ConversationDetail)
+def conversation_detail(conversation_id: UUID, actor: Actor, database: Database) -> ConversationDetail:
+    try:
+        return get_conversation(
+            database,
+            actor.user_id,
+            conversation_id,
+            admin=has_permission(actor.role, Permission.SETTINGS_READ),
+        )
+    except ConversationError as error:
+        raise _conversation_http_error(error) from error
+
+
+@router.put("/conversations/{conversation_id}/messages", response_model=ConversationDetail)
+def save_conversation_route(conversation_id: UUID, body: ConversationSaveRequest, actor: Actor, database: Database) -> ConversationDetail:
+    try:
+        return save_conversation(database, actor.user_id, conversation_id, body)
+    except ConversationError as error:
+        raise _conversation_http_error(error) from error
+
+
+@router.patch("/conversations/{conversation_id}", response_model=ConversationSummary)
+def rename_conversation_route(conversation_id: UUID, body: ConversationRenameRequest, actor: Actor, database: Database) -> ConversationSummary:
+    try:
+        return rename_conversation(
+            database,
+            actor.user_id,
+            conversation_id,
+            body,
+            admin=has_permission(actor.role, Permission.SETTINGS_READ),
+        )
+    except ConversationError as error:
+        raise _conversation_http_error(error) from error
+
+
+@router.delete("/conversations/{conversation_id}", status_code=204)
+def delete_conversation_route(conversation_id: UUID, actor: Actor, database: Database) -> Response:
+    try:
+        delete_conversation(
+            database,
+            actor.user_id,
+            conversation_id,
+            admin=has_permission(actor.role, Permission.SETTINGS_READ),
+        )
+    except ConversationError as error:
+        raise _conversation_http_error(error) from error
+    return Response(status_code=204)
 
 
 @router.get("/models", response_model=EligibleModelsResponse)

@@ -180,6 +180,53 @@ class AssistantProposal(Base):
     result: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
 
+class AssistantConversation(Base):
+    __tablename__ = "assistant_conversations"
+
+    id: Mapped[PrimaryKey]
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("user_accounts.id", ondelete="CASCADE"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(160), nullable=False, default="New conversation", server_default="New conversation")
+    mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    model_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("ai_model_configs.id", ondelete="SET NULL"), nullable=True, index=True)
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("ai_agents.id", ondelete="SET NULL"), nullable=True, index=True)
+    cluster_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("cluster_connections.id", ondelete="SET NULL"), nullable=True, index=True)
+    cluster_name: Mapped[str] = mapped_column(String(253), nullable=False)
+    namespace: Mapped[str | None] = mapped_column(String(253))
+    resource: Mapped[str | None] = mapped_column(String(64))
+    resource_name: Mapped[str | None] = mapped_column(String(253))
+    release: Mapped[str | None] = mapped_column(String(253))
+    created_at: Mapped[CreatedAt]
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now().astimezone(),
+        server_default=text("now()"),
+    )
+
+    __table_args__ = (
+        Index("ix_assistant_conversations_owner_updated", "owner_id", "updated_at"),
+        Index("ix_assistant_conversations_updated", "updated_at"),
+    )
+
+
+class AssistantConversationPart(Base):
+    __tablename__ = "assistant_conversation_parts"
+
+    id: Mapped[PrimaryKey]
+    conversation_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("assistant_conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    part_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    proposal_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("assistant_proposals.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at: Mapped[CreatedAt]
+
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "sequence", name="uq_assistant_conversation_parts_sequence"),
+        Index("ix_assistant_conversation_parts_order", "conversation_id", "sequence"),
+    )
+
+
 class UserAccount(Base):
     __tablename__ = "user_accounts"
 

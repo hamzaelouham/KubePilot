@@ -1,6 +1,7 @@
 import { requireUsableBackendUser } from "@/lib/auth";
 import { AssistantView } from "@/components/assistant/view";
 import { agentIdSchema, contextSchema } from "@/lib/assistant/schemas";
+import { z } from "zod";
 import { assistantModeSchema } from "@/lib/assistant/mode";
 
 export default async function AssistantPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -14,5 +15,6 @@ export default async function AssistantPage({ searchParams }: { searchParams: Pr
   const modelId = agentIdSchema.safeParse(query.model).data;
   const requestedMode = assistantModeSchema.safeParse(query.mode).data;
   const mode = agentId && requestedMode !== "direct" ? "agent" : requestedMode ?? "direct";
-  return <AssistantView user={user} initial={contextSchema.partial().parse(initial)} mode={mode} modelId={mode === "direct" ? modelId : undefined} agentId={mode === "agent" ? agentId : undefined} />;
+  const conversationId = z.string().uuid().safeParse(query.conversation).data;
+  return <AssistantView user={user} initial={contextSchema.partial().parse(initial)} mode={mode} modelId={mode === "direct" ? modelId : undefined} agentId={mode === "agent" ? agentId : undefined} conversationId={conversationId} />;
 }

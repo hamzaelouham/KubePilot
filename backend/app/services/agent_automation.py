@@ -32,6 +32,7 @@ from app.models.entities import (
 )
 from app.services.ai_runtime import AIRuntimeError, open_chat_stream, resolve_runtime_model
 from app.services.agents import fail, get_agent
+from app.services.assistant_conversations import cleanup_conversations
 
 
 RETENTION_SETTING_KEY = "assistant.agent_run_retention_days"
@@ -540,6 +541,7 @@ def execute_run(database: Session, run: AIAgentRun, settings: Settings) -> None:
 
 def run_pending_agent_runs(database: Session, settings: Settings) -> None:
     evaluate_triggers(database, settings)
+    cleanup_conversations(database)
     cleanup_runs(database)
     while True:
         run = claim_next_run(database)

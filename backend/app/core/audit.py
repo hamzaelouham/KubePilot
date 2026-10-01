@@ -83,6 +83,13 @@ class AuditEvent:
     AGENT_AUTOMATION_RUN_SUCCEEDED = "assistant.agent_automation.run_succeeded"
     AGENT_AUTOMATION_RUN_FAILED = "assistant.agent_automation.run_failed"
     AGENT_AUTOMATION_RETENTION_UPDATED = "assistant.agent_automation.retention_updated"
+    ASSISTANT_CONVERSATION_LISTED = "assistant.conversation.listed"
+    ASSISTANT_CONVERSATION_VIEWED = "assistant.conversation.viewed"
+    ASSISTANT_CONVERSATION_RENAMED = "assistant.conversation.renamed"
+    ASSISTANT_CONVERSATION_DELETED = "assistant.conversation.deleted"
+    ASSISTANT_CONVERSATION_PURGED = "assistant.conversation.purged"
+    ASSISTANT_CONVERSATION_RETENTION_UPDATED = "assistant.conversation.retention_updated"
+    ASSISTANT_CONVERSATION_RETENTION_VIEWED = "assistant.conversation.retention_viewed"
 
 
 def record_audit(

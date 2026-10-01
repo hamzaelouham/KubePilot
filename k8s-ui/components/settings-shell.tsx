@@ -12,6 +12,7 @@ const sections = [
   { label: "Models", href: "/settings/models" },
   { label: "Integrations", href: "/settings/integrations" },
   { label: "Secrets & Credentials", href: "/settings/credentials" },
+  { label: "Conversations", href: "/settings/conversations" },
   { label: "Audit Logs", href: "/settings/audit-logs" },
 ] as const;
 

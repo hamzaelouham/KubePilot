@@ -1,6 +1,6 @@
 # KubePilot - Project Overview
 
-<!-- blueprint:source-hash e34f1675123c7eb6949b0429fdc05b77e4dd810ecd0b4abfbf3494024d03079b -->
+<!-- blueprint:source-hash 4fc395dc7871aaec61f97ec50f57c9cf4f6c265834985b070ff4a0098ce9f5b3 -->
 
 > A self-hosted Kubernetes operations platform for cluster visibility, troubleshooting, and safe resource management.
 
@@ -57,6 +57,7 @@ Features are ordered as tracked in `build-plan.md`; checked items are shipped.
      - **22d6. AI Agents UI polish** - shipped responsive hierarchy, sticky actions, grouped capabilities, readable model/status states, and accessible loading, error, and disabled states without changing backend behavior.
      - **22d7. In-chat model and agent mode switching** - shipped direct model and enabled-agent selection in the shared Assistant conversation surface, with server-side identity exclusivity and preserved tool, permission, and approval boundaries.
 23. **Human-in-the-loop AI agent actions** - shipped universal per-action approval for every agent side effect, including allowlisted Kubernetes/Helm fixes and outbound notifications; read-only investigation and post-action verification remain autonomous, while scheduled and event-driven runs cannot execute side effects themselves.
+24. **Persistent Assistant conversations and admin retention** - planned account-backed ChatGPT-style conversation history across devices, with selected model/agent and cluster context, administrator inspection and management, sanitized persistence, and configurable retention.
 
 ## Data model
 
@@ -96,8 +97,9 @@ workflow state.
 - 22d5 adds trigger configuration, designated owner, bounded run history, retention, and guarded background execution. The exact fields and lifecycle are defined in its archived feature specification.
 - 22d7 adds no persisted conversation data: mode, model, and agent selection remain URL/UI state, while agent configuration and execution authorization continue to resolve server-side.
 - `AuditAction`: actor, action, target identity, result, and safe context; never raw prompts, credentials, notification bodies, or raw tool payloads.
-- `AssistantProposal`: UUID, actor/session, immutable validated action arguments and cluster, expiry, one-use decision state, and sanitized result. Conversations remain in the active browser view.
+- `AssistantProposal`: UUID, actor/session, immutable validated action arguments and cluster, expiry, one-use decision state, and sanitized result. Feature 24 persists conversation references without changing proposal authority.
 - Feature 23 extends the proposal boundary to every agent side effect: each action must carry an authenticated approver, exact target and arguments, fresh permission/precondition checks, one-use expiry, safe audit metadata, and an explicit result or unknown outcome; agent text, blanket approvals, and autonomous retries never authorize execution.
+- Feature 24 adds account-owned Assistant conversations with title, selected mode/model/agent, cluster and namespace context, ordered sanitized message/tool parts, proposal references, timestamps, administrator controls, and configurable retention with audited purge.
 - `InstallationJob` and Helm repository records support package/release actions with target cluster, namespace, release/action metadata, status, errors, timestamps, and public URL-only repository configuration.
 
 ## Tech stack
@@ -127,7 +129,7 @@ empty, denied, and error states, and light/dark theme selection.
 - `/dashboard` and `/dashboard/detail` - scoped cluster health, resources, status, YAML, logs, and events.
 - `/marketplace` - Artifact Hub search, package details, install configuration, progress, and history.
 - `/manage-resources` - Kubernetes resources, Helm releases, repository configuration, and upgrades.
-- `/assistant` - authenticated streaming investigation with direct model or configured-agent mode, scoped tool results, per-action proposals, confirmations, and post-action verification.
+- `/assistant` - authenticated streaming investigation with direct model or configured-agent mode, account-backed conversation history, scoped tool results, per-action proposals, confirmations, and post-action verification.
 - `/assistant/agents` - searchable shared agent list/detail, guided creation, skills, capabilities, templates, execution, notification destinations, and automation; 22d6 polishes the responsive management experience.
 - `/settings` - protected administrator Settings for Providers, Models, Integrations, Credentials, and Audit Logs.
 - `/settings/integrations` - catalog plus Slack/Gmail/Outlook connection and delivery management; catalog-only entries do not imply supported connectors.

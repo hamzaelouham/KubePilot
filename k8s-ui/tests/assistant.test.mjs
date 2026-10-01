@@ -12,6 +12,7 @@ import { resolveAssistantModel } from "../lib/assistant/model-resolver.ts";
 import { fetchAssistantModels } from "../lib/assistant/models.ts";
 import { assistantIdentity, assistantSelectionUrl, parseAssistantSelection } from "../lib/assistant/mode.ts";
 import { proposalSchema } from "../lib/assistant/schemas.ts";
+import { conversationSaveSchema, messagesFromConversation } from "../lib/assistant/conversations.ts";
 
 test("proposal results accept only known one-action approval states", () => {
   const valid = {
@@ -54,6 +55,34 @@ test("Assistant mode URLs preserve context while replacing incompatible selectio
   assert.equal(direct, `?namespace=default&mode=direct&model=${selectedModelId}`);
   const agent = assistantSelectionUrl("agent", undefined, selectedAgentId, direct);
   assert.equal(agent, `?namespace=default&mode=agent&agent=${selectedAgentId}`);
+});
+
+test("conversation history restores ordered visible parts without creating approval calls", () => {
+  const detail = {
+    id: selectedModelId,
+    title: "Investigate",
+    mode: "agent",
+    model_id: null,
+    agent_id: selectedAgentId,
+    cluster: "primary",
+    namespace: "default",
+    created_at: "2026-10-01T00:00:00Z",
+    updated_at: "2026-10-01T00:00:00Z",
+    owner: null,
+    resource: null,
+    name: null,
+    release: null,
+    parts: [
+      { id: "33333333-3333-4333-8333-333333333333", sequence: 0, role: "user", part_type: "text", payload: { type: "text", text: "Inspect web" }, proposal_id: null, created_at: "2026-10-01T00:00:00Z" },
+      { id: "44444444-4444-4444-8444-444444444444", sequence: 1, role: "assistant", part_type: "tool-proposeScale", payload: { type: "tool-proposeScale", state: "output-available", output: { proposal_id: "55555555-5555-4555-8555-555555555555", status: "pending" } }, proposal_id: "55555555-5555-4555-8555-555555555555", created_at: "2026-10-01T00:00:01Z" },
+      { id: "66666666-6666-4666-8666-666666666666", sequence: 2, role: "assistant", part_type: "text", payload: { type: "text", text: "Review the proposed change." }, proposal_id: null, created_at: "2026-10-01T00:00:02Z" },
+    ],
+  };
+  const messages = messagesFromConversation(detail);
+  assert.equal(messages.length, 2);
+  assert.equal(messages[1].parts.length, 2);
+  assert.equal(conversationSaveSchema.parse({ mode: "agent", model_id: null, agent_id: selectedAgentId, context: scope, messages }).messages.length, 2);
+  assert.equal(messages[1].parts[0].output.status, "pending");
 });
 const request = (body, origin = "http://localhost:3000", host = "localhost:3000", url = "http://localhost:3000/api/assistant") => {
   const headers = new Headers({ cookie: "kubepilot_session=signed; unrelated=private", "content-type": "application/json" });
