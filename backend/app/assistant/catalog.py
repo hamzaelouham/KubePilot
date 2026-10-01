@@ -1,5 +1,7 @@
 from dataclasses import dataclass
+from typing import Literal
 
+from app.assistant.policy import validate_tool_catalog
 from app.core.rbac import Permission
 
 
@@ -8,7 +10,7 @@ class AssistantToolDefinition:
     id: str
     label: str
     description: str
-    kind: str
+    kind: Literal["read", "proposal"]
     required_permission: str
 
 
@@ -36,6 +38,8 @@ TOOL_DEFINITIONS: tuple[AssistantToolDefinition, ...] = (
 )
 
 TOOL_BY_ID = {definition.id: definition for definition in TOOL_DEFINITIONS}
+
+validate_tool_catalog(TOOL_DEFINITIONS)
 
 
 def tool_catalog() -> list[dict[str, str]]:

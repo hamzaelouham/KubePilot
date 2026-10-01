@@ -30,7 +30,6 @@ from app.models.entities import (
     Event,
     UserAccount,
 )
-from app.services.agent_notifications import enqueue_agent_notification
 from app.services.ai_runtime import AIRuntimeError, open_chat_stream, resolve_runtime_model
 from app.services.agents import fail, get_agent
 
@@ -525,19 +524,11 @@ def execute_run(database: Session, run: AIAgentRun, settings: Settings) -> None:
         result_code = "approval_required" if re.search(r"\bAPPROVAL_REQUIRED\b", report) else "succeeded"
         trigger = database.get(AIAgentAutomationTrigger, run.trigger_id) if run.trigger_id else None
         destination_ids = (trigger.notification_destination_ids if trigger else []) or []
-        for destination_id in destination_ids:
-            enqueue_agent_notification(
-                database,
-                settings,
-                actor_id=run.owner_id,
-                agent_id=run.agent_id,
-                destination_id=UUID(str(destination_id)),
-                event_type="agent_automation_run",
-                subject=f"KubePilot agent report: {agent.name}",
-                body=report,
-                idempotency_key=f"agent-run:{run.id}:destination:{destination_id}",
-            )
-        log = f"{run.log_output or ''}\nRead-only workload evidence collected.\nInvestigation report:\n{report}\nQueued {len(destination_ids)} configured notification(s)."
+        notification_note = ""
+        if destination_ids:
+            result_code = "approval_required"
+            notification_note = f"\nWithheld {len(destination_ids)} configured notification(s): explicit human approval is required."
+        log = f"{run.log_output or ''}\nRead-only workload evidence collected.\nInvestigation report:\n{report}{notification_note}"
         _finish_run(database, run, status="succeeded", result_code=result_code, log=log)
     except AgentAutomationError as error:
         _finish_run(database, run, status="failed", result_code=error.code, message=str(error), log=f"{run.log_output or ''}\nRun stopped: {error.code}.")

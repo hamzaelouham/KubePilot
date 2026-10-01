@@ -10,7 +10,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.config import Settings
 from app.models.base import Base
-from app.models.entities import AIAgent, AIAgentAutomationTrigger, AIAgentRun, ClusterConnection, Event, UserAccount
+from app.models.entities import AIAgent, AIAgentAutomationTrigger, AIAgentRun, AIModelConfig, ClusterConnection, Event, IntegrationDeliveryJob, UserAccount
 from app.services import agent_automation
 from app.services.agent_automation import AgentAutomationError, cron_matches, parse_cron, validate_schedule, _event_matches
 
@@ -120,6 +120,58 @@ def test_worker_rechecks_owner_before_any_cluster_or_model_access(database) -> N
     agent_automation.execute_run(db, run, Settings(auth_secret="x" * 32, database_url="sqlite:///:memory:", worker_enabled=False))
     assert run.status == "failed"
     assert run.result_code == "permission_denied"
+
+
+def test_scheduled_run_withholds_configured_notifications_until_human_approval(database, monkeypatch) -> None:
+    db, owner, cluster, agent = database
+    model = AIModelConfig(
+        provider_id="openai",
+        external_model_id="ops-model",
+        friendly_name="Ops model",
+        enabled=True,
+        availability="available",
+    )
+    trigger = AIAgentAutomationTrigger(
+        agent_id=agent.id,
+        cluster_id=cluster.id,
+        trigger_type="schedule",
+        cron_expression="0 12 * * *",
+        timezone="UTC",
+        owner_id=owner.id,
+        notification_destination_ids=[str(uuid4())],
+        enabled=True,
+    )
+    db.add_all([model, trigger])
+    db.flush()
+    agent.model_id = model.id
+    run = AIAgentRun(
+        trigger_id=trigger.id,
+        agent_id=agent.id,
+        owner_id=owner.id,
+        cluster_id=cluster.id,
+        trigger_type="schedule",
+        dedupe_key="approval-required-notification",
+        status="running",
+        started_at=datetime.now(timezone.utc),
+    )
+    db.add(run)
+    db.commit()
+    monkeypatch.setattr(agent_automation, "_snapshot", lambda *_args: {"cluster": "primary", "resources": {}})
+
+    async def report(*_args):
+        return "The workload is unhealthy; APPROVAL_REQUIRED before any follow-up."
+
+    monkeypatch.setattr(agent_automation, "_generate_report", report)
+    agent_automation.execute_run(
+        db,
+        run,
+        Settings(auth_secret="x" * 32, database_url="sqlite:///:memory:", worker_enabled=False),
+    )
+
+    assert run.status == "succeeded"
+    assert run.result_code == "approval_required"
+    assert "Withheld 1 configured notification(s)" in run.log_output
+    assert db.scalars(select(IntegrationDeliveryJob)).all() == []
 
 
 def test_retention_removes_only_terminal_old_runs(database) -> None:

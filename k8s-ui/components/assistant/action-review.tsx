@@ -11,6 +11,16 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { type ActionProposal, proposalSchema } from "@/lib/assistant/schemas";
 
+const actionLabels: Record<ActionProposal["arguments"]["action"], string> = {
+  scale: "scale",
+  restart: "restart",
+  delete: "deletion",
+  install: "Helm installation",
+  upgrade: "Helm upgrade",
+  rollback: "Helm rollback",
+  uninstall: "Helm uninstall",
+};
+
 export function ActionReview({ id, cluster, disabled, onResult }: { id: string; cluster: string; disabled: boolean; onResult: (result: ActionProposal) => void }) {
   const [proposal, setProposal] = useState<ActionProposal | null>(null);
   const [open, setOpen] = useState(false);
@@ -45,6 +55,7 @@ export function ActionReview({ id, cluster, disabled, onResult }: { id: string; 
     finally { setBusy(false); }
   };
   const pending = !proposal || proposal.status === "pending";
+  const actionLabel = proposal ? actionLabels[proposal.arguments.action] : "operation";
   return <div className="flex flex-col gap-3">
     <div className="flex flex-wrap items-center gap-2">
       <Badge variant="outline">{pending ? "Waiting for confirmation" : proposal.status}</Badge>
@@ -54,7 +65,7 @@ export function ActionReview({ id, cluster, disabled, onResult }: { id: string; 
     {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
     <Dialog open={open} onOpenChange={value => { if (!busy) setOpen(value); }}>
       <DialogContent>
-        <DialogHeader><DialogTitle>Review Kubernetes operation</DialogTitle><DialogDescription>This action may disrupt workloads. These parameters were loaded from the backend proposal. Closing this dialog does not approve it.</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>Review proposed {actionLabel}</DialogTitle><DialogDescription>This side effect requires explicit approval for this exact target and action. These parameters were loaded from the backend proposal. Closing this dialog does not approve it.</DialogDescription></DialogHeader>
         {proposal && <div className="flex flex-col gap-4">
           <dl className="grid grid-cols-2 gap-2 text-sm">{Object.entries(proposal.arguments).map(([key, value]) => <div key={key}><dt className="text-muted-foreground">{key.replaceAll("_", " ")}</dt><dd className="break-all font-medium">{String(value)}</dd></div>)}</dl>
           <p className="text-sm text-muted-foreground">Expires {new Date(proposal.expires_at).toLocaleTimeString()}. Status: {proposal.status}.</p>

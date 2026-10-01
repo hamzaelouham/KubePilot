@@ -11,6 +11,20 @@ import { POST as confirm } from "../app/api/assistant/proposals/[id]/route.ts";
 import { resolveAssistantModel } from "../lib/assistant/model-resolver.ts";
 import { fetchAssistantModels } from "../lib/assistant/models.ts";
 import { assistantIdentity, assistantSelectionUrl, parseAssistantSelection } from "../lib/assistant/mode.ts";
+import { proposalSchema } from "../lib/assistant/schemas.ts";
+
+test("proposal results accept only known one-action approval states", () => {
+  const valid = {
+    proposal_id: "11111111-1111-4111-8111-111111111111",
+    arguments: { action: "upgrade", cluster: "primary", namespace: "default", name: "app", repository_id: "22222222-2222-4222-8222-222222222222", chart_name: "app", version: "1.2.3" },
+    status: "pending",
+    expires_at: "2026-10-01T12:00:00Z",
+    precondition: { revision: 3 },
+    result: null,
+  };
+  assert.equal(proposalSchema.parse(valid).status, "pending");
+  assert.throws(() => proposalSchema.parse({ ...valid, status: "completed" }));
+});
 
 const user = { id: "actor", role: "operator", must_change_password: false, password_expired: false };
 const scope = { cluster: "primary", namespace: "default" };

@@ -11,11 +11,13 @@ export const contextSchema = z.object({
   release: nameSchema.optional(),
 }).strict();
 export const agentIdSchema = z.string().uuid();
+export const proposalActionSchema = z.enum(["scale", "restart", "delete", "install", "upgrade", "rollback", "uninstall"]);
+export const proposalStatusSchema = z.enum(["pending", "executing", "denied", "submitted", "failed", "unknown"]);
 export type AssistantContext = z.infer<typeof contextSchema>;
 export const proposalSchema = z.object({
   proposal_id: z.string().uuid(),
-  arguments: z.object({ action: z.enum(["scale", "restart", "delete", "install", "upgrade", "rollback", "uninstall"]), cluster: z.string(), namespace: z.string(), name: z.string() }).catchall(z.unknown()),
-  status: z.string(), expires_at: z.string(), precondition: z.record(z.string(), z.unknown()), result: z.unknown().nullable(),
+  arguments: z.object({ action: proposalActionSchema, cluster: z.string(), namespace: z.string(), name: z.string() }).catchall(z.unknown()),
+  status: proposalStatusSchema, expires_at: z.string(), precondition: z.record(z.string(), z.unknown()), result: z.unknown().nullable(),
 });
 export type ActionProposal = z.infer<typeof proposalSchema>;
 

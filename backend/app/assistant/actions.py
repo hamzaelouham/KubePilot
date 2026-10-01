@@ -1,22 +1,26 @@
 from datetime import datetime, timedelta, timezone
 
+from pydantic import ValidationError
 from sqlalchemy import update
 from starlette.concurrency import run_in_threadpool
 
 from app.assistant.api_adapter import call_api, segment
 from app.assistant.observations import active_cluster
+from app.assistant.policy import proposal_permission
 from app.assistant.sanitize import sanitize
 from app.assistant.schemas import Decision, Proposal
 from app.core.audit import record_audit
-from app.core.rbac import Permission, has_permission
+from app.core.rbac import has_permission
 from app.kubernetes.resource_management import ResourceManagementError, ensure_unprotected, management_client, resource_kind
 from app.models.entities import AssistantProposal
 
-PERMISSIONS = {"scale": Permission.RESOURCES_UPDATE, "restart": Permission.RESOURCES_UPDATE, "delete": Permission.RESOURCES_DELETE, "install": Permission.MARKETPLACE_INSTALL, "upgrade": Permission.MARKETPLACE_RELEASE, "rollback": Permission.MARKETPLACE_RELEASE, "uninstall": Permission.MARKETPLACE_RELEASE}
-
 
 def authorize(actor, body):
-    if actor.restricted or not has_permission(actor.role, PERMISSIONS[body.action]):
+    try:
+        permission = proposal_permission(body.action)
+    except ValueError as error:
+        raise ResourceManagementError(422, "unsupported_proposal_action", "This Assistant action is not available for approval.") from error
+    if actor.restricted or not has_permission(actor.role, permission):
         raise ResourceManagementError(403, "insufficient_permissions", "Your current role cannot perform this action")
 
 
@@ -45,7 +49,7 @@ def summary(proposal):
 async def propose(request, database, settings, actor, body: Proposal):
     authorize(actor, body)
     cluster = active_cluster(database, body.cluster)
-    ensure_unprotected(resource_kind("deployments"), body.namespace, body.name, settings.host_namespace, deleting=True)
+    ensure_unprotected(resource_kind(body.resource_type), body.namespace, body.name, settings.host_namespace, deleting=True)
     precondition = await snapshot(request, cluster, body)
     proposal = AssistantProposal(actor_id=actor.user_id, session_id=actor.session_id, cluster_id=cluster.id, arguments=body.model_dump(exclude_none=True), precondition=precondition, status="pending", expires_at=datetime.now(timezone.utc) + timedelta(minutes=10))
     database.add(proposal)
@@ -65,6 +69,10 @@ def deployment_change(cluster, body, expected):
 
 
 async def execute(request, cluster, body, expected):
+    try:
+        proposal_permission(body.action)
+    except ValueError as error:
+        raise ResourceManagementError(422, "unsupported_proposal_action", "This Assistant action is not available for approval.") from error
     scope = {"cluster": body.cluster, "namespace": body.namespace}
     if body.action in {"scale", "restart"}:
         return await run_in_threadpool(deployment_change, cluster, body, expected)
@@ -82,14 +90,17 @@ async def decide(request, database, settings, actor, proposal_id, decision: Deci
     proposal = database.get(AssistantProposal, proposal_id)
     if proposal is None or proposal.actor_id != actor.user_id or proposal.session_id != actor.session_id:
         raise ResourceManagementError(404, "proposal_not_found", "Proposal not found for this session")
-    body = Proposal.model_validate(proposal.arguments)
+    try:
+        body = Proposal.model_validate(proposal.arguments)
+    except ValidationError as error:
+        raise ResourceManagementError(409, "proposal_invalid", "This proposal is no longer valid. Create a new proposal.") from error
     authorize(actor, body)
     if decision.cluster != body.cluster or decision.confirm_name != body.name:
         raise ResourceManagementError(409, "confirmation_mismatch", "Review and confirm the exact target in the original cluster")
     cluster = active_cluster(database, body.cluster)
     if cluster.id != proposal.cluster_id:
         raise ResourceManagementError(409, "cluster_replaced", "The cluster registration changed; request a new proposal")
-    ensure_unprotected(resource_kind("deployments"), body.namespace, body.name, settings.host_namespace, deleting=True)
+    ensure_unprotected(resource_kind(body.resource_type), body.namespace, body.name, settings.host_namespace, deleting=True)
     now = datetime.now(timezone.utc)
     target_status = "executing" if decision.approved else "denied"
     claimed = database.execute(update(AssistantProposal).where(AssistantProposal.id == proposal_id, AssistantProposal.status == "pending", AssistantProposal.expires_at > now).values(status=target_status).execution_options(synchronize_session=False)).rowcount

@@ -34,6 +34,7 @@ Secondary users may include engineering managers and technical operators who nee
 - Direct AI provider architecture (post-MVP, feature 21) using Settings-managed OpenAI, OpenRouter, and Ollama/local models without Vercel AI Gateway; tool access follows each model's declared capabilities
 - Integrations and AI agent automation (post-MVP, feature 22) for Slack, Gmail, and Microsoft Outlook configuration under Settings, plus configurable Kubernetes workflows under the existing AI Assistant area after provider capability enforcement and audit visibility are complete
 - In-chat Assistant mode switching (22d7) so operators can choose direct model chat or an enabled configured agent without leaving the shared streaming conversation experience; server-side model/agent boundaries, agent-scoped tools, permissions, and human approvals remain authoritative
+- Human-in-the-loop AI agent actions (post-MVP, feature 23) so every agent side effect, including Kubernetes/Helm changes and outbound notifications, requires explicit per-action approval from an authenticated user before execution or delivery
 
 AI Agents (22d) lives at `/assistant/agents`, nested under AI Assistant. Deliver it
 in five ordered slices: agent management; skills/capabilities/templates; manual
@@ -42,8 +43,12 @@ the KubePilot installation and managed by admins. Manual execution uses the
 caller's current permissions, model capabilities, and assigned supported tools.
 Reusable skills contain instructions, not arbitrary executable code. Scheduled
 and event-driven runs use a designated owner whose permissions are rechecked on
-each run; unattended execution permits investigation and explicitly configured
-notifications only. Kubernetes/Helm changes require authenticated human approval.
+each run; read-only investigation may run unattended, but every side effect
+requires explicit per-action approval from an authenticated user. This includes
+Kubernetes and Helm mutations, outbound Slack/Gmail/Outlook notifications, and
+any future agent action that changes state or communicates externally. No
+blanket approval, approval inferred from agent text, autonomous retry, or
+scheduled execution may bypass this boundary.
 Instructions, skills, templates, and capability settings never grant permissions.
 Exact trigger types, schedule semantics, run retention, and background approval
 handoff contracts will be specified in 22d5 before implementation.
