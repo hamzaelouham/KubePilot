@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -17,7 +17,7 @@ import {
   type ConversationDetail,
   type ConversationSummary,
 } from "@/lib/assistant/conversations";
-import { conversationIdToLoad } from "@/lib/assistant/conversation-selection";
+import { conversationIdToLoad, isConversationSelectionCurrent } from "@/lib/assistant/conversation-selection";
 import { assistantSelectionUrl, type AssistantMode } from "@/lib/assistant/mode";
 import type { BackendUser } from "@/lib/auth-client";
 import { resourceSchema, type AssistantContext } from "@/lib/assistant/schemas";
@@ -44,6 +44,7 @@ export function AssistantView({ user, initial, mode, modelId, agentId, conversat
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState<string>();
   const [activeConversationId, setActiveConversationId] = useState(conversationId);
+  const activeConversationIdRef = useRef(conversationId);
   const [selectedConversation, setSelectedConversation] = useState<ConversationDetail>();
   const [selectionMode, setSelectionMode] = useState<AssistantMode>(mode);
   const [selectionModelId, setSelectionModelId] = useState(modelId);
@@ -86,6 +87,7 @@ export function AssistantView({ user, initial, mode, modelId, agentId, conversat
     void getConversation(id).then(detail => {
       if (cancelled) return;
       setSelectedConversation(detail);
+      activeConversationIdRef.current = detail.id;
       setActiveConversationId(detail.id);
       setSelectionMode(detail.mode);
       setSelectionModelId(detail.model_id ?? undefined);
@@ -95,6 +97,7 @@ export function AssistantView({ user, initial, mode, modelId, agentId, conversat
       window.history.replaceState(null, "", withConversation(detail.id, detail.mode, detail.model_id ?? undefined, detail.agent_id ?? undefined));
     }).catch(error => {
       if (!cancelled) {
+        activeConversationIdRef.current = undefined;
         setActiveConversationId(undefined);
         setSelectedConversation(undefined);
         window.history.replaceState(null, "", withConversation(undefined, selectionMode, selectionModelId, selectionAgentId));
@@ -111,11 +114,13 @@ export function AssistantView({ user, initial, mode, modelId, agentId, conversat
 
   const openConversation = useCallback((id: string) => {
     setHistoryError(undefined);
+    activeConversationIdRef.current = id;
     setSelectedConversation(current => current?.id === id ? current : undefined);
     setActiveConversationId(id);
   }, []);
 
   const startNewConversation = useCallback((nextSelection?: { mode: AssistantMode; modelId?: string; agentId?: string }) => {
+    activeConversationIdRef.current = undefined;
     setSelectedConversation(undefined);
     setActiveConversationId(undefined);
     if (nextSelection) {
@@ -128,6 +133,7 @@ export function AssistantView({ user, initial, mode, modelId, agentId, conversat
   }, [selectionAgentId, selectionMode, selectionModelId]);
 
   const handleCreated = useCallback((detail: ConversationDetail) => {
+    activeConversationIdRef.current = detail.id;
     setSelectedConversation(detail);
     setActiveConversationId(detail.id);
     setSelectionMode(detail.mode);
@@ -138,8 +144,8 @@ export function AssistantView({ user, initial, mode, modelId, agentId, conversat
   }, []);
 
   const handleSaved = useCallback((detail: ConversationDetail) => {
+    if (!isConversationSelectionCurrent(activeConversationIdRef.current, detail.id)) return;
     setSelectedConversation(detail);
-    setActiveConversationId(detail.id);
     setHistory(current => [detail, ...current.filter(item => item.id !== detail.id)]);
   }, []);
 
@@ -147,7 +153,7 @@ export function AssistantView({ user, initial, mode, modelId, agentId, conversat
     try {
       await deleteConversation(id);
       setHistory(current => current.filter(item => item.id !== id));
-      if (activeConversationId === id) startNewConversation();
+      if (isConversationSelectionCurrent(activeConversationIdRef.current, id)) startNewConversation();
     } catch (error) {
       setHistoryError(error instanceof Error ? error.message : "The conversation could not be deleted.");
     }

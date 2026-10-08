@@ -13,7 +13,7 @@ import { fetchAssistantModels } from "../lib/assistant/models.ts";
 import { assistantIdentity, assistantSelectionUrl, parseAssistantSelection } from "../lib/assistant/mode.ts";
 import { proposalSchema } from "../lib/assistant/schemas.ts";
 import { conversationCreateSchema, conversationSaveSchema, messagesFromConversation } from "../lib/assistant/conversations.ts";
-import { conversationIdToLoad } from "../lib/assistant/conversation-selection.ts";
+import { conversationIdToLoad, isConversationSelectionCurrent } from "../lib/assistant/conversation-selection.ts";
 
 test("proposal results accept only known one-action approval states", () => {
   const valid = {
@@ -98,12 +98,15 @@ test("conversation creation keeps the selected model in the backend field shape"
   assert.equal("modelId" in payload, false);
 });
 
-test("conversation selection does not reload a cleared or already loaded id", () => {
+test("conversation selection guards stale async results", () => {
   const deletedId = "33333333-3333-4333-8333-333333333333";
   const nextId = "44444444-4444-4444-8444-444444444444";
   assert.equal(conversationIdToLoad(undefined, deletedId), undefined);
   assert.equal(conversationIdToLoad(deletedId, deletedId), undefined);
   assert.equal(conversationIdToLoad(nextId, deletedId), nextId);
+  assert.equal(isConversationSelectionCurrent(deletedId, deletedId), true);
+  assert.equal(isConversationSelectionCurrent(undefined, deletedId), false);
+  assert.equal(isConversationSelectionCurrent(nextId, deletedId), false);
 });
 
 const request = (body, origin = "http://localhost:3000", host = "localhost:3000", url = "http://localhost:3000/api/assistant") => {
