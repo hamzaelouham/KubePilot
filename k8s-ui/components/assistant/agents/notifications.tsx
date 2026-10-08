@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bell, Pencil, RefreshCw, Send, Trash2 } from "lucide-react";
 import { z } from "zod";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -64,6 +65,7 @@ export function AgentNotifications({ agentId, agentEnabled, editable }: Props) {
   const [notice, setNotice] = useState<string | null>(null);
   const [lastDelivery, setLastDelivery] = useState<DeliveryState | null>(null);
   const [deliveryRefreshing, setDeliveryRefreshing] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState<NotificationDestination | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -148,7 +150,6 @@ export function AgentNotifications({ agentId, agentEnabled, editable }: Props) {
   }
 
   async function remove(destination: NotificationDestination) {
-    if (!window.confirm(`Remove ${destination.label}? Existing delivery history will remain.`)) return;
     setPending(true);
     setNotice(null);
     try {
@@ -245,7 +246,7 @@ export function AgentNotifications({ agentId, agentEnabled, editable }: Props) {
             <CardHeader className="pb-3"><div className="flex items-start justify-between gap-3"><div><CardTitle className="text-base">{destination.label}</CardTitle><CardDescription>{providerNames[destination.provider_id]} · {destination.destination_hint}</CardDescription></div><Badge variant={destination.enabled ? "secondary" : "outline"}>{destination.enabled ? "Enabled" : "Disabled"}</Badge></div></CardHeader>
             <CardContent className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
               <span>Connection: {status.replaceAll("_", " ")}</span>
-              {editable && <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" onClick={() => void sendTest(destination)} disabled={pending || !destination.enabled || !agentEnabled || !connected}><Send data-icon="inline-start" />Test</Button><Button type="button" variant="ghost" size="sm" onClick={() => edit(destination)} disabled={pending}><Pencil data-icon="inline-start" />Edit</Button><Button type="button" variant="ghost" size="sm" className="text-destructive" onClick={() => void remove(destination)} disabled={pending}><Trash2 data-icon="inline-start" />Remove</Button></div>}
+              {editable && <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" onClick={() => void sendTest(destination)} disabled={pending || !destination.enabled || !agentEnabled || !connected}><Send data-icon="inline-start" />Test</Button><Button type="button" variant="ghost" size="sm" onClick={() => edit(destination)} disabled={pending}><Pencil data-icon="inline-start" />Edit</Button><Button type="button" variant="ghost" size="sm" className="text-destructive" onClick={() => setRemoveTarget(destination)} disabled={pending}><Trash2 data-icon="inline-start" />Remove</Button></div>}
             </CardContent>
           </Card>;
         })}
@@ -261,6 +262,18 @@ export function AgentNotifications({ agentId, agentEnabled, editable }: Props) {
           <div className="flex flex-wrap gap-2 md:col-span-2"><Button type="button" onClick={() => void save()} disabled={pending}>{pending ? "Saving…" : editingId ? "Replace destination" : "Save destination"}</Button>{editingId && <Button type="button" variant="outline" onClick={resetForm} disabled={pending}>Cancel</Button>}</div>
         </CardContent>
       </Card>}
+      <AlertDialog open={removeTarget !== null} onOpenChange={open => { if (!open && !pending) setRemoveTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove {removeTarget?.label}?</AlertDialogTitle>
+            <AlertDialogDescription>Existing delivery history will remain, but this notification destination will no longer be available to the agent.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" disabled={pending} onClick={() => { if (!removeTarget) return; const destination = removeTarget; setRemoveTarget(null); void remove(destination); }}>Remove destination</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }

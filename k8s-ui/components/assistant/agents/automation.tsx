@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Pause, Play, Plus, Trash2 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -51,6 +52,7 @@ export function AgentAutomation({ agentId, agentEnabled, editable, currentUserId
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<AgentRequestError | Error | null>(null);
   const [notice, setNotice] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<AutomationTrigger | null>(null);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setState({ status: "loading" });
@@ -138,7 +140,6 @@ export function AgentAutomation({ agentId, agentEnabled, editable, currentUserId
     }
   };
   const remove = async (trigger: AutomationTrigger) => {
-    if (!window.confirm("Remove this automation trigger? Existing run history is retained.")) return;
     setPending(true);
     try {
       await agentRequest(`/api/assistant/agents/${agentId}/automations/${trigger.id}`, automationTriggerSchema.pick({ id: true }), "DELETE");
@@ -179,7 +180,19 @@ export function AgentAutomation({ agentId, agentEnabled, editable, currentUserId
         <div className="md:col-span-2"><p className="mb-2 text-sm font-medium">Notification destinations</p><div className="grid gap-2 sm:grid-cols-2">{destinations.map(destination => <label key={destination.id} className="flex items-start gap-2 rounded-md border p-3 text-sm"><input type="checkbox" checked={draft.notification_destination_ids.includes(destination.id)} disabled={!destination.enabled || destination.connection_status !== "connected"} onChange={event => update("notification_destination_ids", event.target.checked ? [...draft.notification_destination_ids, destination.id] : draft.notification_destination_ids.filter(id => id !== destination.id))} /><span><span className="block font-medium">{destination.label}</span><span className="block text-xs text-muted-foreground">{destination.provider_id} · {destination.connection_status}</span></span></label>)}{!destinations.length && <p className="text-sm text-muted-foreground">Configure a notification destination above before enabling a trigger.</p>}</div><p className="mt-2 text-xs text-muted-foreground">Only enabled, connected destinations can receive unattended reports.</p></div>
         <label className="flex items-center gap-2 text-sm md:col-span-2"><input type="checkbox" checked={draft.enabled} disabled={!agentEnabled || !draft.notification_destination_ids.length} onChange={event => update("enabled", event.target.checked)} />Enable trigger</label>
       </div><div className="mt-4 flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setDraft(null)} disabled={pending}>Cancel</Button><Button type="button" onClick={() => void save()} disabled={pending || !draft.cluster_id || !draft.owner_id}>{pending ? "Saving…" : "Save trigger"}</Button></div></div>}
-      {triggers.length === 0 && !draft ? <p className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">No automated triggers configured. Add a schedule to check workload health and notify Slack.</p> : <div className="grid gap-3">{triggers.map(trigger => <div key={trigger.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="font-medium">{trigger.trigger_type === "schedule" ? trigger.cron_expression : "Kubernetes event"}</p><Badge variant={trigger.enabled ? "secondary" : "outline"}>{trigger.enabled ? "Enabled" : "Paused"}</Badge></div><p className="mt-1 text-sm text-muted-foreground">{trigger.trigger_type === "schedule" ? trigger.timezone : [trigger.event_type, trigger.event_reason, trigger.event_kind].filter(Boolean).join(" · ") || "Any matching event"} · {clusters.find(cluster => cluster.id === trigger.cluster_id)?.name ?? "Cluster unavailable"}</p></div><div className="flex items-center gap-2"><Button type="button" variant="outline" size="sm" onClick={() => void toggle(trigger)} disabled={pending || (!trigger.enabled && !agentEnabled)}>{trigger.enabled ? <Pause data-icon="inline-start" /> : <Play data-icon="inline-start" />}{trigger.enabled ? "Pause" : "Resume"}</Button><Button type="button" variant="outline" size="sm" onClick={() => openEdit(trigger)} disabled={pending}>Edit</Button><Button type="button" variant="ghost" size="icon-sm" aria-label={`Remove ${trigger.trigger_type} trigger`} onClick={() => void remove(trigger)} disabled={pending}><Trash2 /></Button></div></div>)}</div>}
+      {triggers.length === 0 && !draft ? <p className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">No automated triggers configured. Add a schedule to check workload health and notify Slack.</p> : <div className="grid gap-3">{triggers.map(trigger => <div key={trigger.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="font-medium">{trigger.trigger_type === "schedule" ? trigger.cron_expression : "Kubernetes event"}</p><Badge variant={trigger.enabled ? "secondary" : "outline"}>{trigger.enabled ? "Enabled" : "Paused"}</Badge></div><p className="mt-1 text-sm text-muted-foreground">{trigger.trigger_type === "schedule" ? trigger.timezone : [trigger.event_type, trigger.event_reason, trigger.event_kind].filter(Boolean).join(" · ") || "Any matching event"} · {clusters.find(cluster => cluster.id === trigger.cluster_id)?.name ?? "Cluster unavailable"}</p></div><div className="flex items-center gap-2"><Button type="button" variant="outline" size="sm" onClick={() => void toggle(trigger)} disabled={pending || (!trigger.enabled && !agentEnabled)}>{trigger.enabled ? <Pause data-icon="inline-start" /> : <Play data-icon="inline-start" />}{trigger.enabled ? "Pause" : "Resume"}</Button><Button type="button" variant="outline" size="sm" onClick={() => openEdit(trigger)} disabled={pending}>Edit</Button><Button type="button" variant="ghost" size="icon-sm" aria-label={`Remove ${trigger.trigger_type} trigger`} onClick={() => setDeleteTarget(trigger)} disabled={pending}><Trash2 /></Button></div></div>)}</div>}
     </CardContent>
+    <AlertDialog open={deleteTarget !== null} onOpenChange={open => { if (!open && !pending) setDeleteTarget(null); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Remove automation trigger?</AlertDialogTitle>
+          <AlertDialogDescription>Existing run history will be retained, but this trigger will no longer run.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" disabled={pending} onClick={() => { if (!deleteTarget) return; const trigger = deleteTarget; setDeleteTarget(null); void remove(trigger); }}>Remove trigger</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </Card>;
 }

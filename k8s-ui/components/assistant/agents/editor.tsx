@@ -42,6 +42,7 @@ export function AgentEditor({ original, models, editable, skills, tools, templat
   const [failure, setFailure] = useState<AgentRequestError | null>(null);
   const [pending, setPending] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const busy = useRef(false);
   const form = useRef<HTMLFormElement>(null);
@@ -83,9 +84,8 @@ export function AgentEditor({ original, models, editable, skills, tools, templat
     onDirty(false);
   }
   function leaveEditor() {
-    if (dirty && !window.confirm("Discard your unsaved agent changes?")) return;
-    if (dirty) discardChanges();
-    onCancel();
+    if (!dirty) { onCancel(); return; }
+    setDiscardOpen(true);
   }
   async function submit() {
     if (busy.current || !canEdit || uncertain) return;
@@ -223,6 +223,18 @@ export function AgentEditor({ original, models, editable, skills, tools, templat
         </CardFooter>
       </Card>
     </form>
+    <AlertDialog open={discardOpen} onOpenChange={open => { if (!open && !pending) setDiscardOpen(false); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
+          <AlertDialogDescription>Your agent changes will be lost and the editor will close.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={pending}>Keep editing</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" disabled={pending} onClick={() => { setDiscardOpen(false); discardChanges(); onCancel(); }}>Discard changes</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     {creating && <aside className="flex min-w-0 flex-col gap-4"><Card><CardHeader><CardTitle>Preview</CardTitle><CardDescription>Your agent’s identity, as you build it.</CardDescription></CardHeader><CardContent><AgentPreview draft={draft} model={model} /></CardContent></Card><p className="px-2 text-sm leading-relaxed text-muted-foreground">Start with a clear purpose and precise instructions. Skills, capabilities, and agent execution will build on this configuration.</p></aside>}
   </div>;
 }

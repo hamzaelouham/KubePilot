@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Bot, Plus, RefreshCw, Search, ArrowLeft, ChevronRight } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -41,21 +42,34 @@ export function AgentsView({ user, creating = false }: { user: BackendUser; crea
   const [showLibrary, setShowLibrary] = useState(true);
   const [panel, setPanel] = useState<"agents" | "skills" | "templates">("agents");
   const dirty = useRef(false);
+  const [leaveAction, setLeaveAction] = useState<(() => void) | null>(null);
   const onDirty = useCallback((value: boolean) => { dirty.current = value; setHasDraft(value); }, []);
   const admin = user.role === "admin";
-  const allowLeave = useCallback(() => !dirty.current || window.confirm("Discard your unsaved agent changes?"), []);
-  function navigate(path: string) { if (allowLeave()) { dirty.current = false; router.push(path); } }
+  const requestLeave = useCallback((action: () => void) => {
+    if (!dirty.current) { action(); return; }
+    setLeaveAction(() => action);
+  }, []);
+  function navigate(path: string) { requestLeave(() => { dirty.current = false; router.push(path); }); }
 
   useEffect(() => {
     const unload = (event: BeforeUnloadEvent) => { if (dirty.current) event.preventDefault(); };
     const links = (event: MouseEvent) => {
       const anchor = (event.target as Element).closest?.("a[href]");
-      if (anchor && dirty.current && !allowLeave()) { event.preventDefault(); event.stopPropagation(); }
+      if (anchor && dirty.current) {
+        event.preventDefault();
+        event.stopPropagation();
+        setLeaveAction(() => () => {
+          dirty.current = false;
+          const target = new URL((anchor as HTMLAnchorElement).href, window.location.href);
+          if (target.origin === window.location.origin) router.push(`${target.pathname}${target.search}${target.hash}`);
+          else window.location.assign(target.href);
+        });
+      }
     };
     window.addEventListener("beforeunload", unload);
     document.addEventListener("click", links, true);
     return () => { window.removeEventListener("beforeunload", unload); document.removeEventListener("click", links, true); };
-  }, [allowLeave]);
+  }, [router]);
   useEffect(() => {
     const controller = new AbortController();
     async function load() {
@@ -95,13 +109,13 @@ export function AgentsView({ user, creating = false }: { user: BackendUser; crea
       <div className="flex flex-wrap items-start justify-between gap-4"><div className="flex items-start gap-3">
         {creating ? <Button aria-label="Back to agents" variant="outline" size="icon" onClick={() => navigate("/assistant/agents")}><ArrowLeft /></Button> : <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Bot className="size-6" /></div>}
         <div><p className="mb-1 text-xs font-medium uppercase tracking-widest text-muted-foreground">AI Assistant / Agents</p><h1 className="text-2xl font-semibold tracking-tight">{title}</h1><p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">{creating ? "Define a purpose, choose a model, and review your shared agent." : "Give your team focused agents with clear instructions and trusted models."}</p></div></div>
-        {!creating && <div className="flex gap-2"><Button variant="outline" aria-label="Refresh agents" disabled={loading} onClick={() => { if (allowLeave()) { dirty.current = false; setRevision(value => value + 1); } }}><RefreshCw /></Button>{admin && <Button onClick={() => navigate("/assistant/agents/new")}><Plus data-icon="inline-start" />New agent</Button>}</div>}
+        {!creating && <div className="flex gap-2"><Button variant="outline" aria-label="Refresh agents" disabled={loading} onClick={() => requestLeave(() => { dirty.current = false; setRevision(value => value + 1); })}><RefreshCw /></Button>{admin && <Button onClick={() => navigate("/assistant/agents/new")}><Plus data-icon="inline-start" />New agent</Button>}</div>}
       </div>
       <p role="status" className="sr-only">{announcement}</p>
       {creating && !admin ? <Alert variant="destructive"><AlertTitle>Admin access required</AlertTitle><AlertDescription>Only administrators can create shared agents. You can inspect existing agents from the list.</AlertDescription></Alert> : loading ? <div aria-label="Loading agents" aria-busy="true" className="grid gap-4 md:grid-cols-2"><Skeleton className="h-40" /><Skeleton className="h-96" /></div> : failure ? <Alert variant="destructive"><AlertTitle>{failure.status === 401 || failure.status === 403 ? "Access denied" : "Could not load agents"}</AlertTitle><AlertDescription>{failure.message}<Button variant="outline" onClick={() => setRevision(value => value + 1)}>Try again</Button></AlertDescription></Alert> : creating ?
         <AgentEditor original={null} models={models} skills={skills} tools={tools} template={templates.find(item => item.id === searchParams.get("template")) ?? null} currentUserId={user.id} modelsError={modelsError} editable={admin} onDirty={onDirty} onSaved={() => { dirty.current = false; router.push("/assistant/agents"); }} onDeleted={() => {}} onCancel={() => navigate("/assistant/agents")} /> : <>
           <div role="tablist" aria-label="AI Agent configuration" className="flex flex-wrap gap-2 border-b pb-3">
-            {(["agents", "skills", "templates"] as const).map(item => <Button key={item} role="tab" aria-selected={panel === item} variant={panel === item ? "secondary" : "ghost"} onClick={() => { if (allowLeave()) { dirty.current = false; setPanel(item); } }}>{item === "agents" ? "Agents" : item === "skills" ? "Skills" : "Templates"}</Button>)}
+            {(["agents", "skills", "templates"] as const).map(item => <Button key={item} role="tab" aria-selected={panel === item} variant={panel === item ? "secondary" : "ghost"} onClick={() => requestLeave(() => { dirty.current = false; setPanel(item); })}>{item === "agents" ? "Agents" : item === "skills" ? "Skills" : "Templates"}</Button>)}
           </div>
           {catalogError && <Alert><AlertTitle>Some configuration metadata is unavailable</AlertTitle><AlertDescription>{catalogError} Existing agent data remains available.</AlertDescription></Alert>}
           {panel === "skills" ? <SkillsCatalog skills={skills} editable={admin} onRefresh={() => setRevision(value => value + 1)} /> : panel === "templates" ? <TemplatesCatalog templates={templates} editable={admin} onUse={template => navigate(`/assistant/agents/new?template=${encodeURIComponent(template.id)}`)} /> : <>
@@ -109,7 +123,7 @@ export function AgentsView({ user, creating = false }: { user: BackendUser; crea
           <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-sm font-semibold">Agent library <span className="ml-2 font-normal text-muted-foreground">{visible.length} of {agents.length}</span></h2><InputGroup className="w-full sm:max-w-xs"><InputGroupAddon><Search /></InputGroupAddon><InputGroupInput aria-label="Search agents by name or description" aria-describedby={hasDraft ? "agent-search-help" : undefined} disabled={hasDraft} placeholder="Search agents…" value={search} onChange={event => setSearch(event.target.value)} /></InputGroup></div>
           {hasDraft && <p id="agent-search-help" className="text-xs text-muted-foreground">Save your changes or refresh to discard them before filtering the library.</p>}
           {!visible.length ? <Empty className="min-h-64 border"><EmptyHeader><EmptyMedia variant="icon"><Bot /></EmptyMedia><EmptyTitle>{agents.length ? "No matching agents" : "Your agent library starts here"}</EmptyTitle><EmptyDescription>{agents.length ? "Try another name or description." : admin ? "Create a shared agent with focused instructions and a model configured in Settings." : "An administrator can create shared agents for your team."}</EmptyDescription></EmptyHeader>{agents.length ? <Button variant="outline" onClick={() => setSearch("")}>Clear search</Button> : admin && <Button onClick={() => navigate("/assistant/agents/new")}><Plus data-icon="inline-start" />Create first agent</Button>}</Empty> :
-            <div className="grid min-w-0 items-start gap-6 xl:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.15fr)]"><div className={cn("min-w-0 flex-col gap-3", showLibrary ? "flex" : "hidden xl:flex")} aria-label="Agent library">{visible.map(agent => { const modelState = getAgentModelState(agent.model); return <button key={agent.id} type="button" aria-pressed={agent.id === selected} onClick={() => { if (agent.id !== selected && !allowLeave()) return; if (agent.id !== selected) { dirty.current = false; setSelected(agent.id); } setShowLibrary(false); }} className={cn("flex w-full min-w-0 items-start gap-3 rounded-xl border p-5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", agent.id === selected ? "border-primary/40 bg-primary/5" : "bg-card hover:bg-accent/50")}>
+            <div className="grid min-w-0 items-start gap-6 xl:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.15fr)]"><div className={cn("min-w-0 flex-col gap-3", showLibrary ? "flex" : "hidden xl:flex")} aria-label="Agent library">{visible.map(agent => { const modelState = getAgentModelState(agent.model); return <button key={agent.id} type="button" aria-pressed={agent.id === selected} onClick={() => { if (agent.id === selected) { setShowLibrary(false); return; } requestLeave(() => { dirty.current = false; setSelected(agent.id); setShowLibrary(false); }); }} className={cn("flex w-full min-w-0 items-start gap-3 rounded-xl border p-5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", agent.id === selected ? "border-primary/40 bg-primary/5" : "bg-card hover:bg-accent/50")}>
               <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Bot className="size-5" /></div><div className="flex min-w-0 flex-1 flex-col gap-2"><div className="flex flex-wrap items-start justify-between gap-2"><h3 className="break-words font-semibold">{agent.name}</h3><Badge variant={agent.enabled ? "secondary" : "outline"}>{agent.enabled ? "Enabled" : "Disabled"}</Badge></div><p className="line-clamp-2 break-words text-sm leading-relaxed text-muted-foreground">{agent.description}</p><div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground"><span>{agent.model ? `${agent.model.friendly_name} · ${agent.model.provider_name}` : modelState.label}</span><ChevronRight className="size-4 shrink-0" /></div>{modelState.key !== "ready" && <span className="text-xs text-muted-foreground">{modelState.label}</span>}</div>
             </button>})}</div>
             {active && <div className={cn("min-w-0", showLibrary ? "hidden xl:block" : "block")}><AgentEditor key={`${active.id}-${revision}`} original={active} models={models} skills={skills} tools={tools} currentUserId={user.id} modelsError={modelsError} editable={admin} onDirty={onDirty} onRun={() => navigate(`/assistant?agent=${encodeURIComponent(active.id)}`)} onCancel={() => setShowLibrary(true)} onSaved={saved => { setAgents(previous => previous.map(agent => agent.id === saved.id ? saved : agent).sort((a, b) => a.name.localeCompare(b.name))); setAnnouncement("Agent saved."); }} onDeleted={() => { dirty.current = false; setAnnouncement("Agent deleted."); setRevision(value => value + 1); }} /></div>}
@@ -117,5 +131,17 @@ export function AgentsView({ user, creating = false }: { user: BackendUser; crea
           </>}
         </>}
     </div>
+    <AlertDialog open={leaveAction !== null} onOpenChange={open => { if (!open) setLeaveAction(null); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Discard unsaved agent changes?</AlertDialogTitle>
+          <AlertDialogDescription>Your unsaved changes will be discarded before leaving this editor.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Keep editing</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" onClick={() => { const action = leaveAction; setLeaveAction(null); action?.(); }}>Discard changes</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </DashboardShell>;
 }

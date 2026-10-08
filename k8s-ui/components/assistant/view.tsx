@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { useClusterSelection } from "@/lib/use-cluster-selection";
@@ -46,6 +47,7 @@ export function AssistantView({ user, initial, mode, modelId, agentId, conversat
   const [selectionMode, setSelectionMode] = useState<AssistantMode>(mode);
   const [selectionModelId, setSelectionModelId] = useState(modelId);
   const [selectionAgentId, setSelectionAgentId] = useState(agentId);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const currentContext = useMemo(() => ({ cluster: selection.cluster, namespace: namespace || undefined, ...resourceContext }), [namespace, resourceContext, selection.cluster]);
   const context = selectedConversation ? {
     cluster: selectedConversation.cluster,
@@ -136,7 +138,6 @@ export function AssistantView({ user, initial, mode, modelId, agentId, conversat
   }, []);
 
   const removeConversation = async (id: string) => {
-    if (!window.confirm("Delete this conversation? This removes its saved messages.")) return;
     try {
       await deleteConversation(id);
       setHistory(current => current.filter(item => item.id !== id));
@@ -144,6 +145,13 @@ export function AssistantView({ user, initial, mode, modelId, agentId, conversat
     } catch (error) {
       setHistoryError(error instanceof Error ? error.message : "The conversation could not be deleted.");
     }
+  };
+
+  const confirmDeleteConversation = () => {
+    if (!deleteTarget) return;
+    const id = deleteTarget;
+    setDeleteTarget(null);
+    void removeConversation(id);
   };
 
   const renameHistory = async (item: ConversationSummary) => {
@@ -166,10 +174,22 @@ export function AssistantView({ user, initial, mode, modelId, agentId, conversat
       <div className="grid min-w-0 gap-4 lg:grid-cols-[15rem_minmax(0,1fr)]">
         <aside className="rounded-xl border border-border bg-card p-3" aria-label="Conversation history">
           <div className="mb-3 flex items-center justify-between gap-2"><h2 className="text-sm font-semibold">Conversations</h2><Button variant="outline" size="sm" onClick={() => startNewConversation()}>New</Button></div>
-          {historyLoading ? <div role="status" className="text-xs text-muted-foreground">Loading history…</div> : history.length === 0 ? <p className="text-xs text-muted-foreground">Your saved conversations will appear here.</p> : <div className="flex max-h-[calc(100dvh-340px)] flex-col gap-1 overflow-y-auto">{history.map(item => <div key={item.id} className={`group rounded-lg border ${selectedId === item.id ? "border-primary bg-primary/5" : "border-transparent hover:border-border"}`}><button type="button" className="w-full px-2.5 py-2 text-left" onClick={() => void openConversation(item.id)}><span className="block truncate text-sm font-medium">{item.title}</span><span className="mt-1 block truncate text-xs text-muted-foreground">{item.cluster} · {displayDate(item.updated_at)}</span></button><div className="flex justify-end gap-1 px-2 pb-1"><Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-muted-foreground" onClick={() => void renameHistory(item)}>Rename</Button><Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-muted-foreground" onClick={() => void removeConversation(item.id)}>Delete</Button></div></div>)}</div>}
+          {historyLoading ? <div role="status" className="text-xs text-muted-foreground">Loading history…</div> : history.length === 0 ? <p className="text-xs text-muted-foreground">Your saved conversations will appear here.</p> : <div className="flex max-h-[calc(100dvh-340px)] flex-col gap-1 overflow-y-auto">{history.map(item => <div key={item.id} className={`group rounded-lg border ${selectedId === item.id ? "border-primary bg-primary/5" : "border-transparent hover:border-border"}`}><button type="button" className="w-full px-2.5 py-2 text-left" onClick={() => void openConversation(item.id)}><span className="block truncate text-sm font-medium">{item.title}</span><span className="mt-1 block truncate text-xs text-muted-foreground">{item.cluster} · {displayDate(item.updated_at)}</span></button><div className="flex justify-end gap-1 px-2 pb-1"><Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-muted-foreground" onClick={() => void renameHistory(item)}>Rename</Button><Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-muted-foreground" onClick={() => setDeleteTarget(item.id)}>Delete</Button></div></div>)}</div>}
         </aside>
         <div className="min-w-0">{selectedId && !selectedConversation ? <div role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner />Opening conversation…</div> : active ? <AssistantConversation key={`${selectedId ?? "new"}-${context.cluster}-${context.namespace ?? ""}`} context={context} initialMode={selectedConversation?.mode ?? selectionMode} initialModelId={selectedConversation?.model_id ?? selectionModelId} initialAgentId={selectedConversation?.agent_id ?? selectionAgentId} conversation={selectedConversation} onConversationCreated={handleCreated} onConversationSaved={handleSaved} onNewConversation={startNewConversation} /> : <Alert><AlertDescription>{selection.loading ? "Loading clusters…" : selection.error ?? `The saved conversation's cluster (${context.cluster || "unknown"}) is not currently available.`}{!selection.loading && <Button variant="outline" onClick={selection.refreshClusters}>Refresh clusters</Button>}</AlertDescription></Alert>}</div>
       </div>
+      <AlertDialog open={deleteTarget !== null} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete conversation?</AlertDialogTitle>
+            <AlertDialogDescription>This removes the conversation and its saved messages. This action cannot be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={confirmDeleteConversation}>Delete conversation</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   </DashboardShell>;
 }

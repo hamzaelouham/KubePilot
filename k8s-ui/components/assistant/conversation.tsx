@@ -7,6 +7,7 @@ import { Conversation, ConversationContent, ConversationEmptyState, Conversation
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 import { PromptInput, PromptInputBody, PromptInputTextarea, PromptInputFooter, PromptInputSubmit } from "@/components/ai-elements/prompt-input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -141,6 +142,7 @@ export function AssistantConversation({
   const [sessionVersion, setSessionVersion] = useState(0);
   const [activeConversation, setActiveConversation] = useState(conversation);
   const [creatingConversation, setCreatingConversation] = useState(false);
+  const [pendingSelection, setPendingSelection] = useState<{ mode: AssistantMode; modelId?: string; agentId?: string } | null>(null);
 
   useEffect(() => {
     setActiveConversation(conversation);
@@ -214,10 +216,13 @@ export function AssistantConversation({
     setConversationError(undefined);
     onNewConversation({ mode, modelId: mode === "direct" ? modelId : undefined, agentId: mode === "agent" ? agentId : undefined });
   };
+  const applySelection = (nextMode: AssistantMode, nextModelId?: string, nextAgentId?: string) => {
+    setMode(nextMode); setModelId(nextMode === "direct" ? nextModelId : undefined); setAgentId(nextMode === "agent" ? nextAgentId : undefined); setLoadError(undefined); setActiveConversation(undefined); setSessionVersion(value => value + 1); setHasMessages(false); updateUrl(nextMode, nextModelId, nextAgentId); onNewConversation({ mode: nextMode, modelId: nextModelId, agentId: nextAgentId });
+  };
   const switchSelection = (nextMode: AssistantMode, nextModelId?: string, nextAgentId?: string) => {
     if (nextMode === mode && nextModelId === modelId && nextAgentId === agentId) return;
-    if (hasMessages && !window.confirm("Switching Assistant modes will start a new conversation because the model instructions and available tools will change. Continue?")) return;
-    setMode(nextMode); setModelId(nextMode === "direct" ? nextModelId : undefined); setAgentId(nextMode === "agent" ? nextAgentId : undefined); setLoadError(undefined); setActiveConversation(undefined); setSessionVersion(value => value + 1); setHasMessages(false); updateUrl(nextMode, nextModelId, nextAgentId); onNewConversation({ mode: nextMode, modelId: nextModelId, agentId: nextAgentId });
+    if (hasMessages) { setPendingSelection({ mode: nextMode, modelId: nextModelId, agentId: nextAgentId }); return; }
+    applySelection(nextMode, nextModelId, nextAgentId);
   };
   const selectedAgent = agents.find(agent => agent.id === agentId);
   const agentUnavailable = mode === "agent" && Boolean(agentId && (!selectedAgent || !selectedAgent.enabled));
@@ -235,5 +240,17 @@ export function AssistantConversation({
     {mode === "agent" && !agentsLoading && !agentsError && !agents.length ? <Alert><AlertDescription>No AI agents are configured yet. Ask an administrator to create an enabled agent.</AlertDescription></Alert> : null}
     {creatingConversation ? <div role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner />Preparing your conversation…</div> : null}
     {readyConversation && mode === "agent" && agentId && !agentUnavailable ? <AssistantSession key={`agent-${agentId}-${readyConversation.id}-${sessionVersion}`} context={context} agentId={agentId} conversationId={readyConversation.id} initialMessages={messagesFromConversation(readyConversation)} onBusyChange={setBusy} onConversationChange={setHasMessages} onRetry={retry} onSaved={onConversationSaved} onNewConversation={startNew} /> : readyConversation && mode === "direct" && modelId && !loadError ? <AssistantSession key={`${modelId}-${readyConversation.id}-${sessionVersion}`} context={context} modelId={modelId} conversationId={readyConversation.id} initialMessages={messagesFromConversation(readyConversation)} onBusyChange={setBusy} onConversationChange={setHasMessages} onRetry={retry} onSaved={onConversationSaved} onNewConversation={startNew} /> : null}
+    <AlertDialog open={pendingSelection !== null} onOpenChange={open => { if (!open) setPendingSelection(null); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Start a new conversation?</AlertDialogTitle>
+          <AlertDialogDescription>Switching the Assistant mode or selection will start a new conversation because its model instructions and available tools will change. Your current conversation remains saved.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Keep current conversation</AlertDialogCancel>
+          <AlertDialogAction onClick={() => { if (!pendingSelection) return; const selection = pendingSelection; setPendingSelection(null); applySelection(selection.mode, selection.modelId, selection.agentId); }}>Start new conversation</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </div>;
 }

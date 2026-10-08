@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +19,7 @@ export function SkillsCatalog({ skills, editable, onRefresh }: { skills: AgentSk
   const [draft, setDraft] = useState<AgentSkillWrite>(emptySkill);
   const [failure, setFailure] = useState<AgentRequestError | null>(null);
   const [pending, setPending] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<AgentSkill | null>(null);
   const visible = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
     return skills.filter(skill => `${skill.name} ${skill.description}`.toLocaleLowerCase().includes(query));
@@ -44,7 +46,6 @@ export function SkillsCatalog({ skills, editable, onRefresh }: { skills: AgentSk
     } finally { setPending(false); }
   }
   async function remove(skill: AgentSkill) {
-    if (!window.confirm(`Delete ${skill.name}? Assigned agents must be updated first.`)) return;
     setPending(true); setFailure(null);
     try {
       await agentRequest(`/api/assistant/agents/skills/${skill.id}`, agentSkillSchema, "DELETE");
@@ -71,7 +72,19 @@ export function SkillsCatalog({ skills, editable, onRefresh }: { skills: AgentSk
       </CardContent>
     </Card>}
     <Input aria-label="Search skills" placeholder="Search skills…" value={search} onChange={event => setSearch(event.target.value)} />
-    {!visible.length ? <Card><CardContent className="py-12 text-center text-sm text-muted-foreground">{skills.length ? "No skills match this search." : editable ? "Create a reusable skill for your team." : "No skills are configured yet."}</CardContent></Card> : <div className="grid gap-3 md:grid-cols-2">{visible.map(skill => <Card key={skill.id} className="min-w-0"><CardHeader><div className="flex items-start justify-between gap-3"><div><CardTitle className="break-words text-base">{skill.name}</CardTitle><CardDescription>{skill.description}</CardDescription></div><Badge variant="outline">{skill.assigned_agent_count} agents</Badge></div></CardHeader><CardContent className="flex items-center justify-between gap-3"><p className="line-clamp-3 whitespace-pre-wrap text-sm text-muted-foreground">{skill.instructions}</p>{editable && <div className="flex shrink-0 gap-1"><Button variant="ghost" size="icon" aria-label={`Edit ${skill.name}`} disabled={pending} onClick={() => startEdit(skill)}><Pencil /></Button><Button variant="ghost" size="icon" aria-label={`Delete ${skill.name}`} disabled={pending} onClick={() => void remove(skill)}><Trash2 /></Button></div>}</CardContent></Card>)}</div>}
+    {!visible.length ? <Card><CardContent className="py-12 text-center text-sm text-muted-foreground">{skills.length ? "No skills match this search." : editable ? "Create a reusable skill for your team." : "No skills are configured yet."}</CardContent></Card> : <div className="grid gap-3 md:grid-cols-2">{visible.map(skill => <Card key={skill.id} className="min-w-0"><CardHeader><div className="flex items-start justify-between gap-3"><div><CardTitle className="break-words text-base">{skill.name}</CardTitle><CardDescription>{skill.description}</CardDescription></div><Badge variant="outline">{skill.assigned_agent_count} agents</Badge></div></CardHeader><CardContent className="flex items-center justify-between gap-3"><p className="line-clamp-3 whitespace-pre-wrap text-sm text-muted-foreground">{skill.instructions}</p>{editable && <div className="flex shrink-0 gap-1"><Button variant="ghost" size="icon" aria-label={`Edit ${skill.name}`} disabled={pending} onClick={() => startEdit(skill)}><Pencil /></Button><Button variant="ghost" size="icon" aria-label={`Delete ${skill.name}`} disabled={pending} onClick={() => setDeleteTarget(skill)}><Trash2 /></Button></div>}</CardContent></Card>)}</div>}
+    <AlertDialog open={deleteTarget !== null} onOpenChange={open => { if (!open && !pending) setDeleteTarget(null); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete {deleteTarget?.name}?</AlertDialogTitle>
+          <AlertDialogDescription>Assigned agents must be updated first. This shared skill will be permanently deleted.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" disabled={pending} onClick={() => { if (!deleteTarget) return; const skill = deleteTarget; setDeleteTarget(null); void remove(skill); }}>Delete skill</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </div>;
 }
 

@@ -1,6 +1,6 @@
 # KubePilot - Project Overview
 
-<!-- blueprint:source-hash 4fc395dc7871aaec61f97ec50f57c9cf4f6c265834985b070ff4a0098ce9f5b3 -->
+<!-- blueprint:source-hash 289c32be3370d150b711d0c4df90b0be20db8bf5eca77b95969d1db822ad232f -->
 
 > A self-hosted Kubernetes operations platform for cluster visibility, troubleshooting, and safe resource management.
 
@@ -57,7 +57,7 @@ Features are ordered as tracked in `build-plan.md`; checked items are shipped.
      - **22d6. AI Agents UI polish** - shipped responsive hierarchy, sticky actions, grouped capabilities, readable model/status states, and accessible loading, error, and disabled states without changing backend behavior.
      - **22d7. In-chat model and agent mode switching** - shipped direct model and enabled-agent selection in the shared Assistant conversation surface, with server-side identity exclusivity and preserved tool, permission, and approval boundaries.
 23. **Human-in-the-loop AI agent actions** - shipped universal per-action approval for every agent side effect, including allowlisted Kubernetes/Helm fixes and outbound notifications; read-only investigation and post-action verification remain autonomous, while scheduled and event-driven runs cannot execute side effects themselves.
-24. **Persistent Assistant conversations and admin retention** - planned account-backed ChatGPT-style conversation history across devices, with selected model/agent and cluster context, administrator inspection and management, sanitized persistence, and configurable retention.
+24. **Persistent Assistant conversations and admin retention** - shipped account-backed ChatGPT-style conversation history across devices, with selected model/agent and cluster context, administrator inspection and management, sanitized persistence, and configurable retention.
 
 ## Data model
 
@@ -94,7 +94,7 @@ workflow state.
 
 - `AIAgent`: shared installation-level identity, description/instructions, internal model reference, enabled state, creator/updater references, and timestamps.
 - Agent skills contain bounded instructions; assignment rows connect agents to skills and supported tools. Templates provide safe draft values and cannot grant permissions or executable code.
-- 22d5 adds trigger configuration, designated owner, bounded run history, retention, and guarded background execution. The exact fields and lifecycle are defined in its archived feature specification.
+- 22d5 adds trigger configuration, designated owner, bounded run history, retention, and guarded background execution.
 - 22d7 adds no persisted conversation data: mode, model, and agent selection remain URL/UI state, while agent configuration and execution authorization continue to resolve server-side.
 - `AuditAction`: actor, action, target identity, result, and safe context; never raw prompts, credentials, notification bodies, or raw tool payloads.
 - `AssistantProposal`: UUID, actor/session, immutable validated action arguments and cluster, expiry, one-use decision state, and sanitized result. Feature 24 persists conversation references without changing proposal authority.
@@ -104,7 +104,7 @@ workflow state.
 
 ## Tech stack
 
-- **Next.js 16, TypeScript, Tailwind CSS, shadcn/ui** - UI, application shell, and same-origin API routes.
+- **Next.js, TypeScript, Tailwind CSS, shadcn/ui** - UI and application shell.
 - **FastAPI** - authentication, RBAC, application APIs, Kubernetes/Helm access, and background job boundaries.
 - **PostgreSQL and Alembic** - durable metadata, sessions, settings, audit records, and jobs.
 - **Kubernetes Python client** - all live cluster access through FastAPI and registered cluster scope.
@@ -151,7 +151,9 @@ Minikube manifests provide the local deployment path.
 
 ## Open questions
 
+- `project-plan.md` section 3 is titled “MVP” but includes post-MVP features 14–24; `build-plan.md` separates MVP 1–9 from Post-MVP 10–24.
+- The project plan describes AI Agents as five slices through 22d5 and calls that the current milestone, while the build plan also includes 22d6, 22d7, and completed features 23–24. Reconcile that historical wording.
+- The project plan says conversations remain browser-only for V1, while feature 24 requires persisted account-backed conversations; feature 24 is checked in the build plan.
+- Confirm exact ServiceAccount/RBAC and protected-system-namespace policies in future operation specs.
 - Confirm whether the commercial offering is self-hosted only, managed, or both.
-- Carry exact ServiceAccount/RBAC and protected-system-namespace policies into future operation specs.
-- `project-plan.md` still contains the pre-implementation 22d5 TODO about trigger types, schedule semantics, retention, and background approval handoff; reconcile that stale wording in a later plan cleanup.
 - Add canonical development/build/start commands and the concrete health-check path to `project-plan.md`.
