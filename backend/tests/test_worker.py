@@ -1,5 +1,6 @@
 import os
 from datetime import datetime, timedelta, timezone
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 import uuid
@@ -21,6 +22,16 @@ from app.models.base import Base
 from app.models.entities import AuditAction, ClusterConnection, InstallationJob
 
 os.environ.setdefault("KUBEPILOT_WORKER_ENABLED", "false")
+
+
+@pytest.fixture(autouse=True)
+def local_chart_archive(monkeypatch, tmp_path):
+    @contextmanager
+    def archive(repository_url, chart_name, version):
+        path = tmp_path / "chart.tgz"
+        path.write_bytes(b"test archive")
+        yield str(path)
+    monkeypatch.setattr(worker, "chart_archive", archive)
 
 CLUSTER = {
     "name": "worker-cluster",
@@ -292,7 +303,7 @@ def test_no_kubeconfig_for_incluster_cluster(
         database.close()
 
 
-def test_lifespan_requeues_running_on_boot(
+def test_api_startup_does_not_requeue_another_workers_running_job(
     api: SimpleNamespace, seed: SimpleNamespace
 ) -> None:
     started = datetime.now(timezone.utc) - timedelta(minutes=1)
@@ -307,8 +318,8 @@ def test_lifespan_requeues_running_on_boot(
     database = create_session_factory(api.settings)()
     try:
         job = database.get(InstallationJob, job_id)
-        assert job.status == "queued"
-        assert job.started_at is None
+        assert job.status == "running"
+        assert job.started_at is not None
     finally:
         database.close()
 
@@ -426,9 +437,10 @@ def test_upgrade_success_reuses_values_and_records_audit(
     finally:
         database.close()
 
-    assert len(calls) == 3
-    command, timeout = calls[2]
-    assert command[:4] == ["helm", "upgrade", "my-release", "bitnami/redis"]
+    assert len(calls) == 1
+    command, timeout = calls[0]
+    assert command[:3] == ["helm", "upgrade", "my-release"]
+    assert command[3].endswith("chart.tgz")
     assert "--version" in command and command[command.index("--version") + 1] == "2.0.0"
     assert "--reuse-values" in command
     assert "--wait" in command

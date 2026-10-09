@@ -13,6 +13,7 @@ from app.core.dependencies import AuthenticatedActor, get_database_session
 from app.core.rbac import Permission, require_permission
 from app.core.timeutils import now
 from app.models.entities import HelmRepository
+from app.services.provider_url_policy import ProviderURLPolicy, ProviderURLPolicyError
 
 from .helm_repository_schemas import (
     HelmRepositoryCreateRequest,
@@ -39,6 +40,10 @@ def _normalize_name(value: str) -> str:
 
 def _normalize_url(value: str) -> str:
     url = value.strip().rstrip("/")
+    try:
+        ProviderURLPolicy().validate(url)
+    except ProviderURLPolicyError:
+        raise _error(422, "invalid_repository_url", "Repository URL must be a public HTTP(S) hostname without credentials or query parameters.") from None
     try:
         parsed = urlsplit(url)
         hostname = parsed.hostname

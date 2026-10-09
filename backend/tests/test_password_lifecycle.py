@@ -73,6 +73,22 @@ def actions_in_db(api: SimpleNamespace) -> list[str]:
         return list(database.scalars(select(AuditAction.action)))
 
 
+def test_successful_login_upgrades_legacy_hash(api):
+    import hashlib
+    from app.core.passwords import password_needs_rehash, password_matches
+    login(api, api.settings.admin_email, api.settings.admin_password)
+    salt = hashlib.sha256(b"kubepilot-password-salt").digest()
+    legacy = "pbkdf2_sha256$120000$" + hashlib.pbkdf2_hmac("sha256", api.settings.admin_password.encode(), salt, 120000).hex()
+    with api.factory() as database:
+        user = database.scalar(select(UserAccount).where(UserAccount.email == api.settings.admin_email))
+        user.password_hash = legacy
+        database.commit()
+    login(api, api.settings.admin_email, api.settings.admin_password)
+    upgraded = get_user(api, api.settings.admin_email).password_hash
+    assert upgraded != legacy and not password_needs_rehash(upgraded)
+    assert password_matches(api.settings.admin_password, upgraded)
+
+
 def test_provisioned_viewer_can_login_and_see_me(api: SimpleNamespace) -> None:
     create_user(api, "viewer@example.com", role="viewer")
     result = login(api, "viewer@example.com", "correct-horse-00")

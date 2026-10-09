@@ -85,7 +85,7 @@ When a runner is added, the project should follow the same stack-native pattern 
 
 ## Build and deployment
 
-- Build and publish Docker images through the GitHub Actions workflow `.github/workflows/docker-build-push.yml`: it builds `./backend` and `./k8s-ui` on a GitHub runner and pushes `hamzaelouham/kubepilot-backend` and `hamzaelouham/kubepilot-ui` (requested tag plus `latest`) to Docker Hub. It runs manually on demand and automatically on feature pull requests, so a live image is available before `/complete`.
+- Build Docker images through `.github/workflows/docker-build-push.yml`. PR builds skip login and publishing. Trusted push/manual builds publish tags containing the branch and commit when no tag is supplied; only manual stable-version builds on master also publish `latest`. Use an explicitly dispatched preview build for live feature testing.
 - The workflow requires the repo secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` and the expected Docker Hub repos under the `hamzaelouham` namespace.
 - Prefer the published images over local `docker build`; local `yarn install` can hang on slow egress. The local build commands stay documented for offline or image-customizing setups but are commented out in `deploy.sh`.
 - Deploy to a running Minikube cluster with `./deploy.sh` (pull from Docker Hub, `minikube image load`, `kubectl apply`) or the manual commands in the AGENTS.md Commands section. `./deploy.sh --no-build` applies workloads without pulling or reloading images.

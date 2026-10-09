@@ -4,8 +4,7 @@ set -euo pipefail
 # Pull prebuilt KubePilot images from Docker Hub and deploy to a local Minikube cluster.
 # Images are built and pushed by the GitHub Actions workflow .github/workflows/docker-build-push.yml.
 # Usage: ./deploy.sh [--no-build] [--teardown]
-# Set KUBEPILOT_ENCRYPTION_KEY to supply a key; otherwise a missing/placeholder
-# local Minikube key is generated and preserved in the kubepilot Secret.
+# Provision the Secret externally first. Existing encryption keys are never rotated.
 
 NAMESPACE="kubepilot"
 BACKEND_IMAGE="kubepilot-backend"
@@ -19,7 +18,6 @@ FRONTEND_DEPLOYMENT="frontend"
 UI_SERVICE="${UI_IMAGE}"
 SECRET_NAME="kubepilot-secret"
 MANIFEST_DIR="backend/deploy/kubernetes"
-PLACEHOLDER_ENCRYPTION_KEY="replace-with-generated-fernet-key"
 
 info()  { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 error() { printf '\033[1;31m==> %s\033[0m\n' "$*" >&2; }
@@ -46,20 +44,12 @@ sys.exit(0 if valid else 1)
 PY
 }
 
-generate_fernet_key() {
-  python3 - <<'PY'
-import base64
-import os
-
-print(base64.urlsafe_b64encode(os.urandom(32)).decode("ascii"))
-PY
-}
-
 ensure_encryption_key() {
-  local encoded_key existing_key requested_key encryption_key
+  local encoded_key existing_key requested_key
 
   if ! k get secret "$SECRET_NAME" -n "$NAMESPACE" >/dev/null 2>&1; then
-    k apply -f "$MANIFEST_DIR/secret.yaml" >/dev/null
+    error "Provision $SECRET_NAME with unique credentials and an encryption key before deployment."
+    exit 1
   fi
   encoded_key="$(k get secret "$SECRET_NAME" -n "$NAMESPACE" -o 'jsonpath={.data.KUBEPILOT_ENCRYPTION_KEY}' 2>/dev/null || true)"
   existing_key=""
@@ -86,23 +76,8 @@ ensure_encryption_key() {
     return 0
   fi
 
-  if [ -n "$existing_key" ] && [ "$existing_key" != "$PLACEHOLDER_ENCRYPTION_KEY" ]; then
-    error "The cluster Secret contains an invalid encryption key; refusing to replace it automatically."
-    exit 1
-  fi
-
-  encryption_key="$requested_key"
-  if [ -z "$encryption_key" ]; then
-    encryption_key="$(generate_fernet_key)"
-    info "Generating a local Fernet encryption key"
-  else
-    info "Installing the supplied Fernet encryption key"
-  fi
-
-  k create secret generic "$SECRET_NAME" \
-    -n "$NAMESPACE" \
-    --from-literal="KUBEPILOT_ENCRYPTION_KEY=$encryption_key" \
-    --dry-run=client -o yaml | k apply -f - >/dev/null
+  error "Provision a valid encryption key in $SECRET_NAME; refusing to replace it automatically."
+  exit 1
 }
 
 case "${1:-}" in
@@ -131,6 +106,10 @@ for manifest in namespace.yaml service-account.yaml configmap.yaml; do
   k apply -f "$MANIFEST_DIR/$manifest"
 done
 
+if ! k get secret "$SECRET_NAME" -n "$NAMESPACE" -o json | python3 scripts/validate-deployment-secret.py; then
+  error "Deployment stopped before applying database or application workloads."
+  exit 1
+fi
 ensure_encryption_key
 
 info "Applying database and application workloads"
@@ -152,4 +131,4 @@ k get pods -n "$NAMESPACE"
 info "Opening UI"
 minikube service "$UI_SERVICE" -n "$NAMESPACE"
 
-printf '\nDone. Sign in with ops@kubepilot.io / kubepilot and open Workloads.\n'
+printf '\nDone. Sign in with your configured administrator credentials.\n'

@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timezone
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
@@ -92,15 +93,17 @@ def test_adapter_resolves_explicit_chart_source(monkeypatch):
         return SimpleNamespace(returncode=0, stdout="name: payments\nversion: 2.0.0\n", stderr="")
 
     monkeypatch.setattr(helm.subprocess, "run", run)
+    @contextmanager
+    def archive(*args):
+        yield "/tmp/verified-chart.tgz"
+    monkeypatch.setattr(helm, "chart_archive", archive)
     helm.resolve_chart_source(
         Settings("x" * 32, "sqlite://", helm_install_timeout_seconds=7),
         "global-charts", "https://charts.example.test", "payments", "2.0.0",
     )
 
     assert calls == [
-        ["helm", "repo", "add", "global-charts", "https://charts.example.test", "--force-update"],
-        ["helm", "repo", "update", "global-charts"],
-        ["helm", "show", "chart", "global-charts/payments", "--version", "2.0.0"],
+        ["helm", "show", "chart", "/tmp/verified-chart.tgz"],
     ]
     assert all(call for call in calls)
 

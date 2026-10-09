@@ -10,4 +10,4 @@ kubernetes>=31.0,<32.0
 python-multipart>=0.0.9,<1.0
 PyYAML>=6.0,<7.0
 cryptography>=41.0,<47.0
-python-multipart>=0.0.9,<1.0
+

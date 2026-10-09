@@ -275,13 +275,23 @@ class ClusterConnection(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
     endpoint: Mapped[str] = mapped_column(String(2048), nullable=False)
     kubeconfig_ref: Mapped[str] = mapped_column(String(512), nullable=False)
-    kubeconfig_content: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    _kubeconfig_content: Mapped[str | None] = mapped_column("kubeconfig_content", Text(), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="unknown", server_default="unknown")
     created_at: Mapped[CreatedAt]
 
     namespaces: Mapped[list["Namespace"]] = relationship(back_populates="cluster", cascade="all, delete-orphan")
     installations: Mapped[list["InstallationJob"]] = relationship(back_populates="cluster", passive_deletes=True)
     __table_args__ = (Index("ix_cluster_connections_status", "status"),)
+
+    @property
+    def kubeconfig_content(self) -> str | None:
+        from app.services.kubeconfig_encryption import decrypt_kubeconfig
+        return decrypt_kubeconfig(self._kubeconfig_content)
+
+    @kubeconfig_content.setter
+    def kubeconfig_content(self, value: str | None) -> None:
+        from app.services.kubeconfig_encryption import encrypt_kubeconfig
+        self._kubeconfig_content = encrypt_kubeconfig(value)
 
 
 class HelmRepository(Base):

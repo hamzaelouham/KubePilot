@@ -59,13 +59,97 @@ minikube kubectl -- delete -f deploy/kubernetes/
 ```
 
 - Postgres (`postgres-deploy`, PVC `postgres-data`, `db` Service on 5432), the FastAPI backend (`backend` Service on 8000), and the Next.js frontend (NodePort `kubepilot-ui` on 30080) are defined under `deploy/kubernetes/`.
-- `deploy/kubernetes/service-account.yaml` grants the backend ServiceAccount `kubepilot-api` only `get`, `list`, and `watch` access to namespaces, pods, services, endpoints, nodes, and deployments (enforced by `tests/test_rbac.py`). The backend must run in a cluster so the Kubernetes client can use its in-cluster ServiceAccount; it does not accept kubeconfig uploads or request-supplied tokens.
-- Non-secret env comes from the `kubepilot-config` ConfigMap; secrets (`KUBEPILOT_AUTH_SECRET`, DB credentials, admin password) from the `kubepilot-secret` Secret. The committed Secret holds local Minikube dev placeholder values and must be overridden for any non-local deployment.
-- `./deploy.sh` preserves an existing valid `KUBEPILOT_ENCRYPTION_KEY`, accepts one supplied in the shell, or generates a local Fernet-compatible key when the committed placeholder is still present. It never prints the key and refuses to replace a different or invalid existing key automatically.
+- `deploy/kubernetes/service-account.yaml` binds `kubepilot-api` to explicit discovery and operations roles, tested by `tests/test_rbac.py`. Discovery remains read-only, including pod logs and metrics. Operations allow get/list/watch/create/update/patch/delete on core pods, services, namespaces, configmaps, secrets, serviceaccounts, PVCs and replicationcontrollers; apps deployments, replicasets, daemonsets and statefulsets; batch jobs/cronjobs; networking ingresses/networkpolicies; autoscaling HPAs; and policy PDBs. In-cluster operations use this ServiceAccount; managed clusters use their registered kubeconfig permissions.
+- Non-secret env comes from `kubepilot-config`; provision `kubepilot-secret` externally before applying workloads. No deployable Secret is stored in Git. Include POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, KUBEPILOT_DATABASE_URL, KUBEPILOT_AUTH_SECRET, KUBEPILOT_ADMIN_PASSWORD, and KUBEPILOT_ENCRYPTION_KEY. Use unique database/admin passwords and a random authentication secret of at least 32 characters. The database URL must match the provisioned PostgreSQL credentials.
+- `./deploy.sh` validates the existing Secret before applying workloads. Missing, default, or malformed credentials stop deployment. It preserves the encryption key and refuses unsafe rotation. Provision a Fernet key once and retain it securely; losing it prevents access to encrypted credentials and kubeconfigs.
 
 Protected discovery endpoints are `/api/v1/cluster/status`, `/api/v1/cluster/namespaces`, and `/api/v1/cluster/resources/{resource_type}`. The browser and AI integrations reach these through the Next.js `/api` proxy and FastAPI, and never contact Kubernetes directly.
 
+### RBAC limits and upgrades
+
+The backend has no direct permission to write RBAC, CRDs, admission webhooks or
+nodes, create service-account tokens, or use pod exec/attach. Charts requiring
+those permissions (including typical cert-manager installations) fail through
+the existing Kubernetes/Helm error handling. A cluster administrator must
+install those components separately or explicitly provision reviewed,
+chart-specific permissions. Do not restore cluster-admin automatically.
+
+This is still a privileged workload-management identity: it can read Secrets
+across namespaces and create workloads that use other service accounts or
+privileged containers where admission policy permits. It does not provide
+namespace isolation or prevent indirect escalation. Kubernetes admission policy
+and narrowly scoped deployment credentials remain necessary where isolation is
+required. Uploaded kubeconfigs retain their own permissions.
+
+For an existing installation, applying YAML alone leaves the old admin binding
+active. Run the following only during an authorized rollout, from the repository
+root, using a cluster administrator context. Apply the replacement before
+removing the old binding; these steps do not delete workloads or application data.
+
+```bash
+minikube kubectl -- apply -f backend/deploy/kubernetes/service-account.yaml
+minikube kubectl -- delete clusterrolebinding kubepilot-api-admin --ignore-not-found
+minikube kubectl -- get clusterrolebinding kubepilot-api-admin --ignore-not-found
+```
+
+The final command must produce no object. Effective permissions are additive;
+review any other bindings to this ServiceAccount if a denied check returns yes.
+
+```bash
+# Expected yes:
+minikube kubectl -- auth can-i --as=system:serviceaccount:kubepilot:kubepilot-api list pods --all-namespaces
+minikube kubectl -- auth can-i --as=system:serviceaccount:kubepilot:kubepilot-api patch deployments.apps -n default
+minikube kubectl -- auth can-i --as=system:serviceaccount:kubepilot:kubepilot-api create secrets -n default
+# Expected no:
+minikube kubectl -- auth can-i --as=system:serviceaccount:kubepilot:kubepilot-api create clusterrolebindings.rbac.authorization.k8s.io
+minikube kubectl -- auth can-i --as=system:serviceaccount:kubepilot:kubepilot-api create customresourcedefinitions.apiextensions.k8s.io
+minikube kubectl -- auth can-i --as=system:serviceaccount:kubepilot:kubepilot-api delete nodes
+minikube kubectl -- auth can-i --as=system:serviceaccount:kubepilot:kubepilot-api create pods --subresource=exec -n default
+```
+
+Verify discovery and supported resource operations through the UI. In a disposable
+namespace, test an ordinary workload-only chart and verify a chart needing CRDs
+or RBAC fails visibly. A failed Helm installation can leave partial resources;
+inspect them before cleanup. Live checks remain pending until the rollout.
+
 ## Container
+
+Compose is an explicit local-development path (`KUBEPILOT_LOCAL_DEVELOPMENT=true`)
+with frontend/backend ports bound to 127.0.0.1. Generate the required Fernet key
+before starting it. Outside this local path, backend startup rejects missing or
+development administrator/auth/database credentials. Never enable local mode on
+an externally reachable deployment.
+
+### Kubeconfig encryption upgrade
+
+Set KUBEPILOT_ENCRYPTION_KEY to the existing installation encryption key before
+running online `alembic upgrade head`. Migration s5h6i7j8k9l0 encrypts legacy
+kubeconfigs transactionally in the existing column. It is idempotent and fails
+without rewriting records when a key is unavailable. Offline SQL generation and
+downgrade across this data migration are intentionally rejected. Back up the
+database and key before upgrading; older code cannot consume the ciphertext.
+Kubernetes/Helm readers decrypt through the cluster property only when accessing
+the content. Do not rotate the key by simply changing an environment variable.
+Old database backups may still contain plaintext and require separate protection.
+
+### Helm sources and worker recovery
+
+Helm indexes and archives must use public HTTP(S) hostnames. DNS addresses,
+redirects, and chart archive URLs are checked before connecting; private/IP/local
+targets and HTTPS downgrades are denied. Connections use the checked address and
+verify TLS against the original hostname. Indexes are capped at 2 MiB and archives
+at 50 MiB. Helm receives a local archive instead of fetching repository URLs;
+dependencies must already be packaged. Internal repositories, authenticated/query
+URLs, and OCI sources are unsupported by this path. Charts remain executable
+deployment inputs: only install sources trusted by your operators.
+
+Worker cycles acquire a PostgreSQL session advisory lock (file lock for local
+SQLite) before recovery or execution. API startup does not requeue jobs. On
+exclusive recovery, interrupted deliveries become outcome_unknown; installations
+and agent runs fail with an interruption message instead of being automatically
+replayed. Inspect external outcomes before manually starting replacement work.
+This guards restarts/replica contention; it does not promise exactly-once delivery
+across provider or database network failures.
 
 The backend, frontend, and database can run together with Docker Compose from the repository root:
 

@@ -10,6 +10,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from app.core.config import Settings
+from app.kubernetes.chart_source import ChartSourceError, chart_archive
 
 _CAP = 4096
 _DNS_LABEL = re.compile(r"^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$")
@@ -156,11 +157,12 @@ def resolve_chart_source(
     ):
         raise HelmError("invalid_chart_source", "The selected chart source is invalid.")
 
-    _run_source_command(settings, ["repo", "add", repository_name, repository_url, "--force-update"])
-    _run_source_command(settings, ["repo", "update", repository_name])
-    chart = f"{repository_name}/{chart_name}"
-    if not _run_source_command(settings, ["show", "chart", chart, "--version", version]):
-        raise HelmError("chart_source_unavailable", "The selected chart and version could not be resolved.")
+    try:
+        with chart_archive(repository_url, chart_name, version) as chart:
+            if not _run_source_command(settings, ["show", "chart", chart]):
+                raise HelmError("chart_source_unavailable", "The selected chart and version could not be resolved.")
+    except ChartSourceError:
+        raise HelmError("chart_source_unavailable", "The selected chart source is invalid or unavailable.") from None
 
 
 def _kubeconfig(cluster) -> str | None:

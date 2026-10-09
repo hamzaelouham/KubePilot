@@ -16,3 +16,4 @@ node_modules/
 
 references
 graphify-out
+backend/deploy/kubernetes/secret.yaml

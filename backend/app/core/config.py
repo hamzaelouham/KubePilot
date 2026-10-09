@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import os
 import re
+from urllib.parse import unquote, urlsplit
 
 
 class ConfigurationError(RuntimeError):
@@ -39,7 +40,8 @@ class Settings:
         service_name = os.getenv("KUBEPILOT_SERVICE_NAME", "kubepilot-api").strip()
         cluster_name = os.getenv("KUBEPILOT_CLUSTER_NAME", "primary").strip()
         admin_email = os.getenv("KUBEPILOT_ADMIN_EMAIL", "ops@kubepilot.io").strip().lower()
-        admin_password = os.getenv("KUBEPILOT_ADMIN_PASSWORD", "kubepilot")
+        local_development = cls._env_bool("KUBEPILOT_LOCAL_DEVELOPMENT", False)
+        admin_password = os.getenv("KUBEPILOT_ADMIN_PASSWORD", "kubepilot" if local_development else "")
         password_ttl_days = cls._positive_int("KUBEPILOT_PASSWORD_TTL_DAYS", 15)
         password_min_length = cls._positive_int("KUBEPILOT_PASSWORD_MIN_LENGTH", 10)
         worker_enabled = cls._env_bool("KUBEPILOT_WORKER_ENABLED", True)
@@ -78,6 +80,19 @@ class Settings:
             raise ConfigurationError("KUBEPILOT_CLUSTER_NAME must not be empty")
         if not admin_email or not admin_password:
             raise ConfigurationError("KUBEPILOT_ADMIN_EMAIL and KUBEPILOT_ADMIN_PASSWORD must not be empty")
+        if not local_development:
+            if len(admin_password) < password_min_length or admin_password.lower() in {"kubepilot", "change-me", "password"}:
+                raise ConfigurationError("Configure a non-default administrator password")
+            if auth_secret.startswith(("local-", "replace-with-")) or len(set(auth_secret)) < 8:
+                raise ConfigurationError("Configure a random, non-development authentication secret")
+            try:
+                db_password = urlsplit(database_url).password
+                if db_password is not None:
+                    db_password = unquote(db_password)
+            except ValueError:
+                raise ConfigurationError("Database URL is invalid") from None
+            if db_password is not None and (len(db_password) < 10 or db_password.lower() in {"change-me", "kubepilot", "password"}):
+                raise ConfigurationError("Configure a non-default database password")
         if public_url and not public_url.startswith(("http://", "https://")):
             raise ConfigurationError("KUBEPILOT_PUBLIC_URL must use http:// or https://")
 

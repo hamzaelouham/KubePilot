@@ -244,12 +244,16 @@ checks do not make the Blueprint unusable.
 - Backend tests: `cd backend && python3 -m pytest`
 - Backend focused tests: selected automatically from backend test files added or
   changed on the feature branch by `./scripts/verify-feature.sh`
-- Backend migration SQL check: `cd backend && PYTHONPATH=. alembic upgrade head --sql`
+- Backend migrations: `cd backend && PYTHONPATH=. alembic upgrade head` (online;
+  kubeconfig encryption requires the installation encryption key and does not
+  support offline SQL generation)
 - Verify (local feature gate): `./scripts/verify-feature.sh`
 - Full Verify (GitHub Actions): `cd backend && python -m pytest && cd ../k8s-ui && yarn test:assistant && yarn verify`
 - Docker images (GitHub Actions, reliable egress - use instead of local builds when the local `yarn install` hangs):
   - The manual workflow `.github/workflows/docker-build-push.yml` builds both images on a GitHub runner and pushes
-    `hamzaelouham/kubepilot-backend:<tag>` and `hamzaelouham/kubepilot-ui:<tag>` plus `latest` to Docker Hub.
+    `hamzaelouham/kubepilot-backend:<tag>` and `hamzaelouham/kubepilot-ui:<tag>` to Docker Hub.
+    PR builds skip login and publishing; only manual stable-version builds on
+    master also publish `latest`.
   - To live-test a pushed feature branch before `/complete`: commit and push the branch, then run the
     `Build and push Docker images` workflow from GitHub Actions selecting that branch (tag optional).
   - Requires repo secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`.

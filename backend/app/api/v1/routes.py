@@ -24,7 +24,7 @@ from app.core.dependencies import (
 from app.core.rbac import Permission, require_permission
 from app.core.config import Settings
 from app.core.audit import AuditEvent, record_audit
-from app.core.passwords import hash_password, password_matches, validate_password_policy
+from app.core.passwords import hash_password, password_matches, password_needs_rehash, validate_password_policy
 from app.core.timeutils import is_expired, now
 from app.models.entities import (
     ClusterConnection,
@@ -169,6 +169,8 @@ def login(
         database.commit()
         raise HTTPException(status_code=401, detail={"code": "authentication_required", "message": "Authentication is required"})
 
+    if password_needs_rehash(user.password_hash):
+        user.password_hash = hash_password(credentials.password)
     restricted = user.must_change_password or is_expired(user.password_expires_at)
     expires_at = int((time.time() + 60 * 60 * 12) * 1000)
     cookie, token_hash = _signed_cookie(email, expires_at, settings.auth_secret)

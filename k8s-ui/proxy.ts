@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 import { SESSION_COOKIE_NAME } from "@/lib/auth-constants";
+import { AssistantError, sameOrigin } from "@/lib/assistant/backend";
 
 async function isAuthenticated(request: NextRequest) {
   const value = request.cookies.get(SESSION_COOKIE_NAME)?.value;
@@ -35,6 +36,15 @@ async function isAuthenticated(request: NextRequest) {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  if (pathname.startsWith("/api/") && !["GET", "HEAD", "OPTIONS"].includes(request.method)) {
+    try {
+      sameOrigin(request);
+    } catch (error) {
+      if (!(error instanceof AssistantError)) throw error;
+      return NextResponse.json({ code: error.code, message: error.message }, { status: error.status });
+    }
+  }
+  if (pathname.startsWith("/api/")) return NextResponse.next();
   const authenticated = await isAuthenticated(request);
 
   if (pathname.startsWith("/dashboard") || pathname.startsWith("/settings") || pathname.startsWith("/background-jobs")) {
@@ -55,5 +65,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/settings/:path*", "/background-jobs/:path*", "/login"],
+  matcher: ["/api/:path*", "/dashboard/:path*", "/settings/:path*", "/background-jobs/:path*", "/login"],
 };

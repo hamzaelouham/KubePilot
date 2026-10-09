@@ -24,6 +24,8 @@ services:
       KUBEPILOT_DATABASE_URL: postgresql+psycopg://${KUBEPILOT_DB_USER:-kubepilot}:${KUBEPILOT_DB_PASSWORD:-change-me}@db:5432/${KUBEPILOT_DB_NAME:-kubepilot}
       KUBEPILOT_CLUSTER_NAME: ${KUBEPILOT_CLUSTER_NAME:-primary}
       KUBEPILOT_SERVICE_NAME: ${KUBEPILOT_SERVICE_NAME:-kubepilot-api}
+      KUBEPILOT_LOCAL_DEVELOPMENT: "true"
+      KUBEPILOT_ENCRYPTION_KEY: ${KUBEPILOT_ENCRYPTION_KEY:?Generate a Fernet encryption key before starting Compose}
       KUBEPILOT_ADMIN_EMAIL: ${KUBEPILOT_ADMIN_EMAIL:-ops@kubepilot.io}
       KUBEPILOT_ADMIN_PASSWORD: ${KUBEPILOT_ADMIN_PASSWORD:-kubepilot}
     depends_on:
@@ -36,7 +38,7 @@ services:
       retries: 10
       start_period: 15s
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
 
   frontend:
     build:
@@ -53,7 +55,7 @@ services:
       backend:
         condition: service_healthy
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
 
 volumes:
   db-data:

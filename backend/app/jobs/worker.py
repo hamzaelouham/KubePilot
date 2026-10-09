@@ -14,9 +14,11 @@ from sqlalchemy import select, update
 from app.core.audit import AuditEvent, record_audit
 from app.core.config import Settings
 from app.db.session import create_session_factory
-from app.models.entities import InstallationJob
-from app.jobs.integration_delivery_worker import requeue_running_deliveries, run_pending_deliveries
-from app.services.agent_automation import requeue_running_runs, run_pending_agent_runs
+from app.models.entities import InstallationJob, IntegrationDeliveryJob, AIAgentRun
+from app.jobs.ownership import worker_ownership
+from app.kubernetes.chart_source import ChartSourceError, chart_archive
+from app.jobs.integration_delivery_worker import run_pending_deliveries
+from app.services.agent_automation import run_pending_agent_runs
 
 logger = logging.getLogger(__name__)
 
@@ -158,13 +160,11 @@ def _run_helm_install(settings: Settings, job, repository_url: str, kubeconfig_p
     timeout = settings.helm_install_timeout_seconds
     seconds = f"{timeout}s"
     commands = [
-        [binary, "repo", "add", job.chart_repository, repository_url, "--force-update"],
-        [binary, "repo", "update", job.chart_repository],
         [
             binary,
             "install",
             job.release_name,
-            f"{job.chart_repository}/{job.chart_name}",
+            "CHART_ARCHIVE",
             "--version",
             job.chart_version,
             "--namespace",
@@ -175,15 +175,15 @@ def _run_helm_install(settings: Settings, job, repository_url: str, kubeconfig_p
         ],
     ]
     if kubeconfig_path:
-        commands[2] = [*commands[2], "--kubeconfig", kubeconfig_path]
+        commands[0] = [*commands[0], "--kubeconfig", kubeconfig_path]
 
     output_parts: list[str] = []
-    for command in commands:
-        try:
-            output_parts.append(_run_single_command(command, timeout))
-        except HelmInstallError as error:
-            error.output = "\n".join(part for part in (*output_parts, getattr(error, "output", "")) if part)
-            raise
+    try:
+        with chart_archive(repository_url, job.chart_name, job.chart_version) as chart:
+            commands[0][3] = chart
+            output_parts.append(_run_single_command(commands[0], timeout))
+    except ChartSourceError:
+        raise HelmInstallError("Chart source is invalid or unavailable") from None
     return "\n".join(part for part in output_parts if part)
 
 
@@ -191,13 +191,11 @@ def _run_helm_upgrade(settings: Settings, job, kubeconfig_path: str | None) -> s
     timeout = settings.helm_install_timeout_seconds
     seconds = f"{timeout}s"
     commands = [
-        [settings.helm_binary, "repo", "add", job.chart_repository, job.chart_repository_url, "--force-update"],
-        [settings.helm_binary, "repo", "update", job.chart_repository],
         [
             settings.helm_binary,
             "upgrade",
             job.release_name,
-            f"{job.chart_repository}/{job.chart_name}",
+            "CHART_ARCHIVE",
             "--version",
             job.chart_version,
             "--namespace",
@@ -209,15 +207,15 @@ def _run_helm_upgrade(settings: Settings, job, kubeconfig_path: str | None) -> s
         ],
     ]
     if kubeconfig_path:
-        commands[2] = [*commands[2], "--kubeconfig", kubeconfig_path]
+        commands[0] = [*commands[0], "--kubeconfig", kubeconfig_path]
 
     output_parts: list[str] = []
-    for command in commands:
-        try:
-            output_parts.append(_run_single_command(command, timeout))
-        except HelmInstallError as error:
-            error.output = "\n".join(part for part in (*output_parts, getattr(error, "output", "")) if part)
-            raise
+    try:
+        with chart_archive(job.chart_repository_url, job.chart_name, job.chart_version) as chart:
+            commands[0][3] = chart
+            output_parts.append(_run_single_command(commands[0], timeout))
+    except ChartSourceError:
+        raise HelmInstallError("Chart source is invalid or unavailable") from None
     return "\n".join(part for part in output_parts if part)
 
 
@@ -431,13 +429,36 @@ def run_pending_installations(database, settings: Settings) -> None:
 
 
 def _run_cycle(settings: Settings) -> None:
-    database = create_session_factory(settings)()
+    factory = create_session_factory(settings)
+    engine = factory.kw["bind"]
     try:
-        run_pending_installations(database, settings)
-        run_pending_deliveries(database, settings)
-        run_pending_agent_runs(database, settings)
+        with worker_ownership(engine) as owned:
+            if not owned:
+                return
+            with factory() as database:
+                _recover_interrupted_jobs(database)
+                run_pending_installations(database, settings)
+                run_pending_deliveries(database, settings)
+                run_pending_agent_runs(database, settings)
     finally:
-        database.close()
+        engine.dispose()
+
+
+def _recover_interrupted_jobs(database) -> None:
+    """Called only under exclusive ownership; interrupted effects are never replayed."""
+    now = datetime.now(timezone.utc)
+    database.execute(update(InstallationJob).where(InstallationJob.status == "running").values(
+        status="failed", completed_at=now,
+        error_message="Worker interrupted; operation outcome is unknown. Inspect the cluster before retrying.",
+    ))
+    database.execute(update(IntegrationDeliveryJob).where(IntegrationDeliveryJob.status == "running").values(
+        status="outcome_unknown", completed_at=now, last_error_code="worker_interrupted",
+    ))
+    database.execute(update(AIAgentRun).where(AIAgentRun.status == "running").values(
+        status="failed", completed_at=now, result_code="worker_interrupted",
+        error_message="Worker interrupted; review the run before starting another.",
+    ))
+    database.commit()
 
 
 async def _worker_loop(settings: Settings) -> None:

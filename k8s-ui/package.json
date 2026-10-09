@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "verify": "next build",
-    "test:assistant": "node --import ./tests/register.mjs --test tests/assistant.test.mjs tests/agents.test.mjs",
+    "test:assistant": "node --import ./tests/register.mjs --test tests/assistant.test.mjs tests/agents.test.mjs tests/origin-protection.test.mjs",
     "test:settings": "node --import ./tests/register.mjs --test tests/settings-credentials.test.mjs"
   },
   "dependencies": {
