@@ -184,3 +184,131 @@
   record verified spec state through /implement, then /complete. Local untracking
   remains staged until the approved work commit; no commit, push, deployment or
   external setting change occurred during this audit.
+
+
+## Audit — guarded local Secret deployment
+
+- 2026-10-09; scope current; quality, security, performance and tests. Branch:
+  fix/deploy-the-local-secret-safely. Locally recorded remote default ref was
+  absent, so local master is the comparison base. Merge base and HEAD are
+  cc1d7b34f63d46803347350efa7b8f08323963a9; the committed delta is empty.
+  Reviewed every pending source/config change and its affected callers; no
+  untracked source files exist.
+- Reviewed deploy.sh, scripts/validate-deployment-secret.py, bootstrap tests,
+  backend/README.md, the pre-existing PostgreSQL recovery YAML, and nearby Settings,
+  SQLAlchemy session creation, dependency declarations and workload Secret fields.
+  Reused loaded project overview, standards, interaction guidelines and active
+  spec. Used graph navigation for the helper/caller/test relationships. Excluded
+  generated graph/build output, dependencies, caches, vendored code, unrelated
+  application features, private recovery artifacts and the actual local Secret.
+- Checked complete Secret and identity validation; data/stringData normalization;
+  key/database preservation; optimistic resourceVersion replacement; refusal to
+  guess credentials for retained PostgreSQL storage; stdin-only Secret payloads;
+  generic API/YAML errors; deployment ordering; test isolation and documentation.
+  F-20 is confirmed. No additional confirmed findings from the other reviewed
+  paths. The recovery-specific PVC edit remains separate from this fix and must
+  be explicitly addressed before a completion commit mixes pending changes.
+- Signals: backend .venv/bin/python3 -m pytest tests/test_bootstrap_security.py
+  -q --tb=short: 65 passed. bash -n deploy.sh and git diff --check passed. No
+  skipped/focused/placeholder tests found in the changed tests. Reused the current
+  implementation's successful exact Verify result: 65 backend tests, 36 frontend
+  tests and production build. Did not repeat the unchanged build.
+- Reproductions use only synthetic in-memory Secrets and patched subprocesses.
+  No cluster commands were executed. The first unsupported-driver fixture used
+  an invalid URI scheme spelling and was correctly rejected; the corrected
+  syntactically valid scheme reached a mocked Secret create and then failed
+  SQLAlchemy engine construction. The supported-driver invalid-port reproduction
+  independently confirmed missing structural URL validation. No network calls
+  were needed for either engine failure.
+- Existing P2 entries remain unchanged; none were closed implicitly. Added F-20
+  as open P1, which blocks /complete. No independent review was requested or
+  receipt created. Audit does not rewrite the active spec's verified status.
+- Gaps: no live deployment of the new local Secret path, API-server concurrency
+  integration, new browser flow, full backend regression run, remote CI check,
+  online dependency/security scan or performance benchmark. Earlier browser and
+  database recovery evidence concerns the running app, not this new script path.
+- Next: /implement to repair F-20 and add its regression cases, rerun Verify,
+  then /audit before /complete. No source/configuration changes, commit, merge,
+  push, deployment or credential changes performed during this audit.
+
+
+## Audit — local Secret deployment after F-20 repair
+
+- 2026-10-09; scope current; all four lenses: quality, security, performance,
+  tests. Local master is the base because no remote default symbolic ref exists.
+  Merge base and HEAD: cc1d7b34f63d46803347350efa7b8f08323963a9; committed
+  master...HEAD delta is empty. Reviewed all staged/unstaged changes (none staged)
+  and checked for untracked source files (none).
+- Reviewed deploy.sh, the complete Secret validator, bootstrap tests, README and
+  recovery-specific PostgreSQL manifest change; followed Settings, backend session
+  creation, requirements and backend/frontend/PostgreSQL Secret consumers. Used
+  Graphify navigation and inspected only the installed SQLAlchemy parser/dialect
+  needed to confirm runtime semantics. Standards checked: narrow operational
+  boundaries, fail-closed validation, credential-free errors, data preservation,
+  minimal shared logic, meaningful tests and explicit deployment authority.
+- Confirmed identity/data normalization, encryption-key/database preservation,
+  optimistic resourceVersion replacement, missing-Secret/storage refusal,
+  stdin-only payloads, generic API/YAML failures and workload ordering. Closed
+  F-20 explicitly; added F-21 as open P1. No other new confirmed findings.
+  Existing P2 entries remain unchanged. No independent receipt requested.
+- Commands: focused bootstrap pytest passed 104 tests in 8.34s; bash -n deploy.sh
+  and git diff --check passed. No skipped, focused or placeholder tests found
+  (the placeholder-secrets test name describes a real rejection test).
+  Reused unchanged frontend evidence from the immediately preceding Verify:
+  36 frontend tests and production build passed alongside 104 backend tests.
+- Synthetic reproductions confirmed both F-21 cases reach mocked Secret writes
+  and differ from effective runtime database arguments; query overrides also
+  differ from the effective password. No connection to a database or cluster.
+- Excluded unrelated app areas, generated graph/build output, dependencies except
+  the targeted parser/dialect inspection, caches, vendored/minified assets, actual
+  ignored local Secret and private database recovery artifacts. No online scanner,
+  full backend regression, performance benchmark, remote CI, browser review or live
+  API-server deployment/concurrency integration run. Prior browser/recovery proof
+  is not proof of this new script path. Per-command Kubernetes timeouts are bounded;
+  no performance claim relies on a benchmark.
+- Next repair order: F-21 through /implement, then Verify and /audit. F-21 blocks
+  /complete. The unrelated recovery PVC edit still needs a separate inclusion
+  decision before any completion commit. Audit changed only this ledger and
+  generated activity state, not source, spec, credentials or running workloads.
+
+## Audit — local Secret deployment after F-21 repair
+
+- 2026-10-09; scope current; quality, security, performance and tests. Branch:
+  fix/deploy-the-local-secret-safely. No locally recorded remote default symbolic
+  ref; local master used as base. Merge base and HEAD both
+  cc1d7b34f63d46803347350efa7b8f08323963a9; master...HEAD committed delta empty.
+  All seven dirty tracked files reviewed, with no staged or untracked source.
+- Reviewed complete Secret validator, deployment script, bootstrap tests, README,
+  active spec and ledger plus the pre-existing PostgreSQL recovery manifest diff.
+  Reused loaded overview, coding standards and interaction guidelines. Followed
+  Settings, session/engine creation, installed driver requirements and workload
+  Secret contracts; Graphify navigation and targeted installed SQLAlchemy
+  parser/dialect inspection confirmed the effective runtime field semantics.
+- Checked narrow shared validation, literal database-name agreement, encoded
+  credentials, supported driver/host/ports, forbidden query/fragment/ambiguous
+  forms, fail-closed ordering, identity/data normalization, immutable database/key
+  preservation, resourceVersion conflicts, retained-storage refusal, generic
+  errors and stdin-only values. No new confirmed findings across the four lenses.
+  No new hot-path/unbounded-operation issue; Kubernetes helper calls have bounded
+  timeouts. No benchmark or live concurrency claim made.
+- F-21 explicitly closed; F-20 stays closed. Other P2 statuses unchanged. No
+  open/fixed P0/P1 entries remain. No independent review requested or receipt
+  created; this is a normal audit, not an independent-review checkpoint.
+- Commands: backend .venv/bin/python3 -m pytest tests/test_bootstrap_security.py
+  -q --tb=short passed 156 tests in 14.49s; bash -n deploy.sh and git diff --check
+  passed. No skipped, focused, xfail or placeholder tests found. SQLAlchemy
+  connection-argument assertions construct engines but never connect; shell tests
+  use synthetic Secrets and fake Minikube, and inspect output/arguments for leaks.
+  Reused the immediately preceding unchanged exact Verify pass: 156 backend tests,
+  36 frontend tests and production build; no redundant frontend build run.
+- Excluded unrelated application areas, generated graph/build output, dependency
+  trees except targeted parser/dialect inspection, caches, vendored/minified
+  assets, real ignored local Secret and private recovery artifacts. No live
+  deployment/browser/API-server integration, full backend regression, remote CI,
+  online vulnerability scan or performance benchmark run. Prior working-browser
+  evidence does not prove this new deployment path. Query-based TLS options remain
+  intentionally unsupported, as documented.
+- Next: /complete safety pass, with a separate decision on the unrelated recovery
+  PVC edit before any commit mixes it into this fix. No new repair order required.
+  Only this ledger and generated activity state changed during audit; source,
+  spec, credentials and workloads were not modified.

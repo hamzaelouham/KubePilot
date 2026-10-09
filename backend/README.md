@@ -61,7 +61,7 @@ minikube kubectl -- delete -f deploy/kubernetes/
 - Postgres (`postgres-deploy`, PVC `postgres-data`, `db` Service on 5432), the FastAPI backend (`backend` Service on 8000), and the Next.js frontend (NodePort `kubepilot-ui` on 30080) are defined under `deploy/kubernetes/`.
 - `deploy/kubernetes/service-account.yaml` binds `kubepilot-api` to explicit discovery and operations roles, tested by `tests/test_rbac.py`. Discovery remains read-only, including pod logs and metrics. Operations allow get/list/watch/create/update/patch/delete on core pods, services, namespaces, configmaps, secrets, serviceaccounts, PVCs and replicationcontrollers; apps deployments, replicasets, daemonsets and statefulsets; batch jobs/cronjobs; networking ingresses/networkpolicies; autoscaling HPAs; and policy PDBs. In-cluster operations use this ServiceAccount; managed clusters use their registered kubeconfig permissions.
 - Non-secret env comes from `kubepilot-config`; provision `kubepilot-secret` externally before applying workloads. No deployable Secret is stored in Git. Include POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, KUBEPILOT_DATABASE_URL, KUBEPILOT_AUTH_SECRET, KUBEPILOT_ADMIN_PASSWORD, and KUBEPILOT_ENCRYPTION_KEY. Use unique database/admin passwords and a random authentication secret of at least 32 characters. The database URL must match the provisioned PostgreSQL credentials.
-- `./deploy.sh` validates the existing Secret before applying workloads. Missing, default, or malformed credentials stop deployment. It preserves the encryption key and refuses unsafe rotation. Provision a Fernet key once and retain it securely; losing it prevents access to encrypted credentials and kubeconfigs.
+- `./deploy.sh` validates and deploys `backend/deploy/kubernetes/secret.yaml` when that ignored local file exists, before applying database/application workloads. Both `data` and `stringData` are supported; the object must be `kubepilot-secret` in `kubepilot`. Without the file, externally provision the live Secret as before. Invalid/default/incomplete values stop deployment without printing credentials. Existing encryption-key or database credential/URL changes are rejected before Secret writes; changing a Secret alone cannot rotate an initialized PostgreSQL role. If PostgreSQL storage exists but the live Secret is missing, restore the original credentials rather than guessing new ones. Concurrent Secret updates fail rather than overwrite one another. Provision a Fernet key once and retain it securely; losing it prevents access to encrypted credentials and kubeconfigs. Keep the local file untracked; do not use shell tracing when deploying Secrets.
 
 Protected discovery endpoints are `/api/v1/cluster/status`, `/api/v1/cluster/namespaces`, and `/api/v1/cluster/resources/{resource_type}`. The browser and AI integrations reach these through the Next.js `/api` proxy and FastAPI, and never contact Kubernetes directly.
 
@@ -175,6 +175,16 @@ Required environment variables (with local-safe defaults for Compose):
 | `KUBEPILOT_SERVICE_NAME` | `kubepilot-api` | Backend service name |
 | `KUBEPILOT_ADMIN_EMAIL` / `KUBEPILOT_ADMIN_PASSWORD` | `ops@kubepilot.io` / `kubepilot` | Local admin login |
 | `KUBEPILOT_BACKEND_URL` | `http://backend:8000` | Frontend-only; where the frontend proxies `/api` calls |
+
+Deployment Secrets must use `postgresql+psycopg://` (the installed psycopg 3
+driver), a nonempty host and, if supplied, a port from 1 to 65535. URL-encode
+special characters in usernames/passwords; their decoded values must match
+`POSTGRES_USER` and `POSTGRES_PASSWORD`. The database path must match `POSTGRES_DB`
+literally: SQLAlchemy does not decode database-name percent escapes. Query
+parameters (including connection overrides or TLS options), fragments and
+ambiguous/normalized URL forms are not supported by this deployment path. These
+checks run before local Secret writes and also validate externally provisioned
+Secrets; no connection to the database is attempted by the validator.
 
 ## AI Assistant (optional)
 

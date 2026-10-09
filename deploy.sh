@@ -4,7 +4,8 @@ set -euo pipefail
 # Pull prebuilt KubePilot images from Docker Hub and deploy to a local Minikube cluster.
 # Images are built and pushed by the GitHub Actions workflow .github/workflows/docker-build-push.yml.
 # Usage: ./deploy.sh [--no-build] [--teardown]
-# Provision the Secret externally first. Existing encryption keys are never rotated.
+# Apply an ignored local Secret when present, otherwise use external provisioning.
+# Existing encryption keys and database credentials are never rotated here.
 
 NAMESPACE="kubepilot"
 BACKEND_IMAGE="kubepilot-backend"
@@ -30,18 +31,18 @@ fi
 k () { minikube kubectl -- "$@"; }
 
 is_valid_fernet_key() {
-  python3 - "$1" <<'PY'
+  printf '%s' "$1" | python3 -c '
 import base64
 import sys
 
 try:
-    value = sys.argv[1]
+    value = sys.stdin.read()
     decoded = base64.urlsafe_b64decode(value.encode("ascii"))
     valid = len(decoded) == 32 and base64.urlsafe_b64encode(decoded).decode("ascii") == value
 except (UnicodeDecodeError, ValueError, TypeError):
     valid = False
 sys.exit(0 if valid else 1)
-PY
+'
 }
 
 ensure_encryption_key() {
@@ -105,6 +106,14 @@ info "Applying namespace and shared configuration"
 for manifest in namespace.yaml service-account.yaml configmap.yaml; do
   k apply -f "$MANIFEST_DIR/$manifest"
 done
+
+if [ -f "$MANIFEST_DIR/secret.yaml" ]; then
+  info "Validating and applying local deployment Secret"
+  if ! python3 scripts/validate-deployment-secret.py --apply-local "$MANIFEST_DIR/secret.yaml"; then
+    error "Local Secret step failed; inspect the live Secret before retrying. Preserve the installation encryption key and coordinate database credential changes."
+    exit 1
+  fi
+fi
 
 if ! k get secret "$SECRET_NAME" -n "$NAMESPACE" -o json | python3 scripts/validate-deployment-secret.py; then
   error "Deployment stopped before applying database or application workloads."
