@@ -7,38 +7,6 @@
 > finding is `open` or `fixed`, then archives resolved findings with the work
 > and resets this file.
 
-### F-01 [P2] fixed - Translate queued test-delivery failures into API errors
-
-**File:** backend/app/api/v1/agents.py:178
-**Found:** 2026-09-30 by /audit (scope: current; lens: all)
-**Why it matters:** `queue_test_delivery` delegates to `enqueue_delivery`, which can raise `DeliveryServiceError` if the connection is revoked between the pre-check and the queue operation. This route does not translate that error, so the global handler returns a generic 500 instead of the stable safe delivery error contract.
-**Suggested fix:** Catch `DeliveryServiceError` in the agent test endpoint and map it to the same status/code response used by the integration delivery routes.
-**Resolution:** Fixed in `/implement`: the agent test-delivery endpoint now catches `DeliveryServiceError` and returns its stable status/code/message contract. Regression coverage proves a revoked-connection race returns the safe 409 response.
-
-### F-02 [P2] fixed - Distinguish retrying from initially queued deliveries
-
-**File:** k8s-ui/components/assistant/agents/notifications.tsx:234
-**Found:** 2026-09-30 by /audit (scope: current; lens: all)
-**Why it matters:** The worker represents a scheduled retry as `status="queued"` with `attempt_count > 0`, but this panel renders only the raw status, so an administrator cannot tell whether a test is waiting for its first attempt or retrying after a provider failure.
-**Suggested fix:** Derive and render a retrying state from the attempt count, matching the existing Settings delivery-history presentation.
-**Resolution:** Fixed in `/implement`: the agent notification panel derives `retrying` from `status === "queued" && attempt_count > 0`, displays the retrying label, and shows attempt progress. Frontend tests, TypeScript, and the production build pass.
-
-### F-03 [P2] fixed - Avoid one connection query per destination
-
-**File:** backend/app/services/agent_notifications.py:57
-**Found:** 2026-09-30 by /audit (scope: current; lens: all)
-**Why it matters:** `list_destinations` calls `destination_summary` once per row, and each summary performs a separate `IntegrationConnection` query. Because destinations are independently configurable and have no per-agent bound, listing an agent with many destinations performs an unbounded N+1 query pattern.
-**Suggested fix:** Load the supported connection rows once and pass a provider-to-status map into the summaries, or join the connection status into the destination query.
-**Resolution:** Fixed in `/implement`: destination listing now joins connection status into the single destination query. Regression coverage counts one connection-table query for a multi-destination listing, and the focused backend suite passes.
-
-### F-09 [P2] open - Repair the failing backend test contract
-
-**File:** backend/tests/test_marketplace.py:744
-**Found:** 2026-10-08 by /audit (scope: full; lens: all)
-**Why it matters:** The backend suite reports 654 passed and 3 failed. Marketplace tests reject fields now returned by the API, and metadata tests reject newly added tables, so the repository Verify command remains red.
-**Suggested fix:** Decide whether the new response fields and tables are intentional, then update the exact contract tests or remove the unintended behavior. Do not weaken assertions merely to pass.
-**Resolution:**
-
 ### F-12 [P2] open - Bind OAuth callbacks to the initiating browser session
 
 **File:** backend/app/api/v1/integrations.py:133
@@ -78,6 +46,39 @@
 **Why it matters:** fetch_public follows redirects but returns only bytes; chart_archive always resolves relative archive entries against the originally requested index URL. A mocked public-to-public index redirect reproduced an archive request on the original host/path rather than the final index host/path. Whether that is a defect depends on the intended repository-relative URL convention and compatibility with the previously used Helm behavior; no live repository or Helm integration evidence establishes that contract yet.
 **Suggested fix:** Establish and test the supported relative-URL convention with a redirected public index. Retain the effective index URL only if that is the required base, while preserving validation of every archive and redirect target.
 **Resolution:** Unverified lead, not a confirmed defect or completion blocker.
+
+## Audit — notification delivery P2 re-review, 2026-10-09
+
+- Scope: agent notification destinations, test-delivery API, notification panel
+  and connected delivery contracts; all four lenses (quality, security,
+  performance, tests). This is a path-scoped review based on the preceding user
+  request, not a full-project audit. No active spec; clean master at review start.
+  Reused valid project config and loaded overview/standards/interaction/review
+  context. No independent review requested; no committed-range claim applies.
+- Reviewed complete agent_notifications service, relevant agent routes/permission
+  dependencies, notification UI/schema, enqueue/error boundary, retry transition,
+  unique connection-provider constraint and connected agent/integration tests.
+  Used Graphify navigation. Checked operational permission/scope boundaries,
+  encrypted destination storage, safe metadata/errors, retry classification,
+  idempotency/transaction behavior and query scaling, not only the prior findings.
+- Closed F-01, F-02 and F-03 explicitly. No new confirmed finding in this scope.
+  F-09/F-12/F-13/F-15/F-16 remain open P2; F-19 remains unverified P2. None accepted
+  or closed implicitly; no P0/P1 blocker present.
+- Commands: backend .venv/bin/python3 -m pytest tests/test_agents.py
+  tests/test_integration_delivery.py -q --tb=short passed 34 tests in 37.22s;
+  frontend yarn test:assistant passed 36 tests. git diff --check passed.
+  No skipped/focused/xfail/placeholder tests found in selected test files.
+  Reused the recent successful build and TypeScript evidence; no source changed.
+- Excluded unrelated app areas, generated/build/graph output, dependencies,
+  caches, real Secrets/private artifacts and live provider accounts. No new
+  browser/component-render test, real provider delivery, load benchmark,
+  full backend regression, online security scan or remote CI inspection.
+  Frontend tests cover bridge/client contracts, not the retry label render branch.
+- Standards: explicit operational authorization, narrow error handling, no raw
+  destination/credential disclosure, persisted-data scope, shared safe summaries
+  and meaningful SQL/error contract regression assertions. Only the findings
+  ledger and generated dashboard activity changed. Next: /fix F-09, then
+  implement its exact test/API contract repair; remaining findings retain IDs.
 
 ## Audit re-review — 2026-10-09
 
@@ -312,3 +313,28 @@
   PVC edit before any commit mixes it into this fix. No new repair order required.
   Only this ledger and generated activity state changed during audit; source,
   spec, credentials and workloads were not modified.
+
+## Audit — backend test contract re-review, 2026-10-13
+
+- Scope: current; quality, security, performance and tests. Branch:
+  `fix/repair-backend-test-contracts`. Base: local `master`, merge base and HEAD
+  `6200b3a8deac4124463695117db2cd2e3c69c532`; committed range is empty. Reviewed
+  all four dirty tracked files; no staged or untracked source files.
+- Reviewed the test changes, marketplace response schemas/routes and history UI,
+  model registration, all eight asserted model constraints and their migrations,
+  plus relevant permission contracts and tests. The marketplace history spec
+  explicitly keeps read endpoints auth-only. No new confirmed defect in scope.
+- Closed F-09. F-12, F-13, F-15 and F-16 remain open P2; F-19 remains unverified
+  P2. No P0/P1 finding is open or fixed. No independent review was requested.
+- Commands: `cd backend && .venv/bin/python3 -m pytest tests/test_models.py -q
+  --tb=short` passed 10 tests; `git diff --check` passed. The combined marketplace
+  test run and narrowed response-contract run were interrupted after prolonged
+  silence. Reused the active spec's 2026-10-09 evidence for 853 passing backend
+  tests and the exact Verify gate; neither was rerun here.
+- Standards checked: exact API contracts, explicit expected inventories,
+  sensitive-value exclusion, ownership constraints and migration consistency.
+  Graphify query was used for navigation. No live app/browser, remote CI, full
+  backend regression, full Verify or performance benchmark was run. Excluded
+  unrelated app areas, generated output, dependencies and build artifacts.
+- Next: `/complete` safety pass. Only the findings ledger and generated activity
+  state changed during this audit; application source and tests were untouched.

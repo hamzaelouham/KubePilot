@@ -1,3 +1,4 @@
+import pytest
 from sqlalchemy import create_engine, inspect
 
 from app.models.base import Base
@@ -24,6 +25,14 @@ EXPECTED_TABLES = {
 	"application_credentials",
 	"ai_model_configs",
 	"ai_agents",
+	"ai_agent_skills",
+	"ai_agent_skill_assignments",
+	"ai_agent_tool_assignments",
+	"ai_agent_notification_destinations",
+	"ai_agent_automation_triggers",
+	"ai_agent_runs",
+	"assistant_conversations",
+	"assistant_conversation_parts",
 	"integration_connections",
 	"integration_oauth_states",
 	"integration_delivery_jobs",
@@ -49,6 +58,22 @@ def test_metadata_contains_expected_tables_and_ownership_constraints() -> None:
 	assert {index.name for index in Base.metadata.tables["ai_model_configs"].indexes} >= {
 		"uq_ai_model_configs_global_default"
 	}
+
+
+@pytest.mark.parametrize("table,column,target,ondelete", [
+	("ai_agent_notification_destinations", "agent_id", "ai_agents.id", "CASCADE"),
+	("ai_agent_skill_assignments", "agent_id", "ai_agents.id", "CASCADE"),
+	("ai_agent_skill_assignments", "skill_id", "ai_agent_skills.id", "RESTRICT"),
+	("ai_agent_tool_assignments", "agent_id", "ai_agents.id", "CASCADE"),
+	("ai_agent_automation_triggers", "owner_id", "user_accounts.id", "RESTRICT"),
+	("ai_agent_runs", "owner_id", "user_accounts.id", "RESTRICT"),
+	("assistant_conversations", "owner_id", "user_accounts.id", "CASCADE"),
+	("assistant_conversation_parts", "conversation_id", "assistant_conversations.id", "CASCADE"),
+])
+def test_agent_and_conversation_ownership_constraints(table, column, target, ondelete) -> None:
+	field = Base.metadata.tables[table].c[column]
+	assert field.nullable is False
+	assert {(key.target_fullname, key.ondelete) for key in field.foreign_keys} == {(target, ondelete)}
 
 
 def test_sensitive_values_are_hash_or_reference_fields() -> None:

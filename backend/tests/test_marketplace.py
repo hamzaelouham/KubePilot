@@ -754,6 +754,11 @@ def test_installation_status_succeeded(api: SimpleNamespace) -> None:
         "started_at",
         "completed_at",
         "can_manage_release",
+        "job_type",
+        "trigger_type",
+        "owner_id",
+        "result_code",
+        "attempt_count",
     }
     assert body["job_id"] == str(job_id)
     assert body["package_name"] == "redis"
@@ -762,6 +767,11 @@ def test_installation_status_succeeded(api: SimpleNamespace) -> None:
     assert body["release_name"] == "my-release"
     assert body["status"] == "succeeded"
     assert body["error_message"] is None
+    assert body["job_type"] == "installation"
+    assert body["trigger_type"] is None
+    assert body["owner_id"] is None
+    assert body["result_code"] is None
+    assert body["attempt_count"] == 0
     assert datetime.fromisoformat(body["started_at"]).replace(tzinfo=None) == started.replace(tzinfo=None)
     assert datetime.fromisoformat(body["completed_at"]).replace(tzinfo=None) == completed.replace(tzinfo=None)
 
@@ -863,6 +873,11 @@ def test_installation_history_orders_most_recent_first(api: SimpleNamespace) -> 
         "created_at",
         "started_at",
         "completed_at",
+        "job_type",
+        "trigger_type",
+        "owner_id",
+        "result_code",
+        "attempt_count",
     }
     assert first["package_name"] == "redis"
     assert first["cluster"] == "primary"
@@ -871,6 +886,11 @@ def test_installation_history_orders_most_recent_first(api: SimpleNamespace) -> 
     assert first["status"] == "failed"
     assert first["error_message"] is None
     assert first["can_manage_release"] is False
+    assert first["job_type"] == "installation"
+    assert first["trigger_type"] is None
+    assert first["owner_id"] is None
+    assert first["result_code"] is None
+    assert first["attempt_count"] == 0
 
 
 def test_installation_history_supports_offset_pagination(api: SimpleNamespace) -> None:
